@@ -1,0 +1,57 @@
+@startuml
+autonumber
+skinparam maxMessageSize 150
+
+actor "OidbStaff" as Staff
+participant "OidbDashboardUI" as UI
+participant "TransferApplicationManager" as AppManager
+participant "RoutingService" as Router
+participant "TransferApplicationRepository" as Repo
+database "Database" as DB
+
+== Listeleme İşlemi ==
+Staff -> UI: "YDYO Onaylı" veya "YDYO Reddetti" filtresini seç
+UI -> AppManager: getApplicationsByStatus(status)
+AppManager -> Repo: findByStatus(status)
+Repo -> DB: SELECT query
+DB --> Repo: ResultSet
+Repo --> AppManager: List<TransferApplication>
+AppManager --> UI: Başvuru Listesi
+UI --> Staff: Öğrenci listesini ekranda göster
+
+== Aksiyon İşlemi ==
+Staff -> UI: Öğrenci seç ve butona tıkla
+
+alt Aksiyon == "Fakülteye Gönder" (Statü: YDYO Onaylı)
+    UI -> Router: routeToFaculty(appId, targetDept)
+    
+    Router -> Repo: getDeanOfficeMapping(targetDept)
+    Repo --> Router: deanOfficeId
+    
+    Router -> Repo: updateStatus(appId, "Fakültede", deanOfficeId)
+    Router -> Repo: createAuditLog(timestamp, userId, "Routed to Faculty")
+    Repo -> DB: UPDATE & INSERT Log
+    DB --> Repo: Success
+    Repo --> Router: Success
+    Router --> UI: Yönlendirme Başarılı
+    UI --> Staff: Öğrenciyi listeden kaldır, başarı mesajı göster
+
+else Aksiyon == "Başvuruyu Reddet" (Statü: YDYO Reddetti)
+    UI --> Staff: "Emin misiniz?" onayı iste
+    Staff -> UI: Reddetmeyi onayla
+    UI -> Router: rejectApplication(appId)
+    
+    Router -> Repo: updateStatus(appId, "Reddedildi", null)
+    Router -> Repo: createAuditLog(timestamp, userId, "Application Rejected")
+    Repo -> DB: UPDATE & INSERT Log
+    DB --> Repo: Success
+    Repo --> Router: Success
+    Router --> UI: Reddetme Başarılı
+    UI --> Staff: İşlemi bitir ve öğrenciyi listeden kaldır
+end
+
+opt İşlem 30 saniyeyi geçerse (Timeout)
+    Router --x UI: TimeoutException
+    UI --> Staff: "İşlem zaman aşımına uğradı. Lütfen sayfayı yenileyin." mesajı göster
+end
+@enduml
