@@ -63,14 +63,20 @@ cd backend
 ### Branch Naming Convention
 
 ```
-feature/your-name-short-description
+<prefix>/your-name-short-description
 ```
+
+| Prefix | When to use |
+|---|---|
+| `feature/` | Backend or frontend code changes |
+| `docs/` | UML diagrams, SDD sections, README updates |
 
 Examples:
 ```
 feature/arda-login-endpoint
 feature/aysenur-transfer-application-entity
-feature/mustafa-otp-service
+docs/baris-class-diagram-update
+docs/selin-sequence-diagram-login
 ```
 
 ### Daily Workflow
