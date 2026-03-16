@@ -1,0 +1,54 @@
+@startuml
+autonumber
+skinparam maxMessageSize 150
+
+actor "YDYO Staff" as Staff
+participant "YdyoDashboardUI" as UI
+participant "ProficiencyEvaluationService" as EvalService
+participant "ProficiencyRepository" as Repo
+participant "TransferApplicationRepository" as AppRepo
+database "Database" as DB
+
+== Faz 1: Tekil Öğrenci Değerlendirme İşlemi ==
+
+Staff -> UI: Öğrenci seç, belge durumu ve sınav sonucunu gir
+Staff -> UI: "Açıklama" notunu yaz ve "Kaydet"e tıkla
+UI -> EvalService: saveEvaluation(appId, docStatus, examResult, explanation)
+
+alt Açıklama (explanation) Boş ise
+    EvalService --x UI: ValidationException("Lütfen açıklama giriniz.")
+    UI --> Staff: Hata mesajı göster ve işlemi durdur
+else Açıklama Dolu ise
+    EvalService -> EvalService: calculateExemptionStatus(docStatus, examResult)
+    note right of EvalService: Kurallara göre "Muaf", "Muaf Değil"\nveya "Beklemede" atanır
+    
+    EvalService -> Repo: updateProficiencyRecord(appId, docStatus, examResult, exemptionStatus, explanation)
+    Repo -> DB: UPDATE EnglishProficiencyRecord
+    DB --> Repo: Success
+    Repo --> EvalService: RecordSaved
+    EvalService --> UI: Başarılı Dönüş
+    UI --> Staff: "Başarıyla Kaydedildi" mesajı ve listeye dönüş
+end
+
+== Faz 2: Sonuçları ÖİDB'ye İlet (Toplu İşlem) ==
+
+Staff -> UI: "Sonuçları ÖİDB'ye İlet" butonuna tıkla
+UI -> EvalService: transmitResultsToOidb()
+
+EvalService -> Repo: checkPendingRecordsExist()
+Repo -> DB: SELECT COUNT(*) WHERE exemptionStatus = 'Beklemede'
+DB --> Repo: countResult
+Repo --> EvalService: count
+
+alt count > 0 (Eksik Kayıt Var)
+    EvalService --x UI: IllegalStateException("All records must be finalized")
+    UI --> Staff: "Tüm öğrenciler sonuçlandırılmalıdır!" hata mesajı göster
+else count == 0 (Tümü Tamamlandı)
+    EvalService -> AppRepo: bulkUpdateApplicationStatusBasedOnExemption()
+    AppRepo -> DB: UPDATE TransferApplication SET status = ...
+    DB --> AppRepo: Batch Success
+    AppRepo --> EvalService: TransmissionComplete
+    EvalService --> UI: İletim Başarılı
+    UI --> Staff: ÖİDB'ye başarıyla iletildi mesajı
+end
+@enduml
