@@ -31,24 +31,30 @@ package "Data Access Layer" #EBF5FB {
         class Student {
             +tckn : String
             +firstName : String
+            +middleName : String
             +lastName : String
             +phoneNumber : String
             +address : String
             +dateOfBirth : Date
             +isActive : Boolean
-            +kvkkAccepted : Boolean
+            +kvkkAcceptedAt : Date
             +gpa : Float
             +currentUniversity : String
-            +updateProfileData()
+            +currentDepartment : String
         }
-        abstract class Staff {
-            +departmentId : Integer
-        }
+        abstract class Staff
         class OidbStaff
         class YdyoStaff
-        class YgkMember
-        class DeanOfficeStaff
-        class FacultyBoardMember
+        class YgkMember {
+            +departmentId : Integer
+        } 
+        class DeanOfficeStaff {
+            +departmentId : Integer
+        }
+
+        class FacultyBoardMember {
+            +departmentId : Integer
+        }
     }
 
     package "Authentication" #D6EAF8 {
