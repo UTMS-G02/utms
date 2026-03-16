@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Binary documents (share via Drive/Teams instead)
+*.pdf
+
+# Root-level notes (personal, not project docs)
+/*.md
+!README.md
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Environment
+.env
+.env.*

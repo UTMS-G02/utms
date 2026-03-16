@@ -1,0 +1,318 @@
+@startuml UTMS_Class_Diagram
+
+title UTMS — Undergraduate Transfer Management System\nClass Diagram (Logical Viewpoint)
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam class {
+    BackgroundColor White
+    BorderColor #2C3E50
+    ArrowColor #2C3E50
+}
+skinparam package {
+    BorderColor #5D6D7E
+}
+
+' =============================================
+' DATA ACCESS LAYER
+' =============================================
+
+package "Data Access Layer" #EBF5FB {
+
+    package "User Domain" #D6EAF8 {
+        abstract class User {
+            +userId : Integer
+            +email : String
+            +passwordHash : String
+            +lastLoginDate : Date
+        }
+        class Student {
+            +tckn : String
+            +firstName : String
+            +lastName : String
+            +phoneNumber : String
+            +address : String
+            +dateOfBirth : Date
+            +isActive : Boolean
+            +kvkkAccepted : Boolean
+            +gpa : Float
+            +currentUniversity : String
+            +updateProfileData()
+        }
+        abstract class Staff {
+            +departmentId : Integer
+        }
+        class OidbStaff
+        class YdyoStaff
+        class YgkMember
+        class DeanOfficeStaff
+        class FacultyBoardMember
+    }
+
+    package "Authentication" #D6EAF8 {
+        class AuthToken {
+            +tokenId : String
+            +expiryDate : Date
+            +isValid : Boolean
+        }
+        class OTPRecord {
+            +otpCode : String
+            +failedAttempts : Integer
+            +expiryTime : Date
+        }
+    }
+
+    package "Application Domain" #D6EAF8 {
+        class TransferApplication {
+            +applicationId : Integer
+            +gpa : Float
+            +yksRanking : Integer
+            +currentYear : Integer
+            +currentDepartment : String
+            +targetDepartment : String
+            +applicationStatus : String
+            +eligibilityStatus : String
+            +finalDecision : String
+            +setStatus(newStatus : String)
+        }
+        class ApplicationCycle {
+            +cycleId : Integer
+            +academicYear : Integer
+            +applicationStart : Date
+            +applicationEnd : Date
+            +isActive : Boolean
+        }
+        class Notification {
+            +notificationId : Integer
+            +recipientEmail : String
+            +messageBody : String
+            +sentDate : Date
+            +status : String
+        }
+    }
+
+    package "Document Domain" #D6EAF8 {
+        abstract class BaseDocument {
+            +documentId : Integer
+            +uploadDate : Date
+            +fileSize : Float
+            +fileFormat : String
+            +filePath : String
+            +isLocked : Boolean
+            +lockDocument()
+            +updateDocument()
+        }
+        class Transcript
+        class YksResultDocument
+        class StudentCertificate
+        class EnglishProficiencyCertificate
+    }
+
+    package "Evaluation Domain" #D6EAF8 {
+        class EnglishProficiencyRecord {
+            +recordId : Integer
+            +documentApprovalStatus : String
+            +examResult : String
+            +exemptionStatus : String
+            +explanationNote : String
+        }
+        class EvaluationReport {
+            +reportId : Integer
+            +compositeScore : Float
+            +conditionsMet : Boolean
+            +generalNote : String
+            +recommendedRanking : Integer
+        }
+        class IntibakTable {
+            +tableId : Integer
+            +totalCredits : Integer
+        }
+        class IntibakRow {
+            +rowId : Integer
+            +sourceCourseCode : String
+            +sourceCourseName : String
+            +sourceCredit : Integer
+            +targetCourseCode : String
+            +targetCourseName : String
+            +targetCredit : Integer
+            +equivalencyStatus : String
+        }
+        class BoardDecision {
+            +decisionId : Integer
+            +decisionType : String
+            +rejectionCode : String
+            +timestamp : Date
+        }
+    }
+}
+
+' =============================================
+' BUSINESS LOGIC LAYER
+' =============================================
+
+package "Business Logic Layer" #FEF9E7 {
+
+    package "External Services" #FDEBD0 {
+        interface IExternalVerificationService {
+            +verifyIdentity(tckn : String) : Boolean
+            +fetchAcademicData(tckn : String) : ExternalDataResponse
+        }
+        class YoksisVerificationService
+        class OsymVerificationService
+        class EDevletVerificationService
+    }
+
+    package "Auth & Registration" #FDEBD0 {
+        class AuthenticationService {
+            +verifyCredentials(email : String, password : String)
+            +generateOTP() : String
+            +verifyOTP(code : String) : Boolean
+            +lockAccount()
+            +initiatePasswordReset(email : String)
+            +updatePassword(newPassword : String)
+        }
+        class RegistrationController {
+            +validateEmailFormat(email : String)
+            +checkEmailExists(email : String)
+            +validatePasswordStrength(password : String)
+            +generateActivationLink()
+            +verifyActivationLink(link : String)
+        }
+        class ProfileController {
+            +validatePhoneNumber(phone : String)
+            +verifyCurrentPassword(password : String)
+            +hashNewPassword(newPassword : String)
+        }
+    }
+
+    package "Application Services" #FDEBD0 {
+        interface ITransferApplicationService {
+            +submitApplication(app : TransferApplication)
+            +updateStatus(appId : Integer, status : String)
+        }
+        class TransferApplicationManager
+        class ApplicationController {
+            +validateMandatoryFields()
+            +validateFileFormatAndSize(file : BaseDocument)
+            +checkInitialEligibility(gpa : Float, yksRanking : Integer)
+        }
+        class DocumentVerificationController {
+            +verifyDocuments(applicationId : Integer)
+            +requestDocumentCorrection(applicationId : Integer)
+        }
+        class RoutingService {
+            +forwardToYDYO(applicationId : Integer)
+            +routeToFaculty(applicationId : Integer, targetDepartment : String)
+            +rejectApplication(applicationId : Integer)
+        }
+    }
+
+    package "Workflow Services" #FDEBD0 {
+        class ProficiencyEvaluationController {
+            +approveDocument()
+            +rejectDocument()
+            +updateExamResult()
+            +calculateExemptionStatus()
+            +forwardListToOidb()
+        }
+        class IntibakManager {
+            +addRow()
+            +removeRow()
+            +validateNumericCredits()
+            +saveTable()
+        }
+        interface IEvaluationService {
+            +calculateCompositeScore(gpa : Float, yksRanking : Integer) : Float
+            +generateDraftRanking() : Student[]
+        }
+        class YgkEvaluationManager
+        class DeanRoutingController {
+            +forwardToYGK()
+            +forwardToFacultyBoard()
+            +returnToOidb()
+        }
+        class FacultyBoardController {
+            +verifyEquivalencyCompliance()
+            +recordFinalDecision()
+        }
+        interface INotificationService {
+            +sendStatusUpdate(email : String, message : String)
+        }
+        class EmailNotificationManager
+        class FinalizationController {
+            +publishResults(cycleId : Integer)
+            +triggerNotifications()
+        }
+    }
+}
+
+' =============================================
+' INHERITANCE & REALIZATION
+' =============================================
+
+User <|-- Student
+User <|-- Staff
+Staff <|-- OidbStaff
+Staff <|-- YdyoStaff
+Staff <|-- YgkMember
+Staff <|-- DeanOfficeStaff
+Staff <|-- FacultyBoardMember
+
+BaseDocument <|-- Transcript
+BaseDocument <|-- YksResultDocument
+BaseDocument <|-- StudentCertificate
+BaseDocument <|-- EnglishProficiencyCertificate
+
+IExternalVerificationService <|.. YoksisVerificationService
+IExternalVerificationService <|.. OsymVerificationService
+IExternalVerificationService <|.. EDevletVerificationService
+ITransferApplicationService <|.. TransferApplicationManager
+IEvaluationService <|.. YgkEvaluationManager
+INotificationService <|.. EmailNotificationManager
+
+' =============================================
+' DOMAIN ASSOCIATIONS (Data Access Layer)
+' =============================================
+
+User "1" -- "0..*" AuthToken : has
+User "1" -- "0..1" OTPRecord : has
+
+Student "1" -- "0..*" TransferApplication : submits
+ApplicationCycle "1" -- "0..*" TransferApplication : contains
+TransferApplication "1" *-- "1..*" BaseDocument : contains
+TransferApplication "1" -- "0..*" Notification : triggers
+TransferApplication "1" o-- "0..1" EnglishProficiencyRecord : has
+TransferApplication "1" o-- "0..1" EvaluationReport : has
+TransferApplication "1" o-- "0..1" IntibakTable : has
+TransferApplication "1" o-- "0..1" BoardDecision : has
+IntibakTable "1" *-- "1..*" IntibakRow : contains
+
+' =============================================
+' BUSINESS LOGIC -> DATA ACCESS DEPENDENCIES
+' =============================================
+
+AuthenticationService ..> User
+AuthenticationService ..> OTPRecord
+AuthenticationService ..> AuthToken
+RegistrationController ..> Student
+ProfileController ..> Student
+TransferApplicationManager ..> TransferApplication
+ApplicationController ..> TransferApplication
+ApplicationController ..> BaseDocument
+DocumentVerificationController ..> TransferApplication
+DocumentVerificationController ..> BaseDocument
+RoutingService ..> TransferApplication
+ProficiencyEvaluationController ..> EnglishProficiencyRecord
+IntibakManager ..> IntibakTable
+IntibakManager ..> IntibakRow
+YgkEvaluationManager ..> EvaluationReport
+YgkEvaluationManager ..> TransferApplication
+FacultyBoardController ..> BoardDecision
+FacultyBoardController ..> IntibakTable
+FinalizationController ..> ApplicationCycle
+FinalizationController ..> Notification
+EmailNotificationManager ..> Notification
+
+@enduml
