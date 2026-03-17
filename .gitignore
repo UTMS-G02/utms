@@ -16,3 +16,6 @@
 # Environment
 .env
 .env.*
+
+# Binary files and PlantUML generated output
+out/
