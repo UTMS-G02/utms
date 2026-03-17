@@ -1,4 +1,4 @@
-@startuml
+@startuml uc-3
 autonumber
 skinparam maxMessageSize 150
 skinparam ParticipantPadding 20
