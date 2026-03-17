@@ -1,0 +1,117 @@
+@startuml
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "ÖİDB Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+participant "ui : OidbDashboardUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "verifController : DocumentVerificationController" as VerifController
+participant "routeController : RoutingService" as RouteController
+end box
+
+box "Data Access Layer" #LightGreen
+participant "appRecord : TransferApplication" as AppDB
+participant "docRecord : BaseDocument" as DocDB
+end box
+
+== 1. Accessing the Review Page ==
+Staff -> UI: Navigate to OİDB Dashboard
+activate UI
+
+UI -> UI: filterByStatus("Pending Verification")
+note right: Filters the view to only show incoming applications
+
+UI -> VerifController: fetch pending applications list
+activate VerifController
+VerifController -> AppDB: Query TransferApplications (status="Pending")
+activate AppDB
+AppDB --> VerifController: Return list of applications
+deactivate AppDB
+VerifController --> UI: Application list data
+deactivate VerifController
+
+UI --> Staff: displayPendingApplications()
+
+== 2. Document Verification Process ==
+Staff -> UI: Select specific student's application to review
+UI -> VerifController: verifyDocuments(applicationId)
+activate VerifController
+
+VerifController -> AppDB: Fetch TransferApplication details
+activate AppDB
+AppDB --> VerifController: Application details
+deactivate AppDB
+
+VerifController -> DocDB: Fetch associated documents (Transcript, YKS, etc.)
+activate DocDB
+DocDB --> VerifController: Document files
+deactivate DocDB
+
+VerifController --> UI: Render application data and document viewer
+deactivate VerifController
+
+alt Invalid or Missing Documents (Alternative Flow)
+    Staff -> UI: Flag document as invalid/missing & submit note
+    UI -> VerifController: requestDocumentCorrection(applicationId)
+    activate VerifController
+
+    VerifController -> AppDB: setStatus("Correction Requested")
+    activate AppDB
+    AppDB --> VerifController: Status updated
+    deactivate AppDB
+
+    VerifController --> UI: Correction logged successfully
+    deactivate VerifController
+    
+    UI --> Staff: showActionConfirmation() ("Student notified for correction")
+
+else Documents are Valid (Normal Flow)
+    Staff -> UI: Approve all documents
+    UI -> VerifController: Mark application as verified
+    activate VerifController
+    
+    VerifController -> DocDB: lockDocument()
+    note right: isLocked is set to true to prevent further student uploads
+    activate DocDB
+    DocDB --> VerifController: Documents locked
+    deactivate DocDB
+    
+    VerifController --> UI: Verification complete
+    deactivate VerifController
+
+    == 3. Application Routing ==
+    Staff -> UI: Proceed to routing decision
+    
+    alt Needs English Proficiency Prep (YDYO)
+        UI -> RouteController: forwardToYDYO(applicationId)
+        activate RouteController
+        RouteController -> AppDB: setStatus("Forwarded to YDYO")
+        activate AppDB
+        AppDB --> RouteController: Status updated
+        deactivate AppDB
+        RouteController --> UI: Routing complete
+        deactivate RouteController
+        UI --> Staff: showActionConfirmation() ("Routed to YDYO")
+        
+        
+    else Reject Application (e.g., General constraints not met)
+        UI -> RouteController: rejectApplication(applicationId)
+        activate RouteController
+        RouteController -> AppDB: setStatus("Rejected")
+        activate AppDB
+        AppDB --> RouteController: Status updated
+        deactivate AppDB
+        RouteController --> UI: Rejection complete
+        deactivate RouteController
+        UI --> Staff: showActionConfirmation() ("Application Rejected")
+    end
+end
+
+deactivate UI
+@enduml
