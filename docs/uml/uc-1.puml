@@ -1,0 +1,113 @@
+@startuml
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor Student
+box "Presentation Layer" #LightCyan
+participant "ui : RegistrationUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "controller : RegistrationController" as Controller
+end box
+
+box "Data Access Layer" #LightGreen
+participant "studentRecord : Student" as DB
+end box
+
+box "External Services" #LightGray
+participant "Email API" as Email
+end box
+
+== Registration Phase ==
+
+Student -> UI: Click "Kayıt ol"
+activate UI
+UI --> Student: displayRegistrationForm()
+deactivate UI
+
+Student -> UI: submitForm(email, password, repeat, KVKK)
+activate UI
+
+UI -> Controller: validateEmailFormat(email)
+activate Controller
+alt Invalid Email Format / Extension
+    Controller --> UI: Error (Invalid format)
+    UI --> Student: displayEmailFormatError()
+else Valid Email
+    UI -> Controller: validatePasswordStrength(password)
+    alt Invalid Password
+        Controller --> UI: Error (Weak password / mismatch)
+        UI --> Student: Display password security error
+    else Valid Password
+        UI -> Controller: checkEmailExists(email)
+        Controller -> DB: query existing email
+        activate DB
+        DB --> Controller: Result
+        deactivate DB
+        
+        alt Email Already Registered
+            Controller --> UI: Error (Email exists)
+            UI --> Student: Display "Bu e-posta adresi zaten kayıtlı" and redirect
+        else Email is Available
+            Controller -> DB: create Student (isActive = false, kvkkAccepted = true)
+            activate DB
+            DB --> Controller: Student created
+            deactivate DB
+            
+            Controller -> Controller: generateActivationLink()
+            Controller -> Email: send(email, activationLink)
+            activate Email
+            
+            alt Email Sending Error (Exception 8-EX)
+                Email --> Controller: Failure
+                Controller --> UI: Delivery Error
+                UI --> Student: Display "E-posta gönderim hatası"
+            else Email Sent Successfully
+                Email --> Controller: Success
+                deactivate Email
+                Controller --> UI: Registration Successful
+                UI --> Student: showActivationSuccessMessage() ("Check your email")
+            end
+        end
+    end
+end
+deactivate Controller
+deactivate UI
+
+== Activation Phase ==
+
+Student -> UI: Clicks activation link from email
+activate UI
+
+UI -> Controller: verifyActivationLink(link)
+activate Controller
+
+alt Link Invalid or Expired
+    Controller --> UI: Error (Invalid link)
+    UI --> Student: Display "Aktivasyon bağlantısı geçersiz/süresi dolmuş"
+    
+    opt Student requests new link
+        Student -> UI: Request new activation link
+        UI -> Controller: generateActivationLink()
+        Controller -> Email: send(email, newActivationLink)
+        Controller --> UI: Success
+        UI --> Student: Display "Yeni bağlantı gönderildi"
+    end
+    
+else Link Valid
+    Controller -> DB: updateProfileData(isActive = true)
+    activate DB
+    DB --> Controller: Update successful
+    deactivate DB
+    
+    Controller --> UI: Verification Successful
+    UI --> Student: Display "Hesabınız başarıyla etkinleştirildi" & Redirect to Login
+end
+
+deactivate Controller
+deactivate UI
+
+@enduml

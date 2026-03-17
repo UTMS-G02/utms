@@ -1,0 +1,94 @@
+@startuml
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor Student
+box "Presentation Layer" #LightCyan
+participant "ui : ProfileUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "controller : ProfileController" as Controller
+end box
+
+box "Data Access Layer" #LightGreen
+participant "studentRecord : Student" as DB
+end box
+
+== View Profile ==
+Student -> UI: Select "Profile" from menu
+activate UI
+UI -> DB: Fetch current profile data
+activate DB
+DB --> UI: Return data
+deactivate DB
+UI --> Student: displayProfileData()
+
+== Update Basic Information (Normal Flow) ==
+Student -> UI: Enter new phone/address & click "Değişiklikleri kaydet"
+UI -> Controller: validatePhoneNumber(phone)
+activate Controller
+
+alt Missing or Invalid Data Entry (5.b)
+    Controller --> UI: Validation Error (e.g., non-numeric chars)
+    UI --> Student: Display error & highlight erroneous fields
+else Valid Data
+    Controller -> DB: updateProfileData()
+    activate DB
+    
+    alt Database Update Error (7-EX)
+        DB --> Controller: Connection/Database Error
+        Controller --> UI: Update Failed
+        UI --> Student: Display "Geçici bir sistem hatası oluştu..."
+    else Update Successful
+        DB --> Controller: Success
+        deactivate DB
+        Controller --> UI: Data Saved
+        UI --> Student: showUpdateConfirmation() ("Bilgileriniz başarıyla güncellendi")
+    end
+end
+deactivate Controller
+
+== Sensitive Information Update (Password Change - 3.a) ==
+Student -> UI: Enter Current, New, Repeat Password & click "Şifreyi Güncelle"
+UI -> Controller: verifyCurrentPassword(currentPassword)
+activate Controller
+
+Controller -> DB: Fetch current passwordHash
+activate DB
+DB --> Controller: Return hash
+deactivate DB
+
+alt Incorrect Current Password (4.a / 3.a.5.a)
+    Controller --> UI: Authentication Failure
+    UI --> Student: Display "Mevcut şifreniz hatalı. Lütfen tekrar deneyin."
+else Correct Current Password
+    Controller -> Controller: Verify New == Repeat Password
+    Controller -> Controller: Validate against security policies
+    
+    alt New Password Fails Rules (3.a.6.a) or Matches Old (3.a.6.b)
+        Controller --> UI: Security Rule Violation
+        UI --> Student: Display password requirements error
+    else Valid New Password
+        Controller -> Controller: hashNewPassword(newPassword)
+        Controller -> DB: updateProfileData(newPasswordHash)
+        activate DB
+        DB --> Controller: Success
+        deactivate DB
+        
+        Controller --> UI: Update Successful
+        UI --> Student: showUpdateConfirmation() ("Şifreniz başarıyla güncellendi")
+    end
+end
+
+opt Cancellation of Information Update (5.a / 3.a.4.a)
+    Student -> UI: Clicks "İptal"
+    UI --> Student: Discard changes and return to previous state
+end
+
+deactivate Controller
+deactivate UI
+
+@enduml
