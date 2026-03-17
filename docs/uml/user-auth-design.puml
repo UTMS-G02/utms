@@ -1,0 +1,131 @@
+@startuml UTMS_User_Auth_Design
+
+title UTMS — User & Authentication Design
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam packageStyle rectangle
+skinparam class {
+    BackgroundColor White
+    BorderColor #2C3E50
+    ArrowColor #2C3E50
+}
+skinparam package {
+    BorderColor #5D6D7E
+}
+
+' =============================================
+' BUSINESS LOGIC LAYER
+' =============================================
+
+package "Business Logic Layer" #FEF9E7 {
+
+    package "Auth & Registration" #FDEBD0 {
+        class AuthenticationService {
+            +verifyCredentials(email : String, password : String)
+            +generateOTP() : OTPRecord
+            +verifyOTP(code : String) : Boolean
+            +lockAccount()
+            +initiatePasswordReset(email : String)
+            +updatePassword(newPassword : String)
+        }
+        class RegistrationController {
+            +validateEmailFormat(email : String)
+            +checkEmailExists(email : String)
+            +validatePasswordStrength(password : String)
+            +hashPassword(password : String) : String
+            +generateActivationLink()
+            +verifyActivationLink(link : String)
+        }
+        class ProfileController {
+            +validatePhoneNumber(phone : String)
+            +verifyCurrentPassword(password : String)
+            +hashNewPassword(newPassword : String)
+        }
+    }
+}
+
+' =============================================
+' DATA ACCESS LAYER
+' =============================================
+
+package "Data Access Layer" #EBF5FB {
+
+    package "User Domain" #D6EAF8 {
+        abstract class User {
+            +userId : Integer
+            +email : String
+            +passwordHash : String
+            +lastLoginDate : Date
+        }
+        class Student {
+            +tckn : String
+            +firstName : String
+            +middleName : String
+            +lastName : String
+            +phoneNumber : String
+            +dateOfBirth : Date
+            +isActive : Boolean
+            +kvkkAcceptedAt : Date
+            +gpa : Float
+            +currentUniversity : String
+            +currentDepartment : String
+        }
+        abstract class Staff
+        class OidbStaff
+        class YdyoStaff
+        class YgkMember {
+            +departmentId : Integer
+        }
+        class DeanOfficeStaff {
+            +departmentId : Integer
+        }
+        class FacultyBoardMember {
+            +departmentId : Integer
+        }
+    }
+
+    package "Authentication" #D6EAF8 {
+        class AuthToken {
+            +tokenId : String
+            +expiryDate : Date
+            +isValid : Boolean
+        }
+        class OTPRecord {
+            +otpCode : String
+            +failedAttempts : Integer
+            +expiryTime : Date
+        }
+    }
+}
+
+' =============================================
+' INHERITANCE
+' =============================================
+
+User <|-- Student
+User <|-- Staff
+Staff <|-- OidbStaff
+Staff <|-- YdyoStaff
+Staff <|-- YgkMember
+Staff <|-- DeanOfficeStaff
+Staff <|-- FacultyBoardMember
+
+' =============================================
+' DOMAIN ASSOCIATIONS
+' =============================================
+
+User "1" -- "0..*" AuthToken : has
+User "1" -- "0..1" OTPRecord : has
+
+' =============================================
+' BUSINESS LOGIC -> DATA ACCESS DEPENDENCIES
+' =============================================
+
+AuthenticationService ..> User : reads / updates
+AuthenticationService ..> OTPRecord : creates / reads
+AuthenticationService ..> AuthToken : creates
+RegistrationController ..> Student : creates / activates
+ProfileController ..> Student : updates
+
+@enduml
