@@ -1,0 +1,77 @@
+@startuml
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "Faculty Board Member" as Board
+
+box "Presentation Layer" #LightCyan
+participant "ui : FacultyBoardUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "controller : FacultyBoardController" as Controller
+end box
+
+box "Data Access Layer" #LightGreen
+participant "appRecord : TransferApplication" as AppDB
+participant "evalRecord : EvaluationReport" as EvalDB
+participant "decisionRecord : BoardDecision" as DecisionDB
+end box
+
+== Application Review ==
+Board -> UI: Select applicant for final board review
+activate UI
+
+UI -> Controller: fetchApplicationDetails(applicationId)
+activate Controller
+
+Controller -> AppDB: Retrieve TransferApplication
+activate AppDB
+AppDB --> Controller: Application data
+deactivate AppDB
+
+Controller -> EvalDB: Retrieve EvaluationReport & Intibak details
+activate EvalDB
+EvalDB --> Controller: Evaluation and Intibak data
+deactivate EvalDB
+
+
+
+Controller --> UI: Consolidated application data
+UI --> Board: displayConsolidatedReport()
+deactivate Controller
+
+== Decision Making ==
+alt Application Approved (Normal Flow)
+    Board -> UI: Click "Approve"
+    UI -> Controller: recordFinalDecision(applicationId, "Approved", null)
+    activate Controller
+    
+else Application Rejected (Alternative Flow)
+    Board -> UI: Click "Reject"
+    UI --> Board: showRejectionCodeDropdown()
+    Board -> UI: Select rejection code (e.g., "Insufficient Equivalency") 
+    Board -> UI: Enter additional comments and confirm
+    UI -> Controller: recordFinalDecision(applicationId, "Rejected", rejectionCode)
+end
+
+== Recording the Decision ==
+Controller -> DecisionDB: Create BoardDecision(decisionType, rejectionCode, timestamp)
+activate DecisionDB
+DecisionDB --> Controller: BoardDecision saved
+deactivate DecisionDB
+
+Controller -> AppDB: Update finalDecision status & link BoardDecision
+activate AppDB
+AppDB --> Controller: Status updated
+deactivate AppDB
+
+Controller --> UI: Decision successfully recorded
+deactivate Controller
+
+UI --> Board: Display confirmation message & return to application list
+deactivate UI
+
+@enduml

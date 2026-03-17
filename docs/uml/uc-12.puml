@@ -1,0 +1,117 @@
+@startuml
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "User (Student/Staff)" as User
+
+box "Presentation Layer" #LightCyan
+participant "ui : LoginUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "authService : AuthenticationService" as AuthService
+participant "emailService : EmailNotificationManager" as EmailService
+end box
+
+box "Data Access Layer" #LightGreen
+participant "userRecord : User" as UserDB
+participant "otpRecord : OTPRecord" as OTPDB
+end box
+
+box "External Systems" #LightGray
+participant "Email API Service" as EmailAPI
+end box
+
+== Primary Authentication (Email & Password) ==
+User -> UI: Navigate to Login Page
+activate UI
+UI --> User: displayLoginForm()
+
+User -> UI: Enter credentials (email and password)
+UI -> AuthService: verifyCredentials(email, password)
+activate AuthService
+
+AuthService -> UserDB: Query user credentials
+activate UserDB
+UserDB --> AuthService: Return credentials validation result
+deactivate UserDB
+
+alt Invalid Credentials (4.a)
+    AuthService -> AuthService: Track failed login attempt
+    
+    alt Excessive Failed Attempts (5.a.1 - 5 attempts)
+        AuthService -> AuthService: lockAccount()
+        AuthService --> UI: Account Locked Error
+        UI --> User: showLockoutMessage() ("Çok sayıda başarısız...")
+    else Less than 5 failed attempts
+        AuthService --> UI: Invalid Credentials Error
+        UI --> User: Display "Geçersiz Kimlik Bilgileri..."
+    end
+    
+else Valid Credentials
+    == OTP Generation and Delivery ==
+    AuthService -> AuthService: generateOTP()
+    
+    AuthService -> OTPDB: Create OTPRecord (otpCode, expiryTime)
+    activate OTPDB
+    OTPDB --> AuthService: Record saved
+    deactivate OTPDB
+    
+    AuthService -> EmailService: sendStatusUpdate(email, otpMessage)
+    activate EmailService
+    
+    EmailService -> EmailAPI: Send email with OTP code
+    activate EmailAPI
+    
+    alt Email API Service Error (4-EX)
+        EmailAPI --> EmailService: Delivery Failure
+        EmailService --> AuthService: Error propagating
+        AuthService --> UI: System/Email Error
+        UI --> User: Display "Bir sistem hatası oluştu..."
+    else Email Sent Successfully
+        EmailAPI --> EmailService: Success
+        deactivate EmailAPI
+        EmailService --> AuthService: Sent confirmation
+        deactivate EmailService
+        
+        AuthService --> UI: Primary auth success, OTP sent
+        UI --> User: showOtpPrompt()
+    end
+end
+deactivate AuthService
+
+== Secondary Authentication (OTP) ==
+User -> UI: Enter OTP code received via email
+UI -> AuthService: verifyOTP(code)
+activate AuthService
+
+AuthService -> OTPDB: Query OTPRecord
+activate OTPDB
+OTPDB --> AuthService: Return OTP data
+deactivate OTPDB
+
+alt Invalid or Expired OTP (8.a)
+    AuthService -> OTPDB: Increment failedAttempts
+    activate OTPDB
+    OTPDB --> AuthService: Update successful
+    deactivate OTPDB
+    
+    alt Excessive Failed OTP Attempts (8.a.1 - 3 attempts)
+        AuthService --> UI: Maximum OTP attempts reached
+        UI --> User: Display "Çok fazla başarısız doğrulama..." & Redirect to Login
+    else Less than 3 failed attempts
+        AuthService --> UI: Invalid OTP Error
+        UI --> User: Display "Doğrulama kodu geçersiz veya süresi dolmuş."
+    end
+    
+else Valid OTP
+    AuthService --> UI: Authentication Successful
+    UI --> User: Redirect to appropriate Main Page (Dashboard)
+end
+
+deactivate AuthService
+deactivate UI
+
+@enduml

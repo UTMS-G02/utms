@@ -1,0 +1,102 @@
+@startuml
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "ÖİDB Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+participant "ui : OidbDashboardUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "controller : FinalizationController" as Controller
+participant "emailService : EmailNotificationManager" as EmailService
+end box
+
+box "Data Access Layer" #LightGreen
+participant "decisionRecord : BoardDecision" as DecisionDB
+participant "appRecord : TransferApplication" as AppDB
+participant "logRecord : Notification" as LogDB
+end box
+
+box "External Services" #LightGray
+participant "SMTP Gateway" as ExternalEmail
+end box
+
+== Retrieve & Review Decisions ==
+
+Staff -> UI: Select application cycle (e.g., "2025 Fall Intake")
+activate UI
+
+UI -> Controller: fetchFinalDecisions(cycleId)
+activate Controller
+
+Controller -> DecisionDB: retrieve decisions for cycle
+activate DecisionDB
+
+alt Invalid or Missing Faculty Data (Exception 3-EX)
+    DecisionDB --> Controller: Data corrupted/incomplete
+    Controller --> UI: Error (Missing Data)
+    UI --> Staff: Display error message & halt publication. Prompt to verify.
+else Valid Data
+    DecisionDB --> Controller: Return list of Faculty Board decisions (Accepted/Waitlisted/Rejected)
+    deactivate DecisionDB
+    
+    Controller --> UI: Return decision data
+    UI --> Staff: Display decision data for review
+end
+
+deactivate Controller
+deactivate UI
+
+== Publish & Notify ==
+
+Staff -> UI: Click "Sonucu Paylaş" (Publish Results)
+activate UI
+
+UI -> Controller: publishResults(cycleId)
+activate Controller
+
+Controller -> AppDB: update finalDecision status for all applicants
+activate AppDB
+AppDB --> Controller: Status update successful
+deactivate AppDB
+
+Controller -> Controller: triggerNotifications()
+Controller -> EmailService: sendStatusUpdate(recipientEmail, message)
+activate EmailService
+
+EmailService -> ExternalEmail: Send bulk emails via SMTP
+activate ExternalEmail
+
+alt Notification Failure (Exception 7-EX)
+    ExternalEmail --> EmailService: Delivery Failure (Network/Invalid Email)
+    EmailService -> LogDB: Log failed attempts (status = "Failed")
+    activate LogDB
+    LogDB --> EmailService: Log saved
+    deactivate LogDB
+    
+    EmailService --> Controller: Return failure summary
+    Controller --> UI: Publish Complete with Notification Errors
+    UI --> Staff: Display summary report of failed notifications
+else Notification Success
+    ExternalEmail --> EmailService: Success
+    deactivate ExternalEmail
+    EmailService -> LogDB: Log successful delivery (status = "Sent")
+    activate LogDB
+    LogDB --> EmailService: Log saved
+    deactivate LogDB
+    
+    EmailService --> Controller: Notifications sent successfully
+    deactivate EmailService
+    
+    Controller --> UI: Finalization Complete
+    UI --> Staff: Display confirmation: "Finalization successfully completed. Results have been published."
+end
+
+deactivate Controller
+deactivate UI
+
+@enduml

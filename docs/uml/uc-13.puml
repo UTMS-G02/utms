@@ -1,0 +1,127 @@
+@startuml
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "User (Student/Staff)" as User
+
+box "Presentation Layer" #LightCyan
+participant "loginUI : LoginUI" as LoginUI
+participant "ui : ForgotPasswordUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "authService : AuthenticationService" as AuthService
+participant "emailManager : EmailNotificationManager" as EmailService
+end box
+
+box "Data Access Layer" #LightGreen
+participant "userRecord : User" as UserDB
+participant "tokenRecord : AuthToken" as TokenDB
+end box
+
+box "External Systems" #LightGray
+participant "Email API Service" as EmailAPI
+end box
+
+== Initiation ==
+User -> LoginUI: Select "Şifremi Unuttum" (Forgot Password)
+activate LoginUI
+LoginUI -> UI: Route to Reset Process
+deactivate LoginUI
+
+activate UI
+UI --> User: displayResetForm() (Prompt for Email)
+
+User -> UI: Enter registered email & Click "Sıfırlama Bağlantısı Gönder"
+UI -> AuthService: initiatePasswordReset(email)
+activate AuthService
+
+AuthService -> UserDB: Check if email exists
+activate UserDB
+UserDB --> AuthService: Return match result
+deactivate UserDB
+
+alt Account not found (Alternative 4.a)
+    AuthService --> UI: Error (User not found)
+    UI --> User: Display error (Suggest re-enter or contact support)
+else Account exists
+    AuthService -> TokenDB: Create AuthToken (reset token, expiryDate)
+    activate TokenDB
+    TokenDB --> AuthService: Token generated
+    deactivate TokenDB
+
+    AuthService -> EmailService: sendStatusUpdate(email, resetLink)
+    activate EmailService
+
+    EmailService -> EmailAPI: Send email with reset link/code
+    activate EmailAPI
+    EmailAPI --> EmailService: Delivery Success
+    deactivate EmailAPI
+
+    EmailService --> AuthService: Confirmation
+    deactivate EmailService
+
+    AuthService --> UI: Reset link sent
+    UI --> User: Display confirmation message
+end
+deactivate AuthService
+
+== Password Reset Execution ==
+User -> UI: Opens reset link from email / enters code
+UI -> AuthService: Verify AuthToken validity
+activate AuthService
+
+AuthService -> TokenDB: Query token status and expiryDate
+activate TokenDB
+TokenDB --> AuthService: Return token data
+deactivate TokenDB
+
+alt Verification code expired or invalid (Alternative 6.b)
+    AuthService --> UI: Invalid Token Error
+    UI --> User: Prompt to request a new code
+    
+    opt User requests new code (Alternative 6.a)
+        User -> UI: Request new link
+        UI -> AuthService: initiatePasswordReset(email)
+        note right: Flow repeats from token generation
+    end
+    
+else Token valid
+    AuthService --> UI: Token verified
+    UI --> User: displayResetForm() (Prompt for New Password)
+
+    User -> UI: Enter new password and confirm
+    UI -> AuthService: validate & updatePassword(newPassword)
+
+    alt Password does not meet security requirements (Alternative 8.a)
+        AuthService --> UI: Validation Error (Fails policy)
+        UI --> User: showPasswordRequirements()
+        note right: User re-enters valid password
+        
+    else Valid Password
+        AuthService -> UserDB: Update passwordHash
+        activate UserDB
+        UserDB --> AuthService: Update successful
+        deactivate UserDB
+
+        AuthService -> TokenDB: Invalidate AuthToken (isValid = false)
+        activate TokenDB
+        TokenDB --> AuthService: Token invalidated
+        deactivate TokenDB
+
+        AuthService --> UI: Password update successful
+        UI --> User: Notify success and redirect to Login
+    end
+end
+
+opt Cancellation of Password Reset (Alternative 3.a)
+    User -> UI: Click "İptal" (Cancel)
+    UI --> User: Discard changes & Return to LoginUI
+end
+
+deactivate AuthService
+deactivate UI
+
+@enduml
