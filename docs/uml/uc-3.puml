@@ -6,89 +6,137 @@ skinparam BoxPadding 10
 
 actor Student
 box "Presentation Layer" #LightCyan
-participant "ProfileUI" as UI
+participant "ui : ProfileUI" as UI
 end box
 
 box "Business Logic Layer" #LightYellow
-participant "ProfileController" as Controller
+participant "controller : ProfileController" as Controller
 end box
 
 box "Data Access Layer" #LightGreen
-participant "Student" as DB
+participant "studentDAO : Student" as DataAccess
+end box
+
+box "Database" #LightPink
+participant "db : PostgreSQL" as DB
 end box
 
 == View Profile ==
-Student -> UI: Select "Profile" from menu
+Student -> UI: Click "Profile" from menu
 activate UI
-UI -> DB: Fetch current profile data
+
+UI -> Controller: getProfileData(studentId)
+activate Controller
+
+Controller -> DataAccess: findById(studentId)
+activate DataAccess
+
+DataAccess -> DB: SELECT * FROM Students WHERE id = ?
 activate DB
-DB --> UI: Return data
+DB --> DataAccess: ResultSet
 deactivate DB
+
+DataAccess --> Controller: Student: profileData
+deactivate DataAccess
+
+Controller --> UI: Student: profileData
+deactivate Controller
+
 UI --> Student: displayProfileData()
+deactivate UI
 
 == Update Basic Information (Normal Flow) ==
-Student -> UI: Enter new phone/address & click "Değişiklikleri kaydet"
+Student -> UI: submitProfileUpdate(phone, address)
+activate UI
+
 UI -> Controller: validatePhoneNumber(phone)
 activate Controller
 
 alt Missing or Invalid Data Entry (5.b)
-    Controller --> UI: Validation Error (e.g., non-numeric chars)
-    UI --> Student: Display error & highlight erroneous fields
+    Controller --> UI: boolean: false
+    UI --> Student: displayValidationError()
 else Valid Data
-    Controller -> DB: updateProfileData()
+    Controller --> UI: boolean: true
+    
+    UI -> Controller: updateBasicInfo(studentId, phone, address)
+    Controller -> DataAccess: updateProfileData(studentId, phone, address)
+    activate DataAccess
+    
+    DataAccess -> DB: UPDATE Students SET phone = ?, address = ? WHERE id = ?
     activate DB
     
     alt Database Update Error (7-EX)
-        DB --> Controller: Connection/Database Error
-        Controller --> UI: Update Failed
-        UI --> Student: Display "Geçici bir sistem hatası oluştu..."
+        DB --> DataAccess: SQLException
+        DataAccess --> Controller: Exception: DatabaseError
+        Controller --> UI: Exception: UpdateFailed
+        UI --> Student: displayError("Geçici bir sistem hatası oluştu...")
     else Update Successful
-        DB --> Controller: Success
+        DB --> DataAccess: int: rowsAffected
         deactivate DB
-        Controller --> UI: Data Saved
-        UI --> Student: showUpdateConfirmation() ("Bilgileriniz başarıyla güncellendi")
+        DataAccess --> Controller: boolean: true
+        deactivate DataAccess
+        
+        Controller --> UI: boolean: true
+        UI --> Student: showUpdateConfirmation("Bilgileriniz başarıyla güncellendi")
     end
 end
 deactivate Controller
+deactivate UI
 
 == Sensitive Information Update (Password Change - 3.a) ==
-Student -> UI: Enter Current, New, Repeat Password & click "Şifreyi Güncelle"
-UI -> Controller: verifyCurrentPassword(currentPassword)
+Student -> UI: submitPasswordChange(current, new, repeat)
+activate UI
+
+UI -> Controller: verifyCurrentPassword(studentId, currentPassword)
 activate Controller
 
-Controller -> DB: Fetch current passwordHash
+Controller -> DataAccess: getPasswordHash(studentId)
+activate DataAccess
+
+DataAccess -> DB: SELECT passwordHash FROM Students WHERE id = ?
 activate DB
-DB --> Controller: Return hash
+DB --> DataAccess: ResultSet
 deactivate DB
 
+DataAccess --> Controller: String: currentHash
+deactivate DataAccess
+
 alt Incorrect Current Password (4.a / 3.a.5.a)
-    Controller --> UI: Authentication Failure
-    UI --> Student: Display "Mevcut şifreniz hatalı. Lütfen tekrar deneyin."
+    Controller --> UI: boolean: false
+    UI --> Student: displayError("Mevcut şifreniz hatalı. Lütfen tekrar deneyin.")
 else Correct Current Password
-    Controller -> Controller: Verify New == Repeat Password
-    Controller -> Controller: Validate against security policies
+    Controller --> UI: boolean: true
+    
+    UI -> Controller: processNewPassword(newPassword, repeatPassword)
+    Controller -> Controller: validateSecurityPolicies(newPassword, repeatPassword)
     
     alt New Password Fails Rules (3.a.6.a) or Matches Old (3.a.6.b)
-        Controller --> UI: Security Rule Violation
-        UI --> Student: Display password requirements error
+        Controller --> UI: boolean: false
+        UI --> Student: displayPasswordRequirementsError()
     else Valid New Password
-        Controller -> Controller: hashNewPassword(newPassword)
-        Controller -> DB: updateProfileData(newPasswordHash)
+        Controller -> Controller: String: newHash = hashNewPassword(newPassword)
+        
+        Controller -> DataAccess: updatePasswordHash(studentId, newHash)
+        activate DataAccess
+        
+        DataAccess -> DB: UPDATE Students SET passwordHash = ? WHERE id = ?
         activate DB
-        DB --> Controller: Success
+        DB --> DataAccess: int: rowsAffected
         deactivate DB
         
-        Controller --> UI: Update Successful
-        UI --> Student: showUpdateConfirmation() ("Şifreniz başarıyla güncellendi")
+        DataAccess --> Controller: boolean: true
+        deactivate DataAccess
+        
+        Controller --> UI: boolean: true
+        UI --> Student: showUpdateConfirmation("Şifreniz başarıyla güncellendi")
     end
 end
+deactivate Controller
 
 opt Cancellation of Information Update (5.a / 3.a.4.a)
     Student -> UI: Clicks "İptal"
-    UI --> Student: Discard changes and return to previous state
+    UI --> Student: discardChanges() & return to previous state
 end
-
-deactivate Controller
 deactivate UI
 
 @enduml
