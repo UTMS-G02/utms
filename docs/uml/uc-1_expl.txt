@@ -1,0 +1,26 @@
+Classes (from UC-1)
+
+RegistrationUI: Collects registration inputs, shows validation feedback, and guides users through activation steps.
+RegistrationController: Executes registration and activation business rules including validation, duplicate checks, and link verification.
+Student (DataAccess): Represents and persists student account data used during registration and activation.
+Database (DB): Stores student records and activation-state updates.
+Email API: Sends activation links and resend links to student email addresses.
+Method explanations (one sentence each)
+
+Click "Kayıt ol": Starts the registration flow from the user side.
+displayRegistrationForm(): Shows the registration form fields to the student.
+submitForm(email, password, repeat, KVKK): Submits registration details and consent for processing.
+validateEmailFormat(email): Checks whether the email format and extension are acceptable.
+displayEmailFormatError(): Informs the user that the entered email is invalid.
+validatePasswordStrength(password): Verifies password strength and consistency requirements.
+checkEmailExists(email): Confirms whether the provided email is already registered.
+query existing email: Searches the database for an account with the same email.
+create Student(isActive=false, kvkkAccepted=true): Creates a new inactive student account with consent recorded.
+generateActivationLink(): Produces a unique activation URL for account verification.
+send(email, activationLink): Sends the activation email through the external mail service.
+showActivationSuccessMessage(): Tells the user that registration succeeded and email activation is required.
+verifyActivationLink(link): Validates whether the activation link is valid and not expired.
+Request new activation link: Lets the user ask for a new activation URL when needed.
+send(email, newActivationLink): Sends a regenerated activation link email.
+updateProfileData(isActive=true): Marks the student account as active after successful link validation.
+Redirect to Login: Navigates the user to login after account activation completes successfully.
