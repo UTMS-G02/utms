@@ -20,96 +20,137 @@ participant "TransferApplication" as AppDB
 participant "BaseDocument" as DocDB
 end box
 
+box "Database" #LightPink
+participant "Database" as DB
+end box
+
 == 1. Accessing the Review Page ==
-Staff -> UI: Navigate to OİDB Dashboard
+Staff -> UI: navigateToOidbDashboard()
 activate UI
 
 UI -> UI: filterByStatus("Pending Verification")
 note right: Filters the view to only show incoming applications
 
-UI -> VerifController: fetch pending applications list
+UI -> VerifController: fetchPendingApplications()
 activate VerifController
-VerifController -> AppDB: Query TransferApplications (status="Pending")
+
+VerifController -> AppDB: getApplicationsByStatus("Pending")
 activate AppDB
-AppDB --> VerifController: Return list of applications
+AppDB -> DB: SELECT * FROM TransferApplications WHERE applicationStatus = 'Pending'
+activate DB
+DB --> AppDB: ResultSet
+deactivate DB
+AppDB --> VerifController: List<TransferApplication>: pendingApps
 deactivate AppDB
-VerifController --> UI: Application list data
+
+VerifController --> UI: List<TransferApplication>: pendingApps
 deactivate VerifController
 
-UI --> Staff: displayPendingApplications()
+UI --> Staff: displayPendingApplications(pendingApps)
 
 == 2. Document Verification Process ==
-Staff -> UI: Select specific student's application to review
+Staff -> UI: selectApplicationForReview(applicationId)
 UI -> VerifController: verifyDocuments(applicationId)
 activate VerifController
 
-VerifController -> AppDB: Fetch TransferApplication details
+VerifController -> AppDB: findById(applicationId)
 activate AppDB
-AppDB --> VerifController: Application details
+AppDB -> DB: SELECT * FROM TransferApplications WHERE id = ?
+activate DB
+DB --> AppDB: ResultSet
+deactivate DB
+AppDB --> VerifController: TransferApplication: appDetails
 deactivate AppDB
 
-VerifController -> DocDB: Fetch associated documents (Transcript, YKS, etc.)
+VerifController -> DocDB: getDocumentsByApplicationId(applicationId)
 activate DocDB
-DocDB --> VerifController: Document files
+DocDB -> DB: SELECT * FROM BaseDocuments WHERE applicationId = ?
+activate DB
+DB --> DocDB: ResultSet
+deactivate DB
+DocDB --> VerifController: List<BaseDocument>: documents
 deactivate DocDB
 
-VerifController --> UI: Render application data and document viewer
+VerifController --> UI: ApplicationData: viewData
 deactivate VerifController
 
+UI --> Staff: renderApplicationAndDocumentViewer(viewData)
+
 alt Invalid or Missing Documents (Alternative Flow)
-    Staff -> UI: Flag document as invalid/missing & submit note
-    UI -> VerifController: requestDocumentCorrection(applicationId)
+    Staff -> UI: flagDocumentInvalid(note)
+    UI -> VerifController: requestDocumentCorrection(applicationId, note)
     activate VerifController
 
-    VerifController -> AppDB: setStatus("Correction Requested")
+    VerifController -> AppDB: updateStatus(applicationId, "Correction Requested")
     activate AppDB
-    AppDB --> VerifController: Status updated
+    AppDB -> DB: UPDATE TransferApplications SET applicationStatus = 'Correction Requested' WHERE id = ?
+    activate DB
+    DB --> AppDB: int: rowsAffected
+    deactivate DB
+    AppDB --> VerifController: boolean: true
     deactivate AppDB
 
-    VerifController --> UI: Correction logged successfully
+    VerifController --> UI: boolean: true
     deactivate VerifController
     
-    UI --> Staff: showActionConfirmation() ("Student notified for correction")
+    UI --> Staff: showActionConfirmation("Student notified for correction")
 
 else Documents are Valid (Normal Flow)
-    Staff -> UI: Approve all documents
-    UI -> VerifController: Mark application as verified
+    Staff -> UI: approveAllDocuments()
+    UI -> VerifController: markApplicationVerified(applicationId)
     activate VerifController
     
-    VerifController -> DocDB: lockDocument()
+    VerifController -> DocDB: lockDocuments(applicationId)
     note right: isLocked is set to true to prevent further student uploads
     activate DocDB
-    DocDB --> VerifController: Documents locked
+    DocDB -> DB: UPDATE BaseDocuments SET isLocked = true WHERE applicationId = ?
+    activate DB
+    DB --> DocDB: int: rowsAffected
+    deactivate DB
+    DocDB --> VerifController: boolean: true
     deactivate DocDB
     
-    VerifController --> UI: Verification complete
+    VerifController --> UI: boolean: true
     deactivate VerifController
 
     == 3. Application Routing ==
-    Staff -> UI: Proceed to routing decision
+    Staff -> UI: proceedToRouting()
     
     alt Needs English Proficiency Prep (YDYO)
+        Staff -> UI: routeToYdyo()
         UI -> RouteController: forwardToYDYO(applicationId)
         activate RouteController
-        RouteController -> AppDB: setStatus("Forwarded to YDYO")
-        activate AppDB
-        AppDB --> RouteController: Status updated
-        deactivate AppDB
-        RouteController --> UI: Routing complete
-        deactivate RouteController
-        UI --> Staff: showActionConfirmation() ("Routed to YDYO")
         
+        RouteController -> AppDB: updateStatus(applicationId, "Forwarded to YDYO")
+        activate AppDB
+        AppDB -> DB: UPDATE TransferApplications SET applicationStatus = 'Forwarded to YDYO' WHERE id = ?
+        activate DB
+        DB --> AppDB: int: rowsAffected
+        deactivate DB
+        AppDB --> RouteController: boolean: true
+        deactivate AppDB
+        
+        RouteController --> UI: boolean: true
+        deactivate RouteController
+        UI --> Staff: showActionConfirmation("Routed to YDYO")
         
     else Reject Application (e.g., General constraints not met)
+        Staff -> UI: rejectApplication()
         UI -> RouteController: rejectApplication(applicationId)
         activate RouteController
-        RouteController -> AppDB: setStatus("Rejected")
+        
+        RouteController -> AppDB: updateStatus(applicationId, "Rejected")
         activate AppDB
-        AppDB --> RouteController: Status updated
+        AppDB -> DB: UPDATE TransferApplications SET applicationStatus = 'Rejected' WHERE id = ?
+        activate DB
+        DB --> AppDB: int: rowsAffected
+        deactivate DB
+        AppDB --> RouteController: boolean: true
         deactivate AppDB
-        RouteController --> UI: Rejection complete
+        
+        RouteController --> UI: boolean: true
         deactivate RouteController
-        UI --> Staff: showActionConfirmation() ("Application Rejected")
+        UI --> Staff: showActionConfirmation("Application Rejected")
     end
 end
 
