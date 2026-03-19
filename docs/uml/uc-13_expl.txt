@@ -1,0 +1,37 @@
+Classes (from uc-13)
+
+*LoginUI: Handles login-screen actions and forwards users into the password-reset flow.
+*ForgotPasswordUI: Collects reset inputs from the user and displays success/error messages during reset.
+*AuthenticationService: Owns the reset business logic such as token generation, validation, and password update rules.
+*EmailNotificationManager: Sends reset emails through an external mail provider.
+*User (UserDB): Provides data-access operations for reading users and updating password hashes.
+*AuthToken (TokenDB): Stores, retrieves, and invalidates password-reset tokens.
+PostgreSQL (DB): Persists users and reset-token records for the workflow.
+Email API Service (EmailAPI): External provider that delivers reset emails.
+
+Method explanations (one sentence each)
+
+**LoginUI.clickForgotPassword(): Captures the user’s intent to start password recovery from the login page.
+**LoginUI.routeToResetProcess(): Redirects the user from login to the forgot-password interface.
+**ForgotPasswordUI.displayResetForm(): Shows the form where the user enters email or a new password.
+**ForgotPasswordUI.submitEmail(email): Submits the entered email to start token-based reset.
+**AuthenticationService.initiatePasswordReset(email): Starts reset by checking account existence and creating a reset token flow.
+**UserDB.findByEmail(email): Looks up the user record by email address.
+**AuthService.generateToken():Produces a secure reset token for one-time password reset use.
+**TokenDB.saveResetToken(userId, resetToken, expiryDate): Persists the generated token with owner, expiry, and validity state.
+**EmailService.sendStatusUpdate(email, resetLink): Builds and triggers the outgoing reset-link email.
+**EmailAPI.send(email, resetMessage): Sends the actual email payload through the external mail service.
+**ForgotPasswordUI.displayConfirmationMessage(...): Informs the user that the reset link was sent successfully.
+**ForgotPasswordUI.clickResetLink(token): Opens reset execution using the token received in email.
+**AuthenticationService.verifyResetToken(token): Validates token existence, validity flag, and expiration before allowing password change.
+**TokenDB.getTokenDetails(token): Fetches token metadata needed for validation and user resolution.
+**ForgotPasswordUI.requestNewLink(email): Requests a fresh token when the previous one is invalid or expired.
+**ForgotPasswordUI.submitNewPassword(newPassword, confirmPassword):** Submits the new password pair to complete reset.
+**AuthenticationService.updatePassword(userId, newPassword): Orchestrates policy checks, hashing, persistence, and token cleanup for password change.
+**AuthenticationService.validateSecurityPolicies(newPassword): Verifies password complexity and policy compliance before update.
+**AuthenticationService.hashPassword(newPassword):** Converts the plain password into a secure hash before storage.
+**UserDB.updatePasswordHash(userId, newHash): Updates the user’s stored password hash in the database.
+**TokenDB.invalidateToken(tokenId):** Marks the used reset token as invalid to prevent reuse.
+**ForgotPasswordUI.showUpdateConfirmation(...):** Confirms successful password update and guides the user back to login.
+**ForgotPasswordUI.clickCancel():** Cancels the reset process by user choice.
+**ForgotPasswordUI.discardChanges():** Drops in-progress reset input and returns to login state.

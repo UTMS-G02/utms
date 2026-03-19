@@ -1,0 +1,33 @@
+Classes (from UC-12)
+
+LoginUI: Presents the login form, OTP prompt, and user-facing authentication error states.
+AuthenticationService: Coordinates credential verification, account lock logic, OTP lifecycle, and final login authorization.
+EmailNotificationManager: Sends OTP messages to users through the external email provider.
+User (UserDB): Handles persistence operations for user lookup and failed-login attempt tracking.
+OTPRecord (OTPDB): Stores OTP creation, retrieval, attempt counting, and invalidation data.
+PostgreSQL (DB): Persists user and OTP records used during authentication.
+Email API Service (EmailAPI): Delivers outgoing OTP emails and returns delivery status.
+
+Method explanations (one sentence each)
+
+navigateToLogin(): Opens the login page for the user.
+displayLoginForm(): Renders email/password inputs for primary authentication.
+enterCredentials(email, password): Submits user credentials to start login verification.
+verifyCredentials(email, password): Validates the provided email/password against stored account data.
+findByEmail(email): Retrieves the user record matching the given email.
+incrementFailedLoginAttempts(userId): Increases the failed-attempt counter after invalid credentials.
+lockAccount(): Locks the account when failed login attempts reach the configured threshold.
+showLockoutMessage(): Informs the user that the account is temporarily or permanently locked.
+displayError(...): Shows authentication-related validation or system error feedback to the user.
+generateOTP(): Creates a one-time code for secondary authentication.
+createOTP(userId, otpCode, expiryTime): Saves a new OTP record with expiration metadata.
+sendStatusUpdate(email, otpMessage): Triggers OTP email sending through the email manager.
+send(email, otpMessage): Sends the OTP payload via the external email API.
+showOtpPrompt(): Prompts the user to enter the OTP code received by email.
+enterOTP(code): Submits the entered OTP for verification.
+verifyOTP(userId, code): Checks whether the submitted OTP is valid, active, and not expired.
+getActiveOTP(userId): Fetches the currently valid OTP record for the user.
+incrementFailedAttempts(otpId): Increases failed OTP attempt count after an invalid OTP submission.
+invalidateOTP(otpId): Marks a valid OTP as used/invalid after successful authentication.
+redirect(Dashboard): Navigates the authenticated user to the dashboard screen.
+redirectToLogin(): Sends the user back to login after max OTP failures.
