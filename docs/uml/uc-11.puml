@@ -20,58 +20,77 @@ participant "EvaluationReport" as EvalDB
 participant "BoardDecision" as DecisionDB
 end box
 
+box "Database" #LightPink
+participant "PostgreSQL" as DB
+end box
+
 == Application Review ==
-Board -> UI: Select applicant for final board review
+Board -> UI: selectApplicantReview(applicationId)
 activate UI
 
 UI -> Controller: fetchApplicationDetails(applicationId)
 activate Controller
 
-Controller -> AppDB: Retrieve TransferApplication
+Controller -> AppDB: findById(applicationId)
 activate AppDB
-AppDB --> Controller: Application data
+AppDB -> DB: SELECT * FROM TransferApplications WHERE id = ?
+activate DB
+DB --> AppDB: ResultSet
+deactivate DB
+AppDB --> Controller: TransferApplication: appData
 deactivate AppDB
 
-Controller -> EvalDB: Retrieve EvaluationReport & Intibak details
+Controller -> EvalDB: getEvaluationWithIntibak(applicationId)
 activate EvalDB
-EvalDB --> Controller: Evaluation and Intibak data
+EvalDB -> DB: SELECT * FROM EvaluationReports JOIN IntibakTables ... WHERE applicationId = ?
+activate DB
+DB --> EvalDB: ResultSet
+deactivate DB
+EvalDB --> Controller: EvaluationReport: evalData
 deactivate EvalDB
 
-
-
-Controller --> UI: Consolidated application data
-UI --> Board: displayConsolidatedReport()
+Controller --> UI: ConsolidatedData: report
+UI --> Board: displayConsolidatedReport(report)
 deactivate Controller
 
 == Decision Making ==
 alt Application Approved (Normal Flow)
-    Board -> UI: Click "Approve"
+    Board -> UI: clickApprove()
     UI -> Controller: recordFinalDecision(applicationId, "Approved", null)
     activate Controller
     
 else Application Rejected (Alternative Flow)
-    Board -> UI: Click "Reject"
+    Board -> UI: clickReject()
     UI --> Board: showRejectionCodeDropdown()
-    Board -> UI: Select rejection code (e.g., "Insufficient Equivalency") 
-    Board -> UI: Enter additional comments and confirm
+    
+    Board -> UI: selectRejectionCode(rejectionCode)
+    Board -> UI: enterCommentsAndConfirm(comments)
     UI -> Controller: recordFinalDecision(applicationId, "Rejected", rejectionCode)
 end
 
 == Recording the Decision ==
-Controller -> DecisionDB: Create BoardDecision(decisionType, rejectionCode, timestamp)
+Controller -> DecisionDB: save(BoardDecision(decisionType, rejectionCode, timestamp))
 activate DecisionDB
-DecisionDB --> Controller: BoardDecision saved
+DecisionDB -> DB: INSERT INTO BoardDecisions (decisionType, rejectionCode, timestamp, applicationId) VALUES (?, ?, ?, ?)
+activate DB
+DB --> DecisionDB: int: decisionId
+deactivate DB
+DecisionDB --> Controller: boolean: true
 deactivate DecisionDB
 
-Controller -> AppDB: Update finalDecision status & link BoardDecision
+Controller -> AppDB: updateFinalDecision(applicationId, decisionType, decisionId)
 activate AppDB
-AppDB --> Controller: Status updated
+AppDB -> DB: UPDATE TransferApplications SET finalDecision = ?, boardDecisionId = ? WHERE id = ?
+activate DB
+DB --> AppDB: int: rowsAffected
+deactivate DB
+AppDB --> Controller: boolean: true
 deactivate AppDB
 
-Controller --> UI: Decision successfully recorded
+Controller --> UI: boolean: true
 deactivate Controller
 
-UI --> Board: Display confirmation message & return to application list
+UI --> Board: showConfirmationMessage("Karar başarıyla kaydedildi") & returnToApplicationList()
 deactivate UI
 
 @enduml
