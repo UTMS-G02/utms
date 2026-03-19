@@ -7,17 +7,17 @@ skinparam BoxPadding 10
 actor "User (Student/Staff)" as User
 
 box "Presentation Layer" #LightCyan
-participant "ui : LoginUI" as UI
+participant "LoginUI" as UI
 end box
 
 box "Business Logic Layer" #LightYellow
-participant "authService : AuthenticationService" as AuthService
-participant "emailService : EmailNotificationManager" as EmailService
+participant "AuthenticationService" as AuthService
+participant "EmailNotificationManager" as EmailService
 end box
 
 box "Data Access Layer" #LightGreen
-participant "userRecord : User" as UserDB
-participant "otpRecord : OTPRecord" as OTPDB
+participant "User" as UserDB
+participant "OTPRecord" as OTPDB
 end box
 
 box "External Systems" #LightGray

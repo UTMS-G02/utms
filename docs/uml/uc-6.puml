@@ -7,22 +7,22 @@ skinparam BoxPadding 10
 actor "ÖİDB Staff" as Staff
 
 box "Presentation Layer" #LightCyan
-participant "ui : OidbDashboardUI" as UI
+participant "OidbDashboardUI" as UI
 end box
 
 box "Business Logic Layer" #LightYellow
-participant "controller : FinalizationController" as Controller
-participant "emailService : EmailNotificationManager" as EmailService
+participant "FinalizationController" as Controller
+participant "EmailNotificationManager" as EmailService
 end box
 
 box "Data Access Layer" #LightGreen
-participant "decisionRecord : BoardDecision" as DecisionDB
-participant "appRecord : TransferApplication" as AppDB
-participant "logRecord : Notification" as LogDB
+participant "BoardDecision" as DecisionDB
+participant "TransferApplication" as AppDB
+participant "Notification" as LogDB
 end box
 
 box "External Services" #LightGray
-participant "SMTP Gateway" as ExternalEmail
+participant "Email API Service" as ExternalEmail
 end box
 
 == Retrieve & Review Decisions ==

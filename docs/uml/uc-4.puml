@@ -7,17 +7,17 @@ skinparam BoxPadding 10
 actor "ÖİDB Staff" as Staff
 
 box "Presentation Layer" #LightCyan
-participant "ui : OidbDashboardUI" as UI
+participant "OidbDashboardUI" as UI
 end box
 
 box "Business Logic Layer" #LightYellow
-participant "verifController : DocumentVerificationController" as VerifController
-participant "routeController : RoutingService" as RouteController
+participant "DocumentVerificationController" as VerifController
+participant "RoutingService" as RouteController
 end box
 
 box "Data Access Layer" #LightGreen
-participant "appRecord : TransferApplication" as AppDB
-participant "docRecord : BaseDocument" as DocDB
+participant "TransferApplication" as AppDB
+participant "BaseDocument" as DocDB
 end box
 
 == 1. Accessing the Review Page ==
