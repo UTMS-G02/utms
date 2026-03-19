@@ -18,7 +18,7 @@ participant "Student" as DataAccess
 end box
 
 box "Database" #LightPink
-participant "Database" as DB
+participant "PostgreSQL" as DB
 end box
 
 box "External Services" #LightGray
@@ -27,9 +27,9 @@ end box
 
 == Registration Phase ==
 
-Student -> UI: Click "Kayıt ol"
+Student -> UI: ClickRegisterButton()
 activate UI
-UI --> Student: displayRegistrationForm()
+UI --> Student: Registration Form
 deactivate UI
 
 Student -> UI: submitForm(email, password, repeat, KVKK)
@@ -38,42 +38,62 @@ activate UI
 UI -> Controller: validateEmailFormat(email)
 activate Controller
 alt Invalid Email Format / Extension
-    Controller --> UI: Error (Invalid format)
-    UI --> Student: displayEmailFormatError()
+    Controller --> UI: boolean: false
+    UI --> Student: Email Format Error
 else Valid Email
+    Controller --> UI: boolean: true
     UI -> Controller: validatePasswordStrength(password)
+    
     alt Invalid Password
-        Controller --> UI: Error (Weak password / mismatch)
-        UI --> Student: Display password security error
+        Controller --> UI: boolean: false
+        UI --> Student: Password Security Error
     else Valid Password
+        Controller --> UI: boolean: true
+        
         UI -> Controller: checkEmailExists(email)
-        Controller -> DB: query existing email
+        Controller -> DataAccess: findByEmail(email)
+        activate DataAccess
+        
+        DataAccess -> DB: SELECT * FROM Students WHERE email = ?
         activate DB
-        DB --> Controller: Result
+        DB --> DataAccess: ResultSet
         deactivate DB
         
-        alt Email Already Registered
-            Controller --> UI: Error (Email exists)
-            UI --> Student: Display "Bu e-posta adresi zaten kayıtlı" and redirect
-        else Email is Available
-            Controller -> DB: create Student (isActive = false, kvkkAccepted = true)
+        DataAccess --> Controller: boolean: isRegistered
+        deactivate DataAccess
+        
+        alt Email Already Registered (isRegistered == true)
+            Controller --> UI: boolean: true
+            UI --> Student: Registration Error("Bu e-posta adresi zaten kayıtlı")
+        else Email is Available (isRegistered == false)
+            Controller --> UI: boolean: false
+            
+            UI -> Controller: registerStudent(email, password)
+            Controller -> DataAccess: save(Student(isActive=false, kvkk=true))
+            activate DataAccess
+            
+            DataAccess -> DB: INSERT INTO Students (email, passwordHash, ...)
             activate DB
-            DB --> Controller: Student created
+            DB --> DataAccess: int: studentId
             deactivate DB
             
+            DataAccess --> Controller: Student: newStudent
+            deactivate DataAccess
+            
             Controller -> Controller: generateActivationLink()
+            
             Controller -> Email: send(email, activationLink)
             activate Email
             
             alt Email Sending Error (Exception 8-EX)
-                Email --> Controller: Failure
-                Controller --> UI: Delivery Error
-                UI --> Student: Display "E-posta gönderim hatası"
+                Email --> Controller: Exception / HTTP 500
+                Controller --> UI: Exception: DeliveryError
+                UI --> Student: Error ("E-posta gönderim hatası")
             else Email Sent Successfully
-                Email --> Controller: Success
+                Email --> Controller: HTTP 200 OK
                 deactivate Email
-                Controller --> UI: Registration Successful
-                UI --> Student: showActivationSuccessMessage() ("Check your email")
+                Controller --> UI: void
+                UI --> Student: Activation Success Message
             end
         end
     end
@@ -83,32 +103,41 @@ deactivate UI
 
 == Activation Phase ==
 
-Student -> UI: Clicks activation link from email
+Student -> UI: clickActivationLink(link)
 activate UI
 
 UI -> Controller: verifyActivationLink(link)
 activate Controller
 
 alt Link Invalid or Expired
-    Controller --> UI: Error (Invalid link)
-    UI --> Student: Display "Aktivasyon bağlantısı geçersiz/süresi dolmuş"
+    Controller --> UI: boolean: false
+    UI --> Student: Error ("Aktivasyon bağlantısı geçersiz/süresi dolmuş")
     
     opt Student requests new link
-        Student -> UI: Request new activation link
+        Student -> UI: requestNewActivationLink()
         UI -> Controller: generateActivationLink()
         Controller -> Email: send(email, newActivationLink)
-        Controller --> UI: Success
-        UI --> Student: Display "Yeni bağlantı gönderildi"
+        activate Email
+        Email --> Controller: HTTP 200 OK
+        deactivate Email
+        Controller --> UI: void
+        UI --> Student: Success Message ("Yeni bağlantı gönderildi")
     end
     
 else Link Valid
-    Controller -> DB: updateProfileData(isActive = true)
+    Controller -> DataAccess: updateProfileData(studentId, isActive = true)
+    activate DataAccess
+    
+    DataAccess -> DB: UPDATE Students SET isActive = true WHERE id = ?
     activate DB
-    DB --> Controller: Update successful
+    DB --> DataAccess: int: rowsAffected
     deactivate DB
     
-    Controller --> UI: Verification Successful
-    UI --> Student: Display "Hesabınız başarıyla etkinleştirildi" & Redirect to Login
+    DataAccess --> Controller: boolean: true
+    deactivate DataAccess
+    
+    Controller --> UI: boolean: true
+    UI --> Student: Success Message ("Hesabınız başarıyla etkinleştirildi")
 end
 
 deactivate Controller
