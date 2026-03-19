@@ -14,7 +14,11 @@ participant "RegistrationController" as Controller
 end box
 
 box "Data Access Layer" #LightGreen
-participant "Student" as DB
+participant "Student" as DataAccess
+end box
+
+box "Database" #LightPink
+participant "Database" as DB
 end box
 
 box "External Services" #LightGray
