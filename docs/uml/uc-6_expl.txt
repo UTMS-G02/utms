@@ -1,0 +1,26 @@
+Classes (from UC-6)
+
+OidbDashboardUI: Lets ÖİDB staff review faculty decisions, publish finalized results, and see publish/notification outcomes.
+FinalizationController: Coordinates decision retrieval, finalization publishing, and notification triggering logic.
+EmailNotificationManager: Sends bulk result notifications and reports delivery outcomes.
+BoardDecision (DecisionDB): Provides data access for faculty board decisions by application cycle.
+TransferApplication (AppDB): Updates transfer applications to finalized status during publication.
+Notification (LogDB): Persists notification delivery logs as sent or failed.
+PostgreSQL (DB): Stores decisions, application statuses, and notification log records.
+Email API Service (ExternalEmail): External provider used to send notification emails in bulk.
+Method explanations (one sentence each)
+
+selectApplicationCycle(cycleId): Selects the target cycle for decision review and publication.
+fetchFinalDecisions(cycleId): Requests all final board decisions for the chosen cycle.
+getDecisionsByCycle(cycleId): Retrieves cycle-specific board decisions from persistence.
+displayDecisionData(decisions): Shows the retrieved decision list to staff for review.
+displayError(...): Displays a blocking error when decision data is missing or corrupted.
+clickPublishResults(): Starts the publishing process for finalized outcomes.
+publishResults(cycleId): Executes the end-to-end publication workflow for a cycle.
+updateFinalDecisionStatuses(cycleId): Marks related transfer applications as finalized in storage.
+triggerNotifications(cycleId): Initiates student notification dispatch after publication.
+sendStatusUpdates(studentEmails, messages): Prepares and sends bulk status messages via the email service.
+sendBulk(studentEmails, messages): Sends notification emails through the external provider endpoint.
+save(Notification(status=...)): Records notification delivery outcome for audit and tracking.
+displayWarning(...): Warns staff when publication succeeds but some notifications fail.
+showActionConfirmation(...): Confirms successful publication and notification delivery to staff.
