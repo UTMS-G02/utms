@@ -1,0 +1,25 @@
+Classes (from UC-11)
+
+FacultyBoardUI: Presents applicant review data and captures board approval/rejection actions.
+FacultyBoardController: Coordinates retrieval of application/evaluation data and records final board decisions.
+TransferApplication (AppDB): Provides application lookup and final-decision update persistence.
+EvaluationReport (EvalDB): Provides evaluation and intibak-related data for board review.
+BoardDecision (DecisionDB): Persists board decision records including type, rejection code, and timestamp.
+PostgreSQL (DB): Stores application, evaluation, and board decision data.
+Method explanations (one sentence each)
+
+selectApplicantReview(applicationId): Starts detailed review for the selected applicant.
+fetchApplicationDetails(applicationId): Collects all required review data for board presentation.
+findById(applicationId): Retrieves transfer application details by identifier.
+getEvaluationWithIntibak(applicationId): Loads evaluation report data together with intibak information.
+displayConsolidatedReport(report): Shows combined application and evaluation results to the board member.
+clickApprove(): Selects the approval path for the reviewed application.
+clickReject(): Selects the rejection path for the reviewed application.
+showRejectionCodeDropdown(): Displays available rejection codes for structured rejection input.
+selectRejectionCode(rejectionCode): Captures the selected rejection reason code.
+enterCommentsAndConfirm(comments): Submits optional explanation/comments and confirms rejection action.
+recordFinalDecision(applicationId, decisionType, rejectionCode): Validates and orchestrates persistence of the final decision.
+save(BoardDecision(...)): Inserts the board decision record into storage.
+updateFinalDecision(applicationId, decisionType, decisionId): Updates the application with final decision and linked decision record.
+showConfirmationMessage(...): Informs the board member that the decision is saved successfully.
+returnToApplicationList(): Navigates back to the review list after completion.
