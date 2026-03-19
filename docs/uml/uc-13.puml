@@ -21,104 +21,134 @@ participant "User" as UserDB
 participant "AuthToken" as TokenDB
 end box
 
+box "Database" #LightPink
+participant "PostgreSQL" as DB
+end box
+
 box "External Systems" #LightGray
 participant "Email API Service" as EmailAPI
 end box
 
 == Initiation ==
-User -> LoginUI: Select "Şifremi Unuttum" (Forgot Password)
+User -> LoginUI: clickForgotPassword()
 activate LoginUI
-LoginUI -> UI: Route to Reset Process
+LoginUI -> UI: routeToResetProcess()
 deactivate LoginUI
 
 activate UI
-UI --> User: displayResetForm() (Prompt for Email)
+UI --> User: displayResetForm()
 
-User -> UI: Enter registered email & Click "Sıfırlama Bağlantısı Gönder"
+User -> UI: submitEmail(email)
 UI -> AuthService: initiatePasswordReset(email)
 activate AuthService
 
-AuthService -> UserDB: Check if email exists
+AuthService -> UserDB: findByEmail(email)
 activate UserDB
-UserDB --> AuthService: Return match result
+UserDB -> DB: SELECT * FROM Users WHERE email = ?
+activate DB
+DB --> UserDB: ResultSet
+deactivate DB
+UserDB --> AuthService: User: userData
 deactivate UserDB
 
 alt Account not found (Alternative 4.a)
-    AuthService --> UI: Error (User not found)
-    UI --> User: Display error (Suggest re-enter or contact support)
+    AuthService --> UI: boolean: false
+    UI --> User: displayError("Kayıtlı e-posta bulunamadı")
 else Account exists
-    AuthService -> TokenDB: Create AuthToken (reset token, expiryDate)
+    AuthService -> AuthService: String: resetToken = generateToken()
+    
+    AuthService -> TokenDB: saveResetToken(userId, resetToken, expiryDate)
     activate TokenDB
-    TokenDB --> AuthService: Token generated
+    TokenDB -> DB: INSERT INTO AuthTokens (userId, tokenId, expiryDate, isValid) VALUES (?, ?, ?, true)
+    activate DB
+    DB --> TokenDB: int: insertedId
+    deactivate DB
+    TokenDB --> AuthService: boolean: true
     deactivate TokenDB
 
     AuthService -> EmailService: sendStatusUpdate(email, resetLink)
     activate EmailService
 
-    EmailService -> EmailAPI: Send email with reset link/code
+    EmailService -> EmailAPI: send(email, resetMessage)
     activate EmailAPI
-    EmailAPI --> EmailService: Delivery Success
+    EmailAPI --> EmailService: HTTP 200 OK
     deactivate EmailAPI
 
-    EmailService --> AuthService: Confirmation
+    EmailService --> AuthService: boolean: true
     deactivate EmailService
 
-    AuthService --> UI: Reset link sent
-    UI --> User: Display confirmation message
+    AuthService --> UI: boolean: true
+    UI --> User: displayConfirmationMessage("Sıfırlama bağlantısı gönderildi")
 end
 deactivate AuthService
 
 == Password Reset Execution ==
-User -> UI: Opens reset link from email / enters code
-UI -> AuthService: Verify AuthToken validity
+User -> UI: clickResetLink(token)
+UI -> AuthService: verifyResetToken(token)
 activate AuthService
 
-AuthService -> TokenDB: Query token status and expiryDate
+AuthService -> TokenDB: getTokenDetails(token)
 activate TokenDB
-TokenDB --> AuthService: Return token data
+TokenDB -> DB: SELECT * FROM AuthTokens WHERE tokenId = ? AND isValid = true
+activate DB
+DB --> TokenDB: ResultSet
+deactivate DB
+TokenDB --> AuthService: AuthToken: tokenData
 deactivate TokenDB
 
 alt Verification code expired or invalid (Alternative 6.b)
-    AuthService --> UI: Invalid Token Error
-    UI --> User: Prompt to request a new code
+    AuthService --> UI: Exception: InvalidTokenError
+    UI --> User: displayError("Geçersiz veya süresi dolmuş bağlantı")
     
     opt User requests new code (Alternative 6.a)
-        User -> UI: Request new link
+        User -> UI: requestNewLink(email)
         UI -> AuthService: initiatePasswordReset(email)
         note right: Flow repeats from token generation
     end
     
 else Token valid
-    AuthService --> UI: Token verified
-    UI --> User: displayResetForm() (Prompt for New Password)
+    AuthService --> UI: boolean: true
+    UI --> User: displayResetForm()
 
-    User -> UI: Enter new password and confirm
-    UI -> AuthService: validate & updatePassword(newPassword)
+    User -> UI: submitNewPassword(newPassword, confirmPassword)
+    UI -> AuthService: updatePassword(tokenData.userId, newPassword)
+
+    AuthService -> AuthService: validateSecurityPolicies(newPassword)
 
     alt Password does not meet security requirements (Alternative 8.a)
-        AuthService --> UI: Validation Error (Fails policy)
+        AuthService --> UI: boolean: false
         UI --> User: showPasswordRequirements()
         note right: User re-enters valid password
         
     else Valid Password
-        AuthService -> UserDB: Update passwordHash
+        AuthService -> AuthService: String: newHash = hashPassword(newPassword)
+        
+        AuthService -> UserDB: updatePasswordHash(userId, newHash)
         activate UserDB
-        UserDB --> AuthService: Update successful
+        UserDB -> DB: UPDATE Users SET passwordHash = ? WHERE id = ?
+        activate DB
+        DB --> UserDB: int: rowsAffected
+        deactivate DB
+        UserDB --> AuthService: boolean: true
         deactivate UserDB
 
-        AuthService -> TokenDB: Invalidate AuthToken (isValid = false)
+        AuthService -> TokenDB: invalidateToken(tokenId)
         activate TokenDB
-        TokenDB --> AuthService: Token invalidated
+        TokenDB -> DB: UPDATE AuthTokens SET isValid = false WHERE tokenId = ?
+        activate DB
+        DB --> TokenDB: int: rowsAffected
+        deactivate DB
+        TokenDB --> AuthService: boolean: true
         deactivate TokenDB
 
-        AuthService --> UI: Password update successful
-        UI --> User: Notify success and redirect to Login
+        AuthService --> UI: boolean: true
+        UI --> User: showUpdateConfirmation("Şifre başarıyla güncellendi") & redirectToLogin()
     end
 end
 
 opt Cancellation of Password Reset (Alternative 3.a)
-    User -> UI: Click "İptal" (Cancel)
-    UI --> User: Discard changes & Return to LoginUI
+    User -> UI: clickCancel()
+    UI --> User: discardChanges() & returnToLoginUI()
 end
 
 deactivate AuthService
