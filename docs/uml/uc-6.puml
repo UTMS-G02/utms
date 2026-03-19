@@ -22,11 +22,11 @@ participant "Notification" as LogDB
 end box
 
 box "Database" #LightPink
-participant "PostgreSQL" as DB
+participant "Database" as DB
 end box
 
 box "External Services" #LightGray
-participant "Email API Service" as ExternalEmail
+participant "Email API" as ExternalEmail
 end box
 
 == Retrieve & Review Decisions ==

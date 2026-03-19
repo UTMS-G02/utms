@@ -18,7 +18,7 @@ participant "Student" as DataAccess
 end box
 
 box "Database" #LightPink
-participant "PostgreSQL" as DB
+participant "Database" as DB
 end box
 
 box "External Services" #LightGray
@@ -85,7 +85,7 @@ else Valid Email
             Controller -> Email: send(email, activationLink)
             activate Email
             
-            alt Email Sending Error (Exception 8-EX)
+            alt Email Sending Error 
                 Email --> Controller: Exception / HTTP 500
                 Controller --> UI: Exception: DeliveryError
                 UI --> Student: Error ("E-posta gönderim hatası")
