@@ -1,0 +1,32 @@
+Classes (from UC-4)
+
+OidbDashboardUI: Shows pending applications, document review screens, and routing actions for ÖİDB staff.
+DocumentVerificationController: Manages application/document retrieval, verification decisions, and correction requests.
+RoutingService: Handles post-verification routing decisions such as forwarding to YDYO or rejecting applications.
+TransferApplication (AppDB): Provides data access for transfer-application lookup and status updates.
+BaseDocument (DocDB): Provides data access for document retrieval and document-lock operations.
+Database (DB): Stores application and document data used in verification and routing.
+Method explanations (one sentence each)
+
+navigateToOidbDashboard(): Opens the ÖİDB dashboard for application review.
+filterByStatus("Pending Verification"): Filters the list to show only applications awaiting verification.
+fetchPendingApplications(): Requests all pending applications for dashboard display.
+getApplicationsByStatus("Pending"): Retrieves transfer applications matching pending status from persistence.
+displayPendingApplications(pendingApps): Renders the pending application list to staff.
+selectApplicationForReview(applicationId): Selects a specific application for detailed verification.
+verifyDocuments(applicationId): Starts document verification flow for the selected application.
+findById(applicationId): Loads full application details by identifier.
+getDocumentsByApplicationId(applicationId): Fetches all submitted documents tied to the selected application.
+renderApplicationAndDocumentViewer(viewData): Displays application metadata and document set for review.
+flagDocumentInvalid(note): Marks detected document problems and captures reviewer notes.
+requestDocumentCorrection(applicationId, note): Records a correction request so the student can resubmit.
+updateStatus(applicationId, status): Updates the application’s workflow status in the database.
+showActionConfirmation(message): Confirms the selected verification/routing action to staff.
+approveAllDocuments(): Confirms that all required documents are valid.
+markApplicationVerified(applicationId): Finalizes successful document verification for the application.
+lockDocuments(applicationId): Locks submitted documents to prevent further uploads after verification.
+proceedToRouting(): Moves the verified application to the routing decision stage.
+routeToYdyo(): Selects forwarding flow for applications requiring YDYO preparation.
+forwardToYDYO(applicationId): Applies the “Forwarded to YDYO” status transition.
+rejectApplication(): Selects rejection flow for ineligible applications.
+rejectApplication(applicationId): Executes rejection by updating the application to rejected status.
