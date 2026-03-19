@@ -12,7 +12,7 @@ end box
 
 box "Business Logic Layer" #LightYellow
 participant "FinalizationController" as Controller
-participant "EmailNotificationManager" as EmailService
+participant "EmailNotificationService" as EmailService
 end box
 
 box "Data Access Layer" #LightGreen
@@ -21,31 +21,42 @@ participant "TransferApplication" as AppDB
 participant "Notification" as LogDB
 end box
 
+box "Database" #LightPink
+participant "PostgreSQL" as DB
+end box
+
 box "External Services" #LightGray
 participant "Email API Service" as ExternalEmail
 end box
 
 == Retrieve & Review Decisions ==
 
-Staff -> UI: Select application cycle (e.g., "2025 Fall Intake")
+Staff -> UI: selectApplicationCycle(cycleId)
 activate UI
 
 UI -> Controller: fetchFinalDecisions(cycleId)
 activate Controller
 
-Controller -> DecisionDB: retrieve decisions for cycle
+Controller -> DecisionDB: getDecisionsByCycle(cycleId)
 activate DecisionDB
 
-alt Invalid or Missing Faculty Data (Exception 3-EX)
-    DecisionDB --> Controller: Data corrupted/incomplete
-    Controller --> UI: Error (Missing Data)
-    UI --> Staff: Display error message & halt publication. Prompt to verify.
+DecisionDB -> DB: SELECT * FROM BoardDecisions WHERE cycleId = ?
+activate DB
+
+alt Invalid or Missing Faculty Data 
+    DB --> DecisionDB: SQLException / Incomplete ResultSet
+    DecisionDB --> Controller: Exception: DataCorruptedException
+    Controller --> UI: Exception: MissingDataError
+    UI --> Staff: Error ("Eksik veri: Lütfen fakülte kararlarını doğrulayın")
 else Valid Data
-    DecisionDB --> Controller: Return list of Faculty Board decisions (Accepted/Waitlisted/Rejected)
+    DB --> DecisionDB: ResultSet
+    deactivate DB
+    
+    DecisionDB --> Controller: List<BoardDecision>: decisions
     deactivate DecisionDB
     
-    Controller --> UI: Return decision data
-    UI --> Staff: Display decision data for review
+    Controller --> UI: List<BoardDecision>: decisions
+    UI --> Staff: Decision Data
 end
 
 deactivate Controller
@@ -53,47 +64,63 @@ deactivate UI
 
 == Publish & Notify ==
 
-Staff -> UI: Click "Sonucu Paylaş" (Publish Results)
+Staff -> UI: clickPublishResults()
 activate UI
 
 UI -> Controller: publishResults(cycleId)
 activate Controller
 
-Controller -> AppDB: update finalDecision status for all applicants
+Controller -> AppDB: updateFinalDecisionStatuses(cycleId)
 activate AppDB
-AppDB --> Controller: Status update successful
+
+AppDB -> DB: UPDATE TransferApplications SET applicationStatus = 'Finalized' WHERE cycleId = ?
+activate DB
+DB --> AppDB: int: rowsAffected
+deactivate DB
+
+AppDB --> Controller: boolean: true
 deactivate AppDB
 
-Controller -> Controller: triggerNotifications()
-Controller -> EmailService: sendStatusUpdate(recipientEmail, message)
+Controller -> Controller: triggerNotifications(cycleId)
+Controller -> EmailService: sendStatusUpdates(studentEmails, messages)
 activate EmailService
 
-EmailService -> ExternalEmail: Send bulk emails via SMTP
+EmailService -> ExternalEmail: sendBulk(studentEmails, messages)
 activate ExternalEmail
 
-alt Notification Failure (Exception 7-EX)
-    ExternalEmail --> EmailService: Delivery Failure (Network/Invalid Email)
-    EmailService -> LogDB: Log failed attempts (status = "Failed")
+alt Notification Failure 
+    ExternalEmail --> EmailService: Exception / HTTP 500
+    
+    EmailService -> LogDB: save(Notification(status="Failed"))
     activate LogDB
-    LogDB --> EmailService: Log saved
+    LogDB -> DB: INSERT INTO Notifications (status, ...) VALUES ('Failed', ...)
+    activate DB
+    DB --> LogDB: int: logId
+    deactivate DB
+    LogDB --> EmailService: boolean: true
     deactivate LogDB
     
-    EmailService --> Controller: Return failure summary
-    Controller --> UI: Publish Complete with Notification Errors
-    UI --> Staff: Display summary report of failed notifications
+    EmailService --> Controller: Exception: DeliveryFailure
+    Controller --> UI: boolean: false (with error details)
+    UI --> Staff: Warning ("Sonuçlar yayınlandı ancak bazı bildirimler başarısız oldu.")
 else Notification Success
-    ExternalEmail --> EmailService: Success
+    ExternalEmail --> EmailService: HTTP 200 OK
     deactivate ExternalEmail
-    EmailService -> LogDB: Log successful delivery (status = "Sent")
+    
+    EmailService -> LogDB: save(Notification(status="Sent"))
     activate LogDB
-    LogDB --> EmailService: Log saved
+    LogDB -> DB: INSERT INTO Notifications (status, ...) VALUES ('Sent', ...)
+    activate DB
+    DB --> LogDB: int: logId
+    deactivate DB
+    LogDB --> EmailService: boolean: true
     deactivate LogDB
     
-    EmailService --> Controller: Notifications sent successfully
+    EmailService --> Controller: boolean: true
     deactivate EmailService
     
-    Controller --> UI: Finalization Complete
-    UI --> Staff: Display confirmation: "Finalization successfully completed. Results have been published."
+    Controller --> UI: boolean: true
+    UI --> Staff: Confirmation Message("Sonuçlar başarıyla yayınlandı ve bildirimler gönderildi.")
 end
 
 deactivate Controller
