@@ -1,0 +1,137 @@
+@startuml uc-3
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor Student
+box "Presentation Layer" #LightCyan
+participant "ProfileUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "ProfileController" as Controller
+end box
+
+box "Data Access Layer" #LightGreen
+participant "Student" as DataAccess
+end box
+
+box "Database" #LightPink
+participant "Database" as DB
+end box
+
+== View Profile ==
+Student -> UI: ClickProfileButton()
+activate UI
+
+UI -> Controller: getProfileData(studentId)
+activate Controller
+
+Controller -> DataAccess: findById(studentId)
+activate DataAccess
+
+DataAccess -> DB: SELECT * FROM Students WHERE id = ?
+activate DB
+DB --> DataAccess: Student: profileData
+deactivate DB
+
+DataAccess --> Controller: Student: profileData
+deactivate DataAccess
+
+Controller --> UI: Student: profileData
+deactivate Controller
+
+UI --> Student: Profile Data
+deactivate UI
+
+== Update Basic Information (Normal Flow) ==
+Student -> UI: submitProfileUpdate(phone, address)
+activate UI
+
+UI -> Controller: validatePhoneNumber(phone)
+activate Controller
+
+alt Missing or Invalid Data Entry (5.b)
+    Controller --> UI: boolean: false
+    UI --> Student: Validation Error
+else Valid Data
+    Controller --> UI: boolean: true
+    
+    UI -> Controller: updateBasicInfo(studentId, phone, address)
+    Controller -> DataAccess: updateProfileData(studentId, phone, address)
+    activate DataAccess
+    
+    DataAccess -> DB: UPDATE Students SET phone = ?, address = ? WHERE id = ?
+    activate DB
+    
+    alt Database Update Error (7-EX)
+        DB --> DataAccess: SQLException
+        DataAccess --> Controller: Exception: DatabaseError
+        Controller --> UI: Exception: UpdateFailed
+        UI --> Student: Error ("Geçici bir sistem hatası oluştu...")
+    else Update Successful
+        DB --> DataAccess: int: rowsAffected
+        deactivate DB
+        DataAccess --> Controller: boolean: true
+        deactivate DataAccess
+        
+        Controller --> UI: boolean: true
+        UI --> Student: showUpdateConfirmation("Bilgileriniz başarıyla güncellendi")
+    end
+end
+deactivate Controller
+deactivate UI
+
+== Sensitive Information Update (Password Change - 3.a) ==
+Student -> UI: submitPasswordChange(current, new, repeat)
+activate UI
+
+UI -> Controller: verifyCurrentPassword(studentId, currentPassword)
+activate Controller
+
+Controller -> DataAccess: getPasswordHash(studentId)
+activate DataAccess
+
+DataAccess -> DB: SELECT passwordHash FROM Students WHERE id = ?
+activate DB
+DB --> DataAccess: String: currentHash
+deactivate DB
+
+DataAccess --> Controller: String: currentHash
+deactivate DataAccess
+
+alt Incorrect Current Password (4.a / 3.a.5.a)
+    Controller --> UI: boolean: false
+    UI --> Student: Error ("Mevcut şifreniz hatalı. Lütfen tekrar deneyin.")
+else Correct Current Password
+    Controller --> UI: boolean: true
+    
+    UI -> Controller: processNewPassword(newPassword, repeatPassword)
+    Controller -> Controller: validateSecurityPolicies(newPassword, repeatPassword)
+    
+    alt New Password Fails Rules (3.a.6.a) or Matches Old (3.a.6.b)
+        Controller --> UI: boolean: false
+        UI --> Student: Password Requirements Error
+    else Valid New Password
+        Controller -> Controller: String: newHash = hashNewPassword(newPassword)
+        
+        Controller -> DataAccess: updatePasswordHash(studentId, newHash)
+        activate DataAccess
+        
+        DataAccess -> DB: UPDATE Students SET passwordHash = ? WHERE id = ?
+        activate DB
+        DB --> DataAccess: int: rowsAffected
+        deactivate DB
+        
+        DataAccess --> Controller: boolean: true
+        deactivate DataAccess
+        
+        Controller --> UI: boolean: true
+        UI --> Student: showUpdateConfirmation("Şifreniz başarıyla güncellendi")
+    end
+end
+deactivate Controller
+
+opt Cancellation of Information Update (5.a / 3.a.4.a)
+    Student -> UI: Click
