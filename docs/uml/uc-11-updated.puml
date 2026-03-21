@@ -1,0 +1,135 @@
+@startuml uc-11
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "Faculty Board Member" as Board
+
+box "Presentation Layer" #LightCyan
+    participant "FacultyBoardUI" as UI
+    participant "FacultyBoardRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "FacultyBoardController" as Controller
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "TransferApplicationRepository" as AppDB
+    participant "EvaluationReportRepository" as EvalDB
+    participant "BoardDecisionRepository" as DecisionDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Application Review ==
+
+Board -> UI: selectApplicantReview(applicationId)
+activate UI
+
+UI -> RestController: GET /api/faculty/applications/{applicationId}
+activate RestController
+
+RestController -> Controller: fetchApplicationDetails(applicationId)
+activate Controller
+
+Controller -> AppDB: findById(applicationId)
+activate AppDB
+AppDB -> DB: read(applicationId)
+activate DB
+DB --> AppDB: TransferApplication
+deactivate DB
+AppDB --> Controller: TransferApplication
+deactivate AppDB
+
+Controller -> EvalDB: findByApplicationId(applicationId)
+activate EvalDB
+EvalDB -> DB: read(applicationId)
+activate DB
+DB --> EvalDB: EvaluationReport
+deactivate DB
+EvalDB --> Controller: EvaluationReport
+deactivate EvalDB
+
+Controller --> RestController: ConsolidatedData: report
+deactivate Controller
+
+RestController --> UI: HTTP 200: report
+deactivate RestController
+
+UI --> Board: Consolidated Report
+deactivate UI
+
+== Decision Making ==
+
+alt Application Approved
+
+    Board -> UI: clickApprove()
+    activate UI
+    UI -> RestController: POST /api/faculty/applications/{applicationId}/decision (type=Approved)
+    activate RestController
+    RestController -> Controller: recordFinalDecision(applicationId, "Approved", null)
+
+else Application Rejected
+
+    Board -> UI: clickReject()
+    activate UI
+    UI --> Board: Rejection Code Dropdown
+    Board -> UI: selectRejectionCode(rejectionCode)
+    Board -> UI: enterCommentsAndConfirm(comments)
+    UI -> RestController: POST /api/faculty/applications/{applicationId}/decision (type=Rejected, rejectionCode)
+    activate RestController
+    RestController -> Controller: recordFinalDecision(applicationId, "Rejected", rejectionCode)
+
+end
+
+== Recording the Decision ==
+
+activate Controller
+
+Controller -> Controller: verifyEquivalencyCompliance(applicationId)
+
+Controller -> Controller: decision = new BoardDecision(decisionType, rejectionCode, now)
+
+Controller -> DecisionDB: save(decision)
+activate DecisionDB
+DecisionDB -> DB: persist(decision)
+activate DB
+DB --> DecisionDB: BoardDecision
+deactivate DB
+DecisionDB --> Controller: BoardDecision: savedDecision
+deactivate DecisionDB
+
+Controller -> AppDB: findById(applicationId)
+activate AppDB
+AppDB -> DB: read(applicationId)
+activate DB
+DB --> AppDB: TransferApplication
+deactivate DB
+AppDB --> Controller: TransferApplication
+deactivate AppDB
+
+Controller -> Controller: application.setFinalDecision(decisionType)
+
+Controller -> AppDB: save(application)
+activate AppDB
+AppDB -> DB: persist(application)
+activate DB
+DB --> AppDB: TransferApplication
+deactivate DB
+AppDB --> Controller: TransferApplication
+deactivate AppDB
+
+Controller --> RestController: void
+deactivate Controller
+
+RestController --> UI: HTTP 200 OK
+deactivate RestController
+
+UI --> Board: Confirmation("Karar başarıyla kaydedildi")
+deactivate UI
+
+@enduml
