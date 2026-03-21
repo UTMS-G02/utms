@@ -1,0 +1,259 @@
+@startuml uc-4
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "ÖİDB Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+    participant "OidbDashboardUI" as UI
+    participant "OidbRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "DocumentVerificationController" as VerifController
+    participant "RoutingService" as RouteService
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "TransferApplicationRepository" as AppDB
+    participant "DocumentRepository" as DocDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== 1. Accessing the Review Page ==
+
+Staff -> UI: navigateToOidbDashboard()
+activate UI
+
+UI -> RestController: GET /api/oidb/applications?status=Pending
+activate RestController
+
+RestController -> VerifController: fetchPendingApplications()
+activate VerifController
+
+VerifController -> AppDB: findByApplicationStatus("Pending")
+activate AppDB
+AppDB -> DB: read(status)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> VerifController: List<TransferApplication>
+deactivate AppDB
+
+VerifController --> RestController: List<TransferApplication>: pendingApps
+deactivate VerifController
+
+RestController --> UI: HTTP 200: pendingApps
+deactivate RestController
+
+UI --> Staff: Pending Applications
+deactivate UI
+
+== 2. Document Verification Process ==
+
+Staff -> UI: selectApplicationForReview(applicationId)
+activate UI
+
+UI -> RestController: GET /api/oidb/applications/{applicationId}
+activate RestController
+
+RestController -> VerifController: verifyDocuments(applicationId)
+activate VerifController
+
+VerifController -> AppDB: findById(applicationId)
+activate AppDB
+AppDB -> DB: read(applicationId)
+activate DB
+DB --> AppDB: TransferApplication
+deactivate DB
+AppDB --> VerifController: TransferApplication
+deactivate AppDB
+
+VerifController -> DocDB: findByApplicationId(applicationId)
+activate DocDB
+DocDB -> DB: read(applicationId)
+activate DB
+DB --> DocDB: List<BaseDocument>
+deactivate DB
+DocDB --> VerifController: List<BaseDocument>
+deactivate DocDB
+
+VerifController --> RestController: ApplicationData: viewData
+deactivate VerifController
+
+RestController --> UI: HTTP 200: viewData
+deactivate RestController
+
+UI --> Staff: Application Documents
+deactivate UI
+
+alt Invalid or Missing Documents
+
+    Staff -> UI: flagDocumentInvalid(note)
+    activate UI
+
+    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/status (note)
+    activate RestController
+
+    RestController -> VerifController: requestDocumentCorrection(applicationId, note)
+    activate VerifController
+
+    VerifController -> AppDB: findById(applicationId)
+    activate AppDB
+    AppDB -> DB: read(applicationId)
+    activate DB
+    DB --> AppDB: TransferApplication
+    deactivate DB
+    AppDB --> VerifController: TransferApplication
+    deactivate AppDB
+
+    VerifController -> VerifController: application.setApplicationStatus("Correction Requested")
+
+    VerifController -> AppDB: save(application)
+    activate AppDB
+    AppDB -> DB: persist(application)
+    activate DB
+    DB --> AppDB: TransferApplication
+    deactivate DB
+    AppDB --> VerifController: TransferApplication
+    deactivate AppDB
+
+    VerifController --> RestController: void
+    deactivate VerifController
+
+    RestController --> UI: HTTP 200 OK
+    deactivate RestController
+
+    UI --> Staff: Action Confirmation("Öğrenciye düzeltme yapılması gerektiği bildirildi.")
+    deactivate UI
+
+else Documents are Valid
+
+    Staff -> UI: approveAllDocuments()
+    activate UI
+
+    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/documents/lock
+    activate RestController
+
+    RestController -> VerifController: markApplicationVerified(applicationId)
+    activate VerifController
+
+    VerifController -> DocDB: findByApplicationId(applicationId)
+    activate DocDB
+    DocDB -> DB: read(applicationId)
+    activate DB
+    DB --> DocDB: List<BaseDocument>
+    deactivate DB
+    DocDB --> VerifController: List<BaseDocument>
+    deactivate DocDB
+
+    VerifController -> VerifController: documents.forEach(d -> d.setLocked(true))
+
+    VerifController -> DocDB: saveAll(documents)
+    activate DocDB
+    DocDB -> DB: persist(documents)
+    activate DB
+    DB --> DocDB: List<BaseDocument>
+    deactivate DB
+    DocDB --> VerifController: List<BaseDocument>
+    deactivate DocDB
+
+    VerifController --> RestController: void
+    deactivate VerifController
+
+    RestController --> UI: HTTP 200 OK
+    deactivate RestController
+    UI --> Staff: Documents Verified
+    deactivate UI
+
+    == 3. Application Routing ==
+
+    Staff -> UI: proceedToRouting()
+    activate UI
+
+    alt Needs English Proficiency Prep (YDYO)
+
+        Staff -> UI: routeToYdyo()
+
+        UI -> RestController: PATCH /api/oidb/applications/{applicationId}/route (target=YDYO)
+        activate RestController
+
+        RestController -> RouteService: forwardToYDYO(applicationId)
+        activate RouteService
+
+        RouteService -> AppDB: findById(applicationId)
+        activate AppDB
+        AppDB -> DB: read(applicationId)
+        activate DB
+        DB --> AppDB: TransferApplication
+        deactivate DB
+        AppDB --> RouteService: TransferApplication
+        deactivate AppDB
+
+        RouteService -> RouteService: application.setApplicationStatus("Forwarded to YDYO")
+
+        RouteService -> AppDB: save(application)
+        activate AppDB
+        AppDB -> DB: persist(application)
+        activate DB
+        DB --> AppDB: TransferApplication
+        deactivate DB
+        AppDB --> RouteService: TransferApplication
+        deactivate AppDB
+
+        RouteService --> RestController: void
+        deactivate RouteService
+
+        RestController --> UI: HTTP 200 OK
+        deactivate RestController
+        UI --> Staff: Action Confirmation("YDYO'ya yönlendirildi.")
+
+    else Reject Application
+
+        Staff -> UI: rejectApplication()
+
+        UI -> RestController: PATCH /api/oidb/applications/{applicationId}/route (target=Rejected)
+        activate RestController
+
+        RestController -> RouteService: rejectApplication(applicationId)
+        activate RouteService
+
+        RouteService -> AppDB: findById(applicationId)
+        activate AppDB
+        AppDB -> DB: read(applicationId)
+        activate DB
+        DB --> AppDB: TransferApplication
+        deactivate DB
+        AppDB --> RouteService: TransferApplication
+        deactivate AppDB
+
+        RouteService -> RouteService: application.setApplicationStatus("Rejected")
+
+        RouteService -> AppDB: save(application)
+        activate AppDB
+        AppDB -> DB: persist(application)
+        activate DB
+        DB --> AppDB: TransferApplication
+        deactivate DB
+        AppDB --> RouteService: TransferApplication
+        deactivate AppDB
+
+        RouteService --> RestController: void
+        deactivate RouteService
+
+        RestController --> UI: HTTP 200 OK
+        deactivate RestController
+        UI --> Staff: Action Confirmation("Başvuru reddedildi.")
+
+    end
+
+    deactivate UI
+
+end
+
+@enduml
