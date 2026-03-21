@@ -1,0 +1,233 @@
+@startuml uc-10
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "Dean's Office Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+    participant "DeanOfficeUI" as UI
+    participant "DeanRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "DeanRoutingController" as BL
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "TransferApplicationRepository" as AppDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Scenario A: Routing from OİDB to YGK ==
+note over UI, DB: Tab: 'OİDB'den Gelen'
+
+Staff -> UI: clickTab('OİDB'den Gelen')
+activate UI
+
+UI -> RestController: GET /api/dean/applications?tab=from-oidb
+activate RestController
+
+RestController -> BL: fetchApplicationsByStatus('Akademik İnceleme Bekliyor')
+activate BL
+
+BL -> AppDB: findByApplicationStatus('Akademik İnceleme Bekliyor')
+activate AppDB
+AppDB -> DB: read(status)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> BL: List<TransferApplication>
+deactivate AppDB
+
+BL --> RestController: List<TransferApplication>
+deactivate BL
+
+RestController --> UI: HTTP 200: applications
+deactivate RestController
+
+UI --> Staff: Application List
+deactivate UI
+
+Staff -> UI: selectCandidates(applicationIds)
+activate UI
+Staff -> UI: clickForwardToYGK()
+
+UI -> RestController: PATCH /api/dean/applications/forward-to-ygk (applicationIds)
+activate RestController
+
+RestController -> BL: forwardToYGK(applicationIds)
+activate BL
+
+BL -> AppDB: findAllById(applicationIds)
+activate AppDB
+AppDB -> DB: read(applicationIds)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> BL: List<TransferApplication>
+deactivate AppDB
+
+BL -> BL: applications.forEach(a -> a.setApplicationStatus('YGK Değerlendirmesinde'))
+
+BL -> AppDB: saveAll(applications)
+activate AppDB
+AppDB -> DB: persist(applications)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> BL: List<TransferApplication>
+deactivate AppDB
+
+BL --> RestController: void
+deactivate BL
+
+RestController --> UI: HTTP 200 OK
+deactivate RestController
+
+UI --> Staff: Confirmation('Başvurular YGK'ya iletildi.')
+deactivate UI
+
+== Scenario B: Routing from YGK to Faculty Board ==
+note over UI, DB: Tab: 'YGK'dan Gelen'
+
+Staff -> UI: clickTab('YGK'dan Gelen')
+activate UI
+
+UI -> RestController: GET /api/dean/applications?tab=from-ygk
+activate RestController
+
+RestController -> BL: fetchApplicationsByStatus('YGK Değerlendirmesi Tamamlandı')
+activate BL
+
+BL -> AppDB: findByApplicationStatus('YGK Değerlendirmesi Tamamlandı')
+activate AppDB
+AppDB -> DB: read(status)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> BL: List<TransferApplication>
+deactivate AppDB
+
+BL --> RestController: List<TransferApplication>
+deactivate BL
+
+RestController --> UI: HTTP 200: applications
+deactivate RestController
+
+UI --> Staff: Application List with Evaluation Reports
+deactivate UI
+
+Staff -> UI: selectCandidates(applicationIds)
+activate UI
+Staff -> UI: clickForwardToFacultyBoard()
+
+UI -> RestController: PATCH /api/dean/applications/forward-to-faculty (applicationIds)
+activate RestController
+
+RestController -> BL: forwardToFacultyBoard(applicationIds)
+activate BL
+
+BL -> AppDB: findAllById(applicationIds)
+activate AppDB
+AppDB -> DB: read(applicationIds)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> BL: List<TransferApplication>
+deactivate AppDB
+
+BL -> BL: applications.forEach(a -> a.setApplicationStatus('Fakülte Kurulu Kararı Bekleniyor'))
+
+BL -> AppDB: saveAll(applications)
+activate AppDB
+AppDB -> DB: persist(applications)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> BL: List<TransferApplication>
+deactivate AppDB
+
+BL --> RestController: void
+deactivate BL
+
+RestController --> UI: HTTP 200 OK
+deactivate RestController
+
+UI --> Staff: Confirmation('Başvurular Fakülte Kurulu'na iletildi.')
+deactivate UI
+
+== Scenario C: Finalizing to OİDB ==
+note over UI, DB: Tab: 'Fakülte Kurulundan Gelen'
+
+Staff -> UI: clickTab('Fakülte Kurulundan Gelen')
+activate UI
+
+UI -> RestController: GET /api/dean/applications?tab=from-faculty
+activate RestController
+
+RestController -> BL: fetchApplicationsByStatus('Değerlendirme Onaylandı')
+activate BL
+
+BL -> AppDB: findByApplicationStatus('Değerlendirme Onaylandı')
+activate AppDB
+AppDB -> DB: read(status)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> BL: List<TransferApplication>
+deactivate AppDB
+
+BL --> RestController: List<TransferApplication>
+deactivate BL
+
+RestController --> UI: HTTP 200: applications
+deactivate RestController
+
+UI --> Staff: Application List with Board Decisions
+deactivate UI
+
+Staff -> UI: selectApplications(applicationIds)
+activate UI
+Staff -> UI: clickReturnToOidb()
+
+UI -> RestController: PATCH /api/dean/applications/return-to-oidb (applicationIds)
+activate RestController
+
+RestController -> BL: returnToOidb(applicationIds)
+activate BL
+
+BL -> AppDB: findAllById(applicationIds)
+activate AppDB
+AppDB -> DB: read(applicationIds)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> BL: List<TransferApplication>
+deactivate AppDB
+
+BL -> BL: applications.forEach(a -> a.setApplicationStatus('Finalized'))
+
+BL -> AppDB: saveAll(applications)
+activate AppDB
+AppDB -> DB: persist(applications)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> BL: List<TransferApplication>
+deactivate AppDB
+
+BL --> RestController: void
+deactivate BL
+
+RestController --> UI: HTTP 200 OK
+deactivate RestController
+
+UI --> Staff: Confirmation('Başvurular OİDB'ye iletildi.')
+deactivate UI
+
+@enduml

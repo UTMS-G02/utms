@@ -19,3 +19,6 @@
 
 # Binary files and PlantUML generated output
 out/
+
+# Personal notes (not project docs)
+*_notes

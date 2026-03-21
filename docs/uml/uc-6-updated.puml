@@ -1,0 +1,129 @@
+@startuml uc-6
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "ÖİDB Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+    participant "OidbDashboardUI" as UI
+    participant "OidbRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "FinalizationController" as Controller
+    participant "EmailNotificationManager" as EmailManager
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "BoardDecisionRepository" as DecisionDB
+    participant "TransferApplicationRepository" as AppDB
+    participant "NotificationRepository" as LogDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Retrieve & Review Decisions ==
+
+Staff -> UI: selectApplicationCycle(cycleId)
+activate UI
+
+UI -> RestController: GET /api/oidb/cycles/{cycleId}/decisions
+activate RestController
+
+RestController -> Controller: fetchFinalDecisions(cycleId)
+activate Controller
+
+Controller -> DecisionDB: findByCycleId(cycleId)
+activate DecisionDB
+DecisionDB -> DB: read(cycleId)
+activate DB
+
+alt Invalid or Missing Faculty Data
+    DB --> DecisionDB: Exception
+    deactivate DB
+    DecisionDB --> Controller: DataCorruptedException
+    deactivate DecisionDB
+    Controller --> RestController: DataCorruptedException
+    RestController --> UI: HTTP 500: Missing Data Error
+    UI --> Staff: Error("Eksik veri: Lütfen fakülte kararlarını doğrulayın")
+else Valid Data
+    DB --> DecisionDB: List<BoardDecision>
+    deactivate DB
+    DecisionDB --> Controller: List<BoardDecision>
+    deactivate DecisionDB
+    Controller --> RestController: List<BoardDecision>: decisions
+    RestController --> UI: HTTP 200: decisions
+    UI --> Staff: Decision Data
+end
+
+deactivate Controller
+deactivate RestController
+deactivate UI
+
+== Publish & Notify ==
+
+Staff -> UI: clickPublishResults()
+activate UI
+
+UI -> RestController: POST /api/oidb/cycles/{cycleId}/publish
+activate RestController
+
+RestController -> Controller: publishResults(cycleId)
+activate Controller
+
+Controller -> AppDB: updateApplicationStatusByCycleId(cycleId, "Finalized")
+activate AppDB
+AppDB -> DB: persist(applications)
+activate DB
+DB --> AppDB: void
+deactivate DB
+AppDB --> Controller: void
+deactivate AppDB
+
+Controller -> Controller: triggerNotifications(cycleId)
+
+Controller -> EmailManager: sendStatusUpdates(cycleId)
+activate EmailManager
+
+alt Notification Failure
+    EmailManager --> Controller: EmailDeliveryException
+
+    Controller -> LogDB: save(new Notification(cycleId, status="Failed"))
+    activate LogDB
+    LogDB -> DB: persist(notification)
+    activate DB
+    DB --> LogDB: Notification
+    deactivate DB
+    LogDB --> Controller: Notification
+    deactivate LogDB
+
+    Controller --> RestController: PartialSuccessException
+    RestController --> UI: HTTP 207: Partial Success
+    UI --> Staff: Warning("Sonuçlar yayınlandı ancak bazı bildirimler başarısız oldu.")
+else Notification Success
+    EmailManager --> Controller: void
+    deactivate EmailManager
+
+    Controller -> LogDB: save(new Notification(cycleId, status="Sent"))
+    activate LogDB
+    LogDB -> DB: persist(notification)
+    activate DB
+    DB --> LogDB: Notification
+    deactivate DB
+    LogDB --> Controller: Notification
+    deactivate LogDB
+
+    Controller --> RestController: void
+    RestController --> UI: HTTP 200 OK
+    UI --> Staff: Confirmation("Sonuçlar başarıyla yayınlandı ve bildirimler gönderildi.")
+end
+
+deactivate Controller
+deactivate RestController
+deactivate UI
+
+@enduml

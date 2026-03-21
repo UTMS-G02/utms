@@ -1,0 +1,172 @@
+@startuml uc-12
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "User (Student/Staff)" as User
+
+box "Presentation Layer" #LightCyan
+    participant "LoginUI" as UI
+    participant "AuthRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "AuthenticationService" as AuthService
+    participant "EmailNotificationManager" as EmailManager
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "UserRepository" as UserDB
+    participant "OTPRecordRepository" as OTPDB
+    participant "AuthTokenRepository" as TokenDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Primary Authentication (Email & Password) ==
+
+User -> UI: navigateToLogin()
+activate UI
+UI --> User: Login Form
+
+User -> UI: enterCredentials(email, password)
+UI -> RestController: POST /api/auth/login (email, password)
+activate RestController
+
+RestController -> AuthService: verifyCredentials(email, password)
+activate AuthService
+
+AuthService -> UserDB: findByEmail(email)
+activate UserDB
+UserDB -> DB: read(email)
+activate DB
+DB --> UserDB: Optional<User>
+deactivate DB
+UserDB --> AuthService: Optional<User>
+deactivate UserDB
+
+alt Invalid Credentials
+    AuthService -> AuthService: lockAccount() if excessive attempts
+
+    alt Excessive Failed Attempts
+        AuthService --> RestController: AccountLockedException
+        RestController --> UI: HTTP 423: Account Locked
+        UI --> User: Lockout Message('Çok sayıda başarısız deneme...')
+    else Less than 5 Failed Attempts
+        AuthService --> RestController: InvalidCredentialsException
+        RestController --> UI: HTTP 401: Invalid Credentials
+        UI --> User: Error('Geçersiz kimlik bilgileri...')
+    end
+
+else Valid Credentials
+
+    == OTP Generation and Delivery ==
+
+    AuthService -> AuthService: otpCode = generateOTP()
+
+    AuthService -> AuthService: otp = new OTPRecord(user, otpCode, expiryTime)
+
+    AuthService -> OTPDB: save(otp)
+    activate OTPDB
+    OTPDB -> DB: persist(otp)
+    activate DB
+    DB --> OTPDB: OTPRecord
+    deactivate DB
+    OTPDB --> AuthService: OTPRecord
+    deactivate OTPDB
+
+    AuthService -> EmailManager: sendStatusUpdate(email, otpMessage)
+    activate EmailManager
+
+    alt Email Sending Error
+        EmailManager --> AuthService: EmailDeliveryException
+        AuthService --> RestController: SystemErrorException
+        RestController --> UI: HTTP 500: System Error
+        UI --> User: Error('Bir sistem hatası oluştu...')
+    else Email Sent Successfully
+        EmailManager --> AuthService: void
+        deactivate EmailManager
+        AuthService --> RestController: void
+        RestController --> UI: HTTP 200 OK
+        UI --> User: OTP Prompt
+    end
+
+end
+
+deactivate AuthService
+deactivate RestController
+
+== Secondary Authentication (OTP) ==
+
+User -> UI: enterOTP(code)
+UI -> RestController: POST /api/auth/verify-otp (userId, code)
+activate RestController
+
+RestController -> AuthService: verifyOTP(userId, code)
+activate AuthService
+
+AuthService -> OTPDB: findByUserId(userId)
+activate OTPDB
+OTPDB -> DB: read(userId)
+activate DB
+DB --> OTPDB: OTPRecord
+deactivate DB
+OTPDB --> AuthService: OTPRecord
+deactivate OTPDB
+
+alt Invalid or Expired OTP
+    AuthService -> AuthService: otp.setFailedAttempts(failedAttempts + 1)
+
+    AuthService -> OTPDB: save(otp)
+    activate OTPDB
+    OTPDB -> DB: persist(otp)
+    activate DB
+    DB --> OTPDB: OTPRecord
+    deactivate DB
+    OTPDB --> AuthService: OTPRecord
+    deactivate OTPDB
+
+    alt Excessive Failed OTP Attempts
+        AuthService --> RestController: MaxOtpAttemptsReachedException
+        RestController --> UI: HTTP 429: Too Many Attempts
+        UI --> User: Error('Çok fazla başarısız doğrulama...') & redirectToLogin()
+    else Less than 3 Failed Attempts
+        AuthService --> RestController: InvalidOtpException
+        RestController --> UI: HTTP 401: Invalid OTP
+        UI --> User: Error('Doğrulama kodu geçersiz veya süresi dolmuş.')
+    end
+
+else Valid OTP
+    AuthService -> OTPDB: delete(otp)
+    activate OTPDB
+    OTPDB -> DB: delete(otp)
+    activate DB
+    DB --> OTPDB: void
+    deactivate DB
+    OTPDB --> AuthService: void
+    deactivate OTPDB
+
+    AuthService -> AuthService: token = new AuthToken(userId, expiryDate)
+
+    AuthService -> TokenDB: save(token)
+    activate TokenDB
+    TokenDB -> DB: persist(token)
+    activate DB
+    DB --> TokenDB: AuthToken
+    deactivate DB
+    TokenDB --> AuthService: AuthToken
+    deactivate TokenDB
+
+    AuthService --> RestController: AuthToken
+    RestController --> UI: HTTP 200: AuthToken
+    UI --> User: Redirected to Dashboard
+end
+
+deactivate AuthService
+deactivate RestController
+deactivate UI
+
+@enduml

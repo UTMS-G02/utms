@@ -1,0 +1,164 @@
+@startuml uc-1
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor Student
+
+box "Presentation Layer" #LightCyan
+    participant "RegistrationUI" as UI
+    participant "RegistrationRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "RegistrationController" as BL
+    participant "EmailNotificationManager" as EmailManager
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "StudentRepository" as DataAccess
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+
+== Registration Phase ==
+
+Student -> UI: clickRegisterButton()
+activate UI
+UI --> Student: Registration Form
+deactivate UI
+
+Student -> UI: submitForm(email, password, repeat, kvkk)
+activate UI
+
+UI -> RestController: POST /api/register (email, password, kvkk)
+activate RestController
+
+RestController -> BL: register(email, password, kvkk)
+activate BL
+
+BL -> BL: validateEmailFormat(email)
+alt Invalid Email Format
+    BL --> RestController: EmailFormatException
+    RestController --> UI: HTTP 400: Email Format Error
+    UI --> Student: Email Format Error
+else Valid Email
+    BL -> BL: validatePasswordStrength(password)
+    alt Invalid Password
+        BL --> RestController: WeakPasswordException
+        RestController --> UI: HTTP 400: Password Security Error
+        UI --> Student: Password Security Error
+    else Valid Password
+        BL -> DataAccess: findByEmail(email)
+        activate DataAccess
+        DataAccess -> DB: read(email)
+        activate DB
+        DB --> DataAccess: Optional<Student>
+        deactivate DB
+        DataAccess --> BL: boolean: isRegistered
+        deactivate DataAccess
+
+        alt Email Already Registered
+            BL --> RestController: EmailAlreadyExistsException
+            RestController --> UI: HTTP 409: Email Already Registered
+            UI --> Student: Registration Error("Bu e-posta adresi zaten kayıtlı")
+        else Email is Available
+            BL -> BL: hashPassword(password)
+            BL -> BL: student = new Student(email, hashedPassword, isActive=false, kvkkAcceptedAt=now)
+            BL -> DataAccess: save(student)
+            activate DataAccess
+            DataAccess -> DB: persist(student)
+            activate DB
+            DB --> DataAccess: Student
+            deactivate DB
+            DataAccess --> BL: Student: newStudent
+            deactivate DataAccess
+
+            BL -> BL: generateActivationLink()
+            BL -> EmailManager: sendActivationEmail(email, activationLink)
+            activate EmailManager
+
+            alt Email Sending Error
+                EmailManager --> BL: EmailDeliveryException
+                BL --> RestController: EmailDeliveryException
+                RestController --> UI: HTTP 500: Email Delivery Error
+                UI --> Student: Error("E-posta gönderim hatası")
+            else Email Sent Successfully
+                EmailManager --> BL: void
+                deactivate EmailManager
+                BL --> RestController: void
+                RestController --> UI: HTTP 201 Created
+                UI --> Student: Activation Success Message
+            end
+        end
+    end
+end
+
+deactivate BL
+deactivate RestController
+deactivate UI
+
+== Activation Phase ==
+
+Student -> UI: clickActivationLink(link)
+activate UI
+
+UI -> RestController: GET /api/activate?link={link}
+activate RestController
+
+RestController -> BL: verifyActivationLink(link)
+activate BL
+
+alt Link Invalid or Expired
+    BL --> RestController: InvalidLinkException
+    RestController --> UI: HTTP 400: Invalid Link
+    UI --> Student: Error("Aktivasyon bağlantısı geçersiz/süresi dolmuş")
+
+    opt Student requests new link
+        Student -> UI: requestNewActivationLink()
+        UI -> RestController: POST /api/resend-activation (email)
+        RestController -> BL: generateActivationLink()
+        BL -> EmailManager: sendActivationEmail(email, newActivationLink)
+        activate EmailManager
+        EmailManager --> BL: void
+        deactivate EmailManager
+        BL --> RestController: void
+        RestController --> UI: HTTP 200 OK
+        UI --> Student: Success Message("Yeni bağlantı gönderildi")
+    end
+
+else Link Valid
+    BL -> DataAccess: findById(studentId)
+    activate DataAccess
+    DataAccess -> DB: read(studentId)
+    activate DB
+    DB --> DataAccess: Student
+    deactivate DB
+    DataAccess --> BL: Student
+    deactivate DataAccess
+
+    BL -> BL: student.setIsActive(true)
+
+    BL -> DataAccess: save(student)
+    activate DataAccess
+    DataAccess -> DB: persist(student)
+    activate DB
+    DB --> DataAccess: Student
+    deactivate DB
+    DataAccess --> BL: Student
+    deactivate DataAccess
+
+    BL --> RestController: void
+    RestController --> UI: HTTP 200 OK
+    UI --> Student: Success Message("Hesabınız başarıyla etkinleştirildi")
+end
+
+deactivate BL
+deactivate RestController
+deactivate UI
+
+@enduml
