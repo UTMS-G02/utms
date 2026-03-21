@@ -35,7 +35,7 @@ Controller -> AppDB: findById(applicationId)
 activate AppDB
 AppDB -> DB: SELECT * FROM TransferApplications WHERE id = ?
 activate DB
-DB --> AppDB: TransferApplication: appData
+DB --> AppDB: ResultSet
 deactivate DB
 AppDB --> Controller: TransferApplication: appData
 deactivate AppDB
@@ -44,7 +44,7 @@ Controller -> EvalDB: getEvaluationWithIntibak(applicationId)
 activate EvalDB
 EvalDB -> DB: SELECT * FROM EvaluationReports JOIN IntibakTables ... WHERE applicationId = ?
 activate DB
-DB --> EvalDB: EvaluationReport: evalData
+DB --> EvalDB:  ResultSet
 deactivate DB
 EvalDB --> Controller: EvaluationReport: evalData
 deactivate EvalDB

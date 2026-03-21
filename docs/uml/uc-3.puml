@@ -33,7 +33,7 @@ activate DataAccess
 
 DataAccess -> DB: SELECT * FROM Students WHERE id = ?
 activate DB
-DB --> DataAccess: Student: profileData
+DB --> DataAccess: ResultSet
 deactivate DB
 
 DataAccess --> Controller: Student: profileData

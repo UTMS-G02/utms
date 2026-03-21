@@ -46,7 +46,7 @@ AuthService -> UserDB: findByEmail(email)
 activate UserDB
 UserDB -> DB: SELECT * FROM Users WHERE email = ?
 activate DB
-DB --> UserDB: User: userData
+DB --> UserDB: ResultSet
 deactivate DB
 UserDB --> AuthService: User: userData
 deactivate UserDB
@@ -91,7 +91,7 @@ AuthService -> TokenDB: getTokenDetails(token)
 activate TokenDB
 TokenDB -> DB: SELECT * FROM AuthTokens WHERE tokenId = ? AND isValid = true
 activate DB
-DB --> TokenDB: AuthToken: tokenData
+DB --> TokenDB: ResultSet
 deactivate DB
 TokenDB --> AuthService: AuthToken: tokenData
 deactivate TokenDB
