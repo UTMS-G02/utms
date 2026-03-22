@@ -1,0 +1,84 @@
+@startuml UTMS_Proficiency_Design
+
+title UTMS — English Proficiency Design
+
+top to bottom direction
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam packageStyle rectangle
+skinparam class {
+    BackgroundColor White
+    BorderColor #2C3E50
+    ArrowColor #2C3E50
+}
+skinparam package {
+    BorderColor #5D6D7E
+}
+
+' =============================================
+' BUSINESS LOGIC LAYER
+' =============================================
+
+package "Proficiency Services" #FEF9E7 {
+    class ProficiencyEvaluationService {
+        +fetchApplicationList() : List<TransferApplication>
+        +fetchApplicationDetails(applicationId : Integer) : EnglishProficiencyRecord
+        +approveDocument(applicationId : Integer, explanation : String)
+        +rejectDocument(applicationId : Integer, explanation : String)
+        +updateExamResult(applicationId : Integer, examResult : String, explanation : String)
+        +calculateExemptionStatus(approvalStatus : String) : String
+        +forwardListToOidb()
+    }
+}
+
+' =============================================
+' DATA ACCESS LAYER
+' =============================================
+
+package "Proficiency Domain" #EBF5FB {
+    class EnglishProficiencyRecord {
+        -recordId : Integer
+        -documentApprovalStatus : String
+        -examResult : String
+        -exemptionStatus : String
+        -explanationNote : String
+        -updatedAt : LocalDateTime
+    }
+
+    interface ProficiencyRecordRepository {
+        +findByApplicationId(applicationId : Integer) : EnglishProficiencyRecord
+        +findByExemptionStatus(status : String) : List<EnglishProficiencyRecord>
+        +save(record : EnglishProficiencyRecord) : EnglishProficiencyRecord
+        +delete(record : EnglishProficiencyRecord)
+    }
+}
+
+' =============================================
+' REFERENCES FROM OTHER DOMAINS
+' =============================================
+
+class TransferApplication <<Application Domain>> #EEEEEE {
+    -applicationId : Integer
+    -applicationStatus : String
+}
+
+class EnglishProficiencyCertificate <<Document Domain>> #EEEEEE {
+    -documentId : Integer
+    -filePath : String
+}
+
+' =============================================
+' DOMAIN ASSOCIATIONS
+' =============================================
+
+TransferApplication "1" -- "1" EnglishProficiencyRecord : has >
+EnglishProficiencyRecord "1" -- "0..1" EnglishProficiencyCertificate : verified by >
+
+' =============================================
+' BUSINESS LOGIC -> DATA ACCESS DEPENDENCIES
+' =============================================
+
+ProficiencyEvaluationService ..> ProficiencyRecordRepository : uses
+
+@enduml
