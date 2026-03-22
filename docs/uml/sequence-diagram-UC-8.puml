@@ -1,0 +1,129 @@
+@startuml uc-8
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "Academic Staff (YGK)" as YGK
+
+box "Presentation Layer" #LightCyan
+    participant "EvaluationUI" as UI
+    participant "EvaluationRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "EvaluationService" as EvalService
+    participant "CourseEquivalencyService" as EqService
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "EquivalencyRepository" as EqRepo
+    participant "EvaluationRepository" as EvalRepo
+    participant "TransferApplicationRepository" as AppRepo
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Initial Review & Evaluation ==
+
+YGK -> UI: selectApplication(applicationId)
+activate UI
+
+UI -> RestController: GET /api/evaluation/{id}/details
+activate RestController
+
+RestController -> EvalService: getEvaluationContext(applicationId)
+activate EvalService
+
+EvalService -> AppRepo: findById(applicationId)
+activate AppRepo
+AppRepo -> DB: SELECT * FROM applications WHERE id = ?
+activate DB
+DB --> AppRepo: ApplicationData
+deactivate DB
+AppRepo --> EvalService: ApplicationEntity
+deactivate AppRepo
+
+== 4a. Department-Specific Conditions ==
+
+alt #Pink Department conditions not met
+    EvalService -> EvalService: identifyShortcomings(ApplicationEntity)
+    EvalService --> RestController: ConditionFailureDTO
+    RestController --> UI: HTTP 422: Unprocessable Entity
+    UI --> YGK: Highlight shortcomings on document
+else Conditions met
+    EvalService --> RestController: EvaluationDTO
+    RestController --> UI: HTTP 200: EvaluationDTO
+    UI --> YGK: Display Transcript & Intibak Table
+end
+
+== Course Mapping & Scoring ==
+
+YGK -> UI: mapCourse(sourceCourse, targetCourse, grade)
+UI -> RestController: POST /api/evaluation/map-course
+activate RestController
+RestController -> EqService: validateAndSaveEquivalency(mappingData)
+activate EqService
+EqService -> EqRepo: save(equivalency)
+activate EqRepo
+EqRepo -> DB: INSERT INTO course_equivalencies (...)
+activate DB
+DB --> EqRepo: success
+deactivate DB
+EqRepo --> EqService: true
+deactivate EqRepo
+EqService --> RestController: true
+deactivate EqService
+RestController --> UI: 200 OK
+
+== Finalization & 387a Logic ==
+
+YGK -> UI: clickSubmitFinalEvaluation()
+UI -> RestController: POST /api/evaluation/{id}/submit
+activate RestController
+
+RestController -> EvalService: finalizeEvaluation(applicationId)
+activate EvalService
+
+EvalService -> EvalService: score = calculateFinalScore()
+
+== 387a. Sorting Logic for Equal Scores ==
+
+EvalService -> AppRepo: findAllByScore(score)
+activate AppRepo
+AppRepo -> DB: SELECT * FROM applications WHERE score = ? ORDER BY application_date ASC
+activate DB
+DB --> AppRepo: List<Application>
+deactivate DB
+AppRepo --> EvalService: SortedList
+deactivate AppRepo
+
+EvalService -> EvalRepo: save(evaluation)
+activate EvalRepo
+EvalRepo -> DB: INSERT INTO evaluations (score, ygk_notes) VALUES (?, ?)
+activate DB
+DB --> EvalRepo: evalId
+deactivate DB
+EvalRepo --> EvalService: true
+deactivate EvalRepo
+
+EvalService -> AppRepo: updateStatus(applicationId, "EVALUATED")
+activate AppRepo
+AppRepo -> DB: UPDATE applications SET status = 'EVALUATED' WHERE id = ?
+activate DB
+DB --> AppRepo: success
+deactivate DB
+AppRepo --> EvalService: success
+deactivate AppRepo
+
+EvalService --> RestController: success
+deactivate EvalService
+RestController --> UI: HTTP 200 OK
+deactivate RestController
+
+UI --> YGK: Confirmation("Değerlendirme başarıyla kaydedildi")
+deactivate UI
+
+@enduml
