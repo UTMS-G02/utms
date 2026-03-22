@@ -12,7 +12,7 @@ box "Presentation Layer" #LightCyan
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "ProfileController" as BL
+    participant "ProfileService" as ProfileSvc
 end box
 
 box "Data Access Layer" #LightGreen
@@ -31,20 +31,20 @@ activate UI
 UI -> RestController: GET /api/profile/{studentId}
 activate RestController
 
-RestController -> BL: getProfileData(studentId)
-activate BL
+RestController -> ProfileSvc: getProfileData(studentId)
+activate ProfileSvc
 
-BL -> DataAccess: findById(studentId)
+ProfileSvc -> DataAccess: findById(studentId)
 activate DataAccess
 DataAccess -> DB: read(studentId)
 activate DB
 DB --> DataAccess: Student
 deactivate DB
-DataAccess --> BL: Student
+DataAccess --> ProfileSvc: Student
 deactivate DataAccess
 
-BL --> RestController: Student: profileData
-deactivate BL
+ProfileSvc --> RestController: Student: profileData
+deactivate ProfileSvc
 
 RestController --> UI: HTTP 200: profileData
 deactivate RestController
@@ -60,34 +60,34 @@ activate UI
 UI -> RestController: PUT /api/profile/{studentId} (phone)
 activate RestController
 
-RestController -> BL: updateBasicInfo(studentId, phone)
-activate BL
+RestController -> ProfileSvc: updateBasicInfo(studentId, phone)
+activate ProfileSvc
 
-BL -> BL: validatePhoneNumber(phone)
+ProfileSvc -> ProfileSvc: validatePhoneNumber(phone)
 
 alt Invalid Phone Number
-    BL --> RestController: InvalidPhoneException
+    ProfileSvc --> RestController: InvalidPhoneException
     RestController --> UI: HTTP 400: Validation Error
     UI --> Student: Validation Error
 else Valid Phone Number
-    BL -> DataAccess: findById(studentId)
+    ProfileSvc -> DataAccess: findById(studentId)
     activate DataAccess
     DataAccess -> DB: read(studentId)
     activate DB
     DB --> DataAccess: Student
     deactivate DB
-    DataAccess --> BL: Student
+    DataAccess --> ProfileSvc: Student
     deactivate DataAccess
 
-    BL -> BL: student.setPhoneNumber(phone)
+    ProfileSvc -> ProfileSvc: student.setPhoneNumber(phone)
 
-    BL -> DataAccess: save(student)
+    ProfileSvc -> DataAccess: save(student)
     activate DataAccess
 
     alt Database Error
-        DataAccess --> BL: DatabaseException
+        DataAccess --> ProfileSvc: DatabaseException
         deactivate DataAccess
-        BL --> RestController: DatabaseException
+        ProfileSvc --> RestController: DatabaseException
         RestController --> UI: HTTP 500: Update Failed
         UI --> Student: Error("Geçici bir sistem hatası oluştu...")
     else Save Successful
@@ -95,16 +95,16 @@ else Valid Phone Number
         activate DB
         DB --> DataAccess: Student
         deactivate DB
-        DataAccess --> BL: Student
+        DataAccess --> ProfileSvc: Student
         deactivate DataAccess
 
-        BL --> RestController: void
+        ProfileSvc --> RestController: void
         RestController --> UI: HTTP 200 OK
         UI --> Student: showUpdateConfirmation("Bilgileriniz başarıyla güncellendi")
     end
 end
 
-deactivate BL
+deactivate ProfileSvc
 deactivate RestController
 deactivate UI
 
@@ -116,51 +116,51 @@ activate UI
 UI -> RestController: PUT /api/profile/{studentId}/password (current, new, repeat)
 activate RestController
 
-RestController -> BL: changePassword(studentId, currentPassword, newPassword, repeatPassword)
-activate BL
+RestController -> ProfileSvc: changePassword(studentId, currentPassword, newPassword, repeatPassword)
+activate ProfileSvc
 
-BL -> DataAccess: findById(studentId)
+ProfileSvc -> DataAccess: findById(studentId)
 activate DataAccess
 DataAccess -> DB: read(studentId)
 activate DB
 DB --> DataAccess: Student
 deactivate DB
-DataAccess --> BL: Student
+DataAccess --> ProfileSvc: Student
 deactivate DataAccess
 
-BL -> BL: verifyCurrentPassword(currentPassword, student.passwordHash)
+ProfileSvc -> ProfileSvc: verifyCurrentPassword(currentPassword, student.passwordHash)
 
 alt Incorrect Current Password
-    BL --> RestController: WrongPasswordException
+    ProfileSvc --> RestController: WrongPasswordException
     RestController --> UI: HTTP 400: Wrong Password
     UI --> Student: Error("Mevcut şifreniz hatalı. Lütfen tekrar deneyin.")
 else Correct Current Password
-    BL -> BL: validateSecurityPolicies(newPassword, repeatPassword)
+    ProfileSvc -> ProfileSvc: validateSecurityPolicies(newPassword, repeatPassword)
 
     alt New Password Fails Rules or Matches Old Password
-        BL --> RestController: WeakPasswordException
+        ProfileSvc --> RestController: WeakPasswordException
         RestController --> UI: HTTP 400: Password Requirements Error
         UI --> Student: Password Requirements Error
     else Valid New Password
-        BL -> BL: newHash = hashNewPassword(newPassword)
-        BL -> BL: student.setPasswordHash(newHash)
+        ProfileSvc -> ProfileSvc: newHash = hashNewPassword(newPassword)
+        ProfileSvc -> ProfileSvc: student.setPasswordHash(newHash)
 
-        BL -> DataAccess: save(student)
+        ProfileSvc -> DataAccess: save(student)
         activate DataAccess
         DataAccess -> DB: persist(student)
         activate DB
         DB --> DataAccess: Student
         deactivate DB
-        DataAccess --> BL: Student
+        DataAccess --> ProfileSvc: Student
         deactivate DataAccess
 
-        BL --> RestController: void
+        ProfileSvc --> RestController: void
         RestController --> UI: HTTP 200 OK
         UI --> Student: showUpdateConfirmation("Şifreniz başarıyla güncellendi")
     end
 end
 
-deactivate BL
+deactivate ProfileSvc
 deactivate RestController
 
 opt Cancellation

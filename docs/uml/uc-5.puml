@@ -12,7 +12,7 @@ box "Presentation Layer" #LightCyan
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "RoutingService" as BL
+    participant "RoutingService" as RoutingSvc
 end box
 
 box "Data Access Layer" #LightGreen
@@ -31,20 +31,20 @@ activate UI
 UI -> RestController: GET /api/oidb/applications?status=YDYO+Completed
 activate RestController
 
-RestController -> BL: fetchEvaluatedApplications()
-activate BL
+RestController -> RoutingSvc: fetchEvaluatedApplications()
+activate RoutingSvc
 
-BL -> AppDB: findByApplicationStatus('YDYO Completed')
+RoutingSvc -> AppDB: findByApplicationStatus('YDYO Completed')
 activate AppDB
 AppDB -> DB: read(status)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> RoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL --> RestController: List<TransferApplication>
-deactivate BL
+RoutingSvc --> RestController: List<TransferApplication>
+deactivate RoutingSvc
 
 RestController --> UI: HTTP 200: applications
 deactivate RestController
@@ -60,20 +60,20 @@ activate UI
 UI -> RestController: GET /api/oidb/applications/{applicationId}
 activate RestController
 
-RestController -> BL: fetchApplicationDetails(applicationId)
-activate BL
+RestController -> RoutingSvc: fetchApplicationDetails(applicationId)
+activate RoutingSvc
 
-BL -> AppDB: findById(applicationId)
+RoutingSvc -> AppDB: findById(applicationId)
 activate AppDB
 AppDB -> DB: read(applicationId)
 activate DB
 DB --> AppDB: TransferApplication
 deactivate DB
-AppDB --> BL: TransferApplication
+AppDB --> RoutingSvc: TransferApplication
 deactivate AppDB
 
-BL --> RestController: TransferApplication
-deactivate BL
+RoutingSvc --> RestController: TransferApplication
+deactivate RoutingSvc
 
 RestController --> UI: HTTP 200: application
 deactivate RestController
@@ -91,38 +91,38 @@ alt YDYO Approved (exemptionStatus = 'Muaf' or document approved)
     UI -> RestController: PATCH /api/oidb/applications/{applicationId}/forward-to-faculty
     activate RestController
 
-    RestController -> BL: routeToFaculty(applicationId)
-    activate BL
+    RestController -> RoutingSvc: routeToFaculty(applicationId)
+    activate RoutingSvc
 
-    BL -> AppDB: findById(applicationId)
+    RoutingSvc -> AppDB: findById(applicationId)
     activate AppDB
     AppDB -> DB: read(applicationId)
     activate DB
     DB --> AppDB: TransferApplication
     deactivate DB
-    AppDB --> BL: TransferApplication
+    AppDB --> RoutingSvc: TransferApplication
     deactivate AppDB
 
-    BL -> BL: targetDepartment = application.getTargetDepartment()
+    RoutingSvc -> RoutingSvc: targetDepartment = application.getTargetDepartment()
 
     alt No Dean's Office Mapped for Department (REL-2)
-        BL --> RestController: UnmappedDepartmentException
+        RoutingSvc --> RestController: UnmappedDepartmentException
         RestController --> UI: HTTP 400: No Faculty Mapped
         UI --> Staff: Error('Hedef bölüm için yetkili fakülte bulunamadı.')
     else Dean's Office Found
-        BL -> BL: application.setApplicationStatus('Fakültede')
+        RoutingSvc -> RoutingSvc: application.setApplicationStatus('Fakültede')
 
-        BL -> AppDB: save(application)
+        RoutingSvc -> AppDB: save(application)
         activate AppDB
         AppDB -> DB: persist(application)
         activate DB
         DB --> AppDB: TransferApplication
         deactivate DB
-        AppDB --> BL: TransferApplication
+        AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
 
-        BL --> RestController: void
-        deactivate BL
+        RoutingSvc --> RestController: void
+        deactivate RoutingSvc
 
         RestController --> UI: HTTP 200 OK
         deactivate RestController
@@ -144,31 +144,31 @@ else YDYO Rejected (exemptionStatus = 'Muaf Degil')
     UI -> RestController: PATCH /api/oidb/applications/{applicationId}/reject
     activate RestController
 
-    RestController -> BL: rejectApplication(applicationId)
-    activate BL
+    RestController -> RoutingSvc: rejectApplication(applicationId)
+    activate RoutingSvc
 
-    BL -> AppDB: findById(applicationId)
+    RoutingSvc -> AppDB: findById(applicationId)
     activate AppDB
     AppDB -> DB: read(applicationId)
     activate DB
     DB --> AppDB: TransferApplication
     deactivate DB
-    AppDB --> BL: TransferApplication
+    AppDB --> RoutingSvc: TransferApplication
     deactivate AppDB
 
-    BL -> BL: application.setApplicationStatus('Reddedildi')
+    RoutingSvc -> RoutingSvc: application.setApplicationStatus('Reddedildi')
 
-    BL -> AppDB: save(application)
+    RoutingSvc -> AppDB: save(application)
     activate AppDB
     AppDB -> DB: persist(application)
     activate DB
     DB --> AppDB: TransferApplication
     deactivate DB
-    AppDB --> BL: TransferApplication
+    AppDB --> RoutingSvc: TransferApplication
     deactivate AppDB
 
-    BL --> RestController: void
-    deactivate BL
+    RoutingSvc --> RestController: void
+    deactivate RoutingSvc
 
     RestController --> UI: HTTP 200 OK
     deactivate RestController
