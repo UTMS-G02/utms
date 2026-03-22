@@ -78,7 +78,7 @@ else Valid Credentials
     OTPDB --> AuthService: OTPRecord
     deactivate OTPDB
 
-    AuthService -> EmailManager: sendStatusUpdate(email, otpMessage)
+    AuthService -> EmailManager: sendEmail(email, otpMessage)
     activate EmailManager
 
     alt Email Sending Error

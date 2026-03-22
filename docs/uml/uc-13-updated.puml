@@ -69,7 +69,7 @@ else Account Exists
     TokenDB --> AuthService: AuthToken
     deactivate TokenDB
 
-    AuthService -> EmailManager: sendStatusUpdate(email, resetLink)
+    AuthService -> EmailManager: sendEmail(email, resetLink)
     activate EmailManager
     EmailManager --> AuthService: void
     deactivate EmailManager

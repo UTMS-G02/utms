@@ -37,7 +37,7 @@ activate RestController
 RestController -> Controller: fetchFinalDecisions(cycleId)
 activate Controller
 
-Controller -> DecisionDB: findByCycleId(cycleId)
+Controller -> DecisionDB: fetchDecisionsByCycle(cycleId)
 activate DecisionDB
 DecisionDB -> DB: read(cycleId)
 activate DB
@@ -86,7 +86,7 @@ deactivate AppDB
 
 Controller -> Controller: triggerNotifications(cycleId)
 
-Controller -> EmailManager: sendStatusUpdates(cycleId)
+Controller -> EmailManager: sendEmail(cycleId)
 activate EmailManager
 
 alt Notification Failure

@@ -36,7 +36,7 @@ activate RestController
 RestController -> VerifController: fetchPendingApplications()
 activate VerifController
 
-VerifController -> AppDB: findByApplicationStatus("Pending")
+VerifController -> AppDB: fetchApplicationsByStatus("Pending")
 activate AppDB
 AppDB -> DB: read(status)
 activate DB
@@ -65,7 +65,7 @@ activate RestController
 RestController -> VerifController: verifyDocuments(applicationId)
 activate VerifController
 
-VerifController -> AppDB: findById(applicationId)
+VerifController -> AppDB: findApplicationById(applicationId)
 activate AppDB
 AppDB -> DB: read(applicationId)
 activate DB
@@ -74,7 +74,7 @@ deactivate DB
 AppDB --> VerifController: TransferApplication
 deactivate AppDB
 
-VerifController -> DocDB: findById(applicationId)
+VerifController -> DocDB: findDocumentById(applicationId)
 activate DocDB
 DocDB -> DB: read(applicationId)
 activate DB
@@ -103,7 +103,7 @@ alt Invalid or Missing Documents
     RestController -> VerifController: requestDocumentCorrection(applicationId, note)
     activate VerifController
 
-    VerifController -> AppDB: findById(applicationId)
+    VerifController -> AppDB: findApplicationById(applicationId)
     activate AppDB
     AppDB -> DB: read(applicationId)
     activate DB
@@ -143,7 +143,7 @@ else Documents are Valid
     RestController -> VerifController: markApplicationVerified(applicationId)
     activate VerifController
 
-    VerifController -> DocDB: findByApplicationId(applicationId)
+    VerifController -> DocDB: findDocumentById(applicationId)
     activate DocDB
     DocDB -> DB: read(applicationId)
     activate DB
@@ -186,7 +186,7 @@ else Documents are Valid
         RestController -> RouteService: forwardToYDYO(applicationId)
         activate RouteService
 
-        RouteService -> AppDB: findById(applicationId)
+        RouteService -> AppDB: findApplicationById(applicationId)
         activate AppDB
         AppDB -> DB: read(applicationId)
         activate DB
@@ -223,7 +223,7 @@ else Documents are Valid
         RestController -> RouteService: rejectApplication(applicationId)
         activate RouteService
 
-        RouteService -> AppDB: findById(applicationId)
+        RouteService -> AppDB: findApplicationById(applicationId)
         activate AppDB
         AppDB -> DB: read(applicationId)
         activate DB

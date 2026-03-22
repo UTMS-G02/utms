@@ -132,7 +132,7 @@ alt Link Invalid or Expired
     end
 
 else Link Valid
-    BL -> DataAccess: findById(studentId)
+    BL -> DataAccess: findStudentById(studentId)
     activate DataAccess
     DataAccess -> DB: read(studentId)
     activate DB

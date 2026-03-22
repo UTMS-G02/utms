@@ -36,7 +36,7 @@ activate RestController
 RestController -> Controller: fetchApplicationDetails(applicationId)
 activate Controller
 
-Controller -> AppDB: findById(applicationId)
+Controller -> AppDB: findApplicationById(applicationId)
 activate AppDB
 AppDB -> DB: read(applicationId)
 activate DB
@@ -45,7 +45,7 @@ deactivate DB
 AppDB --> Controller: TransferApplication
 deactivate AppDB
 
-Controller -> EvalDB: findByApplicationId(applicationId)
+Controller -> EvalDB: findEvalutionById(applicationId)
 activate EvalDB
 EvalDB -> DB: read(applicationId)
 activate DB
@@ -90,7 +90,7 @@ end
 
 activate Controller
 
-Controller -> Controller: verifyEquivalencyCompliance(applicationId)
+
 
 Controller -> Controller: decision = new BoardDecision(decisionType, rejectionCode, now)
 
