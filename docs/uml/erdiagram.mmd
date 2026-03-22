@@ -1,0 +1,123 @@
+erDiagram
+    USER ||--o{ NOTIFICATION : "receives"
+    USER ||--o| STUDENT : "specializes"
+    USER ||--o| STAFF : "specializes"
+    USER ||--o{ AUTH_TOKEN : "has"
+    USER ||--o{ OTP_RECORD : "has"
+    
+    STAFF ||--o{ EVALUATION : "performs"
+    STAFF }|--|| DEPARTMENT : "belongs_to"
+    
+    STUDENT ||--o{ TRANSFER_APPLICATION : "submits"
+    
+    TRANSFER_APPLICATION ||--o{ DOCUMENT : "includes"
+    TRANSFER_APPLICATION ||--|| EVALUATION : "receives"
+    TRANSFER_APPLICATION ||--o{ AUDIT_LOG : "tracked_by"
+    TRANSFER_APPLICATION ||--o{ INTIBAK_RECORD : "generates"
+    TRANSFER_APPLICATION ||--o| PROFICIENCY_RECORD : "verified_by"
+    
+    NOTIFICATION {
+        int notification_id PK
+        int user_id FK
+        string message
+        string status "Sent, Read, Failed"
+        datetime sent_at
+    }
+
+    INTIBAK_RECORD {
+        int intibak_id PK
+        int application_id FK
+        string source_course "Old University Course"
+        string target_course "IZTECH Equivalent"
+        int credits
+        string approval_status "Approved, Denied"
+    }
+
+    USER {
+        int user_id PK
+        string email
+        string password_hash
+        datetime last_login_date
+    }
+
+    STUDENT {
+        int student_id PK
+        int user_id FK
+        string tckn
+        string first_name
+        string last_name
+        string phone_number
+        datetime date_of_birth
+        float gpa
+        string current_university
+        string current_department
+        boolean is_active
+        datetime kvkk_accepted_at
+    }
+
+    STAFF {
+        int staff_id PK
+        int user_id FK
+        int department_id FK
+        string staff_type "OIDB, YDYO, YGK, DEAN, FACULTY"
+    }
+
+    DEPARTMENT {
+        int department_id PK
+        string department_name
+    }
+
+    TRANSFER_APPLICATION {
+        int application_id PK
+        int student_id FK
+        string target_department
+        string status "Pending, YDYO_Approved, Routed_to_Faculty, Rejected"
+        datetime created_at
+    }
+
+    PROFICIENCY_RECORD {
+        int record_id PK
+        int application_id FK
+        string exam_result
+        string exemption_status "Muaf, Muaf Degil, Beklemede"
+        string explanation
+    }
+
+    EVALUATION {
+        int evaluation_id PK
+        int application_id FK
+        int evaluator_id FK
+        float score
+        string comments
+        datetime evaluation_date
+    }
+
+    DOCUMENT {
+        int document_id PK
+        int application_id FK
+        string doc_type
+        string file_path
+    }
+
+    AUTH_TOKEN {
+        string token_id PK
+        int user_id FK
+        datetime expiry_date
+        boolean is_valid
+    }
+
+    OTP_RECORD {
+        int otp_id PK
+        int user_id FK
+        string otp_code
+        int failed_attempts
+        datetime expiry_time
+    }
+
+    AUDIT_LOG {
+        int log_id PK
+        int application_id FK
+        int user_id FK
+        string action "Routed to Faculty, Rejected, etc."
+        datetime timestamp
+    }
