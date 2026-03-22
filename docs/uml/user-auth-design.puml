@@ -32,7 +32,7 @@ package "Business Logic Layer" #FEF9E7 {
             +validateSecurityPolicies(newPassword : String, confirmPassword : String)
             +hashPassword(password : String) : String
         }
-        class RegistrationController {
+        class RegistrationService {
             +validateEmailFormat(email : String)
             +checkEmailExists(email : String)
             +validatePasswordStrength(password : String)
@@ -40,7 +40,7 @@ package "Business Logic Layer" #FEF9E7 {
             +generateActivationLink() : String
             +verifyActivationLink(link : String)
         }
-        class ProfileController {
+        class ProfileService {
             +validatePhoneNumber(phone : String)
             +verifyCurrentPassword(password : String)
             +hashNewPassword(newPassword : String) : String
@@ -150,7 +150,7 @@ User "1" -- "0..1" OTPRecord : has >
 AuthenticationService ..> UserRepository : uses
 AuthenticationService ..> OTPRecordRepository : uses
 AuthenticationService ..> AuthTokenRepository : uses
-RegistrationController ..> UserRepository : uses
-ProfileController ..> UserRepository : uses
+RegistrationService ..> UserRepository : uses
+ProfileService ..> UserRepository : uses
 
 @enduml
