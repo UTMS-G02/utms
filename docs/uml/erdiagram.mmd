@@ -65,6 +65,7 @@ erDiagram
     DEPARTMENT {
         int department_id PK
         string department_name
+        
     }
 
     TRANSFER_APPLICATION {
@@ -78,9 +79,10 @@ erDiagram
     PROFICIENCY_RECORD {
         int record_id PK
         int application_id FK
-        string exam_result
+        string document_approval_status "Onaylandı, Onaylanmadı"
+        string exam_result "Sınav Gerekli Değil, Sınav Sonucu Bekleniyor, Sınav Başarısız"
         string exemption_status "Muaf, Muaf Degil, Beklemede"
-        string explanation
+        string explanation_note
     }
 
     EVALUATION {
@@ -97,6 +99,16 @@ erDiagram
         int application_id FK
         string doc_type
         string file_path
+        boolean is_locked
+    }
+
+    BOARD_DECISION {
+        int document_id PK
+        int cycleId
+        int application_id FK
+        string doc_type
+        string file_path
+        boolean is_locked
     }
 
     AUTH_TOKEN {
