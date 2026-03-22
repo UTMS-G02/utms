@@ -15,10 +15,12 @@ erDiagram
     TRANSFER_APPLICATION ||--o{ AUDIT_LOG : "tracked_by"
     TRANSFER_APPLICATION ||--o{ INTIBAK_RECORD : "generates"
     TRANSFER_APPLICATION ||--o| PROFICIENCY_RECORD : "verified_by"
+    TRANSFER_APPLICATION ||--o| BOARD_DECISION : "finalized_by"
     
     NOTIFICATION {
         int notification_id PK
         int user_id FK
+        int cycle_id
         string message
         string status "Sent, Read, Failed"
         datetime sent_at
@@ -71,6 +73,7 @@ erDiagram
     TRANSFER_APPLICATION {
         int application_id PK
         int student_id FK
+        int cycle_id
         string target_department
         string status "Pending, YDYO_Approved, Routed_to_Faculty, Rejected"
         datetime created_at
@@ -103,12 +106,12 @@ erDiagram
     }
 
     BOARD_DECISION {
-        int document_id PK
-        int cycleId
+        int decision_id PK
         int application_id FK
-        string doc_type
-        string file_path
-        boolean is_locked
+        int cycleId
+        string decisionType
+        string rejection_code
+        datetime decision_date
     }
 
     AUTH_TOKEN {
