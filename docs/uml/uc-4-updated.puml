@@ -74,13 +74,13 @@ deactivate DB
 AppDB --> VerifController: TransferApplication
 deactivate AppDB
 
-VerifController -> DocDB: findByApplicationId(applicationId)
+VerifController -> DocDB: findById(applicationId)
 activate DocDB
 DocDB -> DB: read(applicationId)
 activate DB
-DB --> DocDB: List<BaseDocument>
+DB --> DocDB: List<Document>
 deactivate DB
-DocDB --> VerifController: List<BaseDocument>
+DocDB --> VerifController: List<Document>
 deactivate DocDB
 
 VerifController --> RestController: ApplicationData: viewData
@@ -147,9 +147,9 @@ else Documents are Valid
     activate DocDB
     DocDB -> DB: read(applicationId)
     activate DB
-    DB --> DocDB: List<BaseDocument>
+    DB --> DocDB: List<Document>
     deactivate DB
-    DocDB --> VerifController: List<BaseDocument>
+    DocDB --> VerifController: List<Document>
     deactivate DocDB
 
     VerifController -> VerifController: documents.forEach(d -> d.setLocked(true))
@@ -158,9 +158,9 @@ else Documents are Valid
     activate DocDB
     DocDB -> DB: persist(documents)
     activate DB
-    DB --> DocDB: List<BaseDocument>
+    DB --> DocDB: List<Document>
     deactivate DB
-    DocDB --> VerifController: List<BaseDocument>
+    DocDB --> VerifController: List<Document>
     deactivate DocDB
 
     VerifController --> RestController: void
@@ -248,7 +248,7 @@ else Documents are Valid
 
         RestController --> UI: HTTP 200 OK
         deactivate RestController
-        UI --> Staff: Action Confirmation("Başvuru reddedildi.")
+        UI --> Staff: Action Confirmation Message("Başvuru reddedildi.")
 
     end
 

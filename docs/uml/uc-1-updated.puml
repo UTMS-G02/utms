@@ -104,7 +104,7 @@ deactivate UI
 
 == Activation Phase ==
 
-Student -> UI: clickActivationLink(link)
+Student -> UI: clickActivationLink()
 activate UI
 
 UI -> RestController: GET /api/activate?link={link}

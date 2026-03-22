@@ -142,7 +142,7 @@ else Correct Current Password
         RestController --> UI: HTTP 400: Password Requirements Error
         UI --> Student: Password Requirements Error
     else Valid New Password
-        BL -> BL: newHash = hashNewPassword(newPassword)
+        BL -> BL: newHash = hashPassword(newPassword)
         BL -> BL: student.setPasswordHash(newHash)
 
         BL -> DataAccess: save(student)
@@ -156,7 +156,7 @@ else Correct Current Password
 
         BL --> RestController: void
         RestController --> UI: HTTP 200 OK
-        UI --> Student: showUpdateConfirmation("Şifreniz başarıyla güncellendi")
+        UI --> Student: Update Confirmation Message("Şifreniz başarıyla güncellendi")
     end
 end
 
