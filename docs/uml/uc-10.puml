@@ -210,7 +210,11 @@ deactivate DB
 AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('Finalized'))
+alt Applications Approved (status = 'Değerlendirme Onaylandı')
+    DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('Finalized'))
+else Applications Rejected (status = 'Başvuru Reddedildi')
+    DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('Rejected'))
+end
 
 DeanRoutingSvc -> AppDB: saveAll(applications)
 activate AppDB
