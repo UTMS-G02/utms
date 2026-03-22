@@ -1,0 +1,157 @@
+@startuml UTMS_Application_Design
+
+title UTMS — Application & Document Design
+
+top to bottom direction
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam packageStyle rectangle
+skinparam class {
+    BackgroundColor White
+    BorderColor #2C3E50
+    ArrowColor #2C3E50
+}
+skinparam package {
+    BorderColor #5D6D7E
+}
+
+' =============================================
+' BUSINESS LOGIC LAYER
+' =============================================
+
+package "Application Services" #FEF9E7 {
+    interface ITransferApplicationService {
+        +submitApplication(app : TransferApplication)
+        +updateStatus(appId : Integer, status : String)
+    }
+    class TransferApplicationManager
+    class ApplicationService {
+        +validateMandatoryFields()
+        +validateFileFormatAndSize(file : BaseDocument)
+        +checkInitialEligibility(gpa : Float, yksRanking : Integer)
+    }
+    class DocumentVerificationService {
+        +verifyDocuments(applicationId : Integer)
+        +requestDocumentCorrection(applicationId : Integer)
+    }
+    class RoutingService {
+        +forwardToYDYO(applicationId : Integer)
+        +routeToFaculty(applicationId : Integer, targetDepartment : String)
+        +rejectApplication(applicationId : Integer)
+    }
+}
+
+' =============================================
+' DATA ACCESS LAYER
+' =============================================
+
+package "Application Domain" #EBF5FB {
+    class TransferApplication {
+        -applicationId : Integer
+        -gpa : Float
+        -yksRanking : Integer
+        -currentYear : Integer
+        -currentDepartment : String
+        -targetDepartment : String
+        -applicationStatus : String
+        -eligibilityStatus : String
+        -finalDecision : String
+        +updateApplicationStatus(newStatus : String)
+    }
+    class ApplicationCycle {
+        -cycleId : Integer
+        -academicYear : Integer
+        -applicationStart : LocalDate
+        -applicationEnd : LocalDate
+        -quota : Integer
+        -isActive : Boolean
+    }
+    class Notification {
+        -notificationId : Integer
+        -recipientEmail : String
+        -messageBody : String
+        -sentDate : LocalDateTime
+        -status : String
+    }
+
+    interface TransferApplicationRepository {
+        +findById(applicationId : Integer) : Optional<TransferApplication>
+        +findByApplicationStatus(status : String) : List<TransferApplication>
+        +save(app : TransferApplication) : TransferApplication
+        +saveAll(apps : List<TransferApplication>) : List<TransferApplication>
+    }
+    interface ApplicationCycleRepository {
+        +findActivecycle() : Optional<ApplicationCycle>
+        +findById(cycleId : Integer) : Optional<ApplicationCycle>
+        +save(cycle : ApplicationCycle) : ApplicationCycle
+    }
+    interface NotificationRepository {
+        +findByRecipientEmail(email : String) : List<Notification>
+        +save(notification : Notification) : Notification
+    }
+}
+
+package "Document Domain" #EBF5FB {
+    abstract class BaseDocument {
+        -documentId : Integer
+        -uploadDate : LocalDate
+        -fileSize : Float
+        -fileFormat : String
+        -filePath : String
+        -isLocked : Boolean
+        +lockDocument()
+        +updateDocument()
+    }
+    class Transcript
+    class YksResultDocument
+    class StudentCertificate
+    class EnglishProficiencyCertificate
+
+    interface BaseDocumentRepository {
+        +findByApplicationId(applicationId : Integer) : List<BaseDocument>
+        +save(doc : BaseDocument) : BaseDocument
+    }
+}
+
+' =============================================
+' REFERENCE FROM USER DOMAIN
+' =============================================
+
+class Student <<User Domain>> #EEEEEE {
+    -tckn : String
+    -gpa : Float
+}
+
+' =============================================
+' INHERITANCE
+' =============================================
+
+ITransferApplicationService <|.. TransferApplicationManager
+
+BaseDocument <|-- Transcript
+BaseDocument <|-- YksResultDocument
+BaseDocument <|-- StudentCertificate
+BaseDocument <|-- EnglishProficiencyCertificate
+
+' =============================================
+' DOMAIN ASSOCIATIONS
+' =============================================
+
+Student "1" -- "0..*" TransferApplication : submits >
+ApplicationCycle "1" -- "0..*" TransferApplication : contains >
+TransferApplication "1" *-- "1..*" BaseDocument : contains >
+TransferApplication "1" -- "0..*" Notification : triggers >
+
+' =============================================
+' BUSINESS LOGIC -> DATA ACCESS DEPENDENCIES
+' =============================================
+
+TransferApplicationManager ..> TransferApplicationRepository : uses
+ApplicationService ..> TransferApplicationRepository : uses
+ApplicationService ..> BaseDocumentRepository : uses
+DocumentVerificationService ..> TransferApplicationRepository : uses
+DocumentVerificationService ..> BaseDocumentRepository : uses
+RoutingService ..> TransferApplicationRepository : uses
+
+@enduml

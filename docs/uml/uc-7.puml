@@ -12,7 +12,7 @@ box "Presentation Layer" #LightCyan
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "ProficiencyEvaluationController" as BL
+    participant "ProficiencyEvaluationService" as BL
 end box
 
 box "Data Access Layer" #LightGreen
