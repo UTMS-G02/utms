@@ -1,1 +1,152 @@
-...
+@startuml uc-2-yoksis-integration
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "Student" as User
+
+box "Presentation Layer" #LightCyan
+    participant "TransferUI" as UI
+    participant "AppRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "AppService" as Service
+    participant "SystemValidator" as Validator
+    participant "EmailManager" as EmailManager
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "AppRepository" as AppDB
+    participant "DocRepository" as DocDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+box "External Services Layer" #LightGray
+    participant "YÖKSİS API" as Yoksis
+end box
+
+== Identity & Eligibility Verification (Steps 1-5) ==
+
+User -> UI: enterDetails(TCKN) & click("Verify via YÖKSİS")
+activate UI
+UI -> RestController: GET /api/yoksis/verify?tckn=...
+activate RestController
+
+RestController -> Service: fetchAcademicInfo(tckn)
+activate Service
+
+Service -> Yoksis: GET /students/{tckn}/academic-info
+activate Yoksis
+
+alt Exception 4-EX: YÖKSİS Connection Failure
+    Yoksis --> Service: Timeout / 503 Error
+    Service --> RestController: ExternalServiceException
+    RestController --> UI: HTTP 503 Service Unavailable
+    UI --> User: Error("Academic records could not be fetched. Please try again later.")
+else Connection Success
+    Yoksis --> Service: AcademicData (GPA, Dept, YKS)
+    deactivate Yoksis
+
+    Service -> Validator: verifyEligibility(AcademicData)
+    activate Validator
+    
+    alt Alt 5a: GPA < 2.50 or YKS Below Threshold
+        Validator --> Service: IneligibleException
+        Service --> RestController: IneligibleResponse
+        RestController --> UI: HTTP 406 Not Acceptable
+        UI --> User: Error("Fetched GPA does not meet minimum 2.50. Submission blocked.")
+    else GPA >= 2.50
+        Validator --> Service: valid
+        deactivate Validator
+        
+        Service --> RestController: AcademicData
+        RestController --> UI: HTTP 200 OK
+        UI --> User: Auto-populate read-only fields & Unlock Document Uploads
+    end
+end
+
+deactivate Service
+deactivate RestController
+
+== Document Upload & Validation (Steps 6-7) ==
+
+User -> UI: uploadDocuments(Transcript, YKS, etc.)
+UI -> RestController: POST /api/documents/validate
+activate RestController
+
+RestController -> Validator: validateFormatAndSize(files)
+activate Validator
+
+alt Alt 7a & 6-EX: Incorrect Format/Size or Corrupted File
+    Validator --> RestController: InvalidDocumentException
+    RestController --> UI: HTTP 400 Bad Request
+    UI --> User: Warning("Files In Incorrect Format, Size, or Corrupted.")
+else Files Valid
+    Validator --> RestController: valid
+    deactivate Validator
+    
+    RestController --> UI: HTTP 200 OK
+    UI --> User: Show Progress Bar & Enable "Submit Application" Button
+end
+
+deactivate RestController
+
+== Final Submission (Steps 8-10) ==
+
+User -> UI: click("Submit Application")
+UI -> RestController: POST /api/applications/submit (FormData)
+activate RestController
+
+RestController -> Service: processSubmission(studentId, formData)
+activate Service
+
+Service -> Validator: checkApplicationPeriod()
+activate Validator
+
+alt Exception 8-EX: Period Expires During Entry
+    Validator --> Service: PeriodClosedException
+    Service --> RestController: DeadlinePassedException
+    RestController --> UI: HTTP 403 Forbidden
+    UI --> User: Error("Period Closed. Unsaved draft discarded.")
+else Period Open
+    Validator --> Service: valid
+end
+deactivate Validator
+
+Service -> AppDB: saveApplication(status="Pending")
+activate AppDB
+AppDB -> DB: persist(application)
+activate DB
+DB --> AppDB: ApplicationRecord
+deactivate DB
+AppDB --> Service: ApplicationRecord
+deactivate AppDB
+
+Service -> DocDB: lockAndSaveDocuments(documents)
+activate DocDB
+DocDB -> DB: persistFiles()
+activate DB
+DB --> DocDB: void
+deactivate DB
+DocDB --> Service: void
+deactivate DocDB
+
+Service -> EmailManager: sendEmail(email, confirmationMessage)
+activate EmailManager
+EmailManager --> Service: void
+deactivate EmailManager
+
+Service --> RestController: SuccessResponse
+RestController --> UI: HTTP 201 Created
+UI --> User: Show Success Notification & Read-Only View of Application
+
+deactivate Service
+deactivate RestController
+deactivate UI
+
+@enduml
