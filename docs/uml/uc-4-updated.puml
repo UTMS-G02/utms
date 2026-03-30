@@ -12,8 +12,8 @@ box "Presentation Layer" #LightCyan
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "DocumentVerificationController" as VerifController
-    participant "RoutingService" as RouteService
+    participant "DocumentVerificationService" as VerifSvc
+    participant "RoutingService" as RoutingSvc
 end box
 
 box "Data Access Layer" #LightGreen
@@ -33,20 +33,20 @@ activate UI
 UI -> RestController: GET /api/oidb/applications?status=Pending
 activate RestController
 
-RestController -> VerifController: fetchPendingApplications()
-activate VerifController
+RestController -> VerifSvc: fetchPendingApplications()
+activate VerifSvc
 
-VerifController -> AppDB: fetchApplicationsByStatus("Pending")
+VerifSvc -> AppDB: fetchApplicationByStatus("Pending")
 activate AppDB
 AppDB -> DB: read(status)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> VerifController: List<TransferApplication>
+AppDB --> VerifSvc: List<TransferApplication>
 deactivate AppDB
 
-VerifController --> RestController: List<TransferApplication>: pendingApps
-deactivate VerifController
+VerifSvc --> RestController: List<TransferApplication>: pendingApps
+deactivate VerifSvc
 
 RestController --> UI: HTTP 200: pendingApps
 deactivate RestController
@@ -62,29 +62,29 @@ activate UI
 UI -> RestController: GET /api/oidb/applications/{applicationId}
 activate RestController
 
-RestController -> VerifController: verifyDocuments(applicationId)
-activate VerifController
+RestController -> VerifSvc: verifyDocuments(applicationId)
+activate VerifSvc
 
-VerifController -> AppDB: findApplicationById(applicationId)
+VerifSvc -> AppDB: findApplicationById(applicationId)
 activate AppDB
 AppDB -> DB: read(applicationId)
 activate DB
 DB --> AppDB: TransferApplication
 deactivate DB
-AppDB --> VerifController: TransferApplication
+AppDB --> VerifSvc: TransferApplication
 deactivate AppDB
 
-VerifController -> DocDB: findDocumentById(applicationId)
+VerifSvc -> DocDB: findDocumentById(applicationId)
 activate DocDB
 DocDB -> DB: read(applicationId)
 activate DB
 DB --> DocDB: List<Document>
 deactivate DB
-DocDB --> VerifController: List<Document>
+DocDB --> VerifSvc: List<BaseDocument>
 deactivate DocDB
 
-VerifController --> RestController: ApplicationData: viewData
-deactivate VerifController
+VerifSvc --> RestController: ApplicationData: viewData
+deactivate VerifSvc
 
 RestController --> UI: HTTP 200: viewData
 deactivate RestController
@@ -100,31 +100,31 @@ alt Invalid or Missing Documents
     UI -> RestController: PATCH /api/oidb/applications/{applicationId}/status (note)
     activate RestController
 
-    RestController -> VerifController: requestDocumentCorrection(applicationId, note)
-    activate VerifController
+    RestController -> VerifSvc: requestDocumentCorrection(applicationId, note)
+    activate VerifSvc
 
-    VerifController -> AppDB: findApplicationById(applicationId)
+    VerifSvc -> AppDB: findApplicationById(applicationId)
     activate AppDB
     AppDB -> DB: read(applicationId)
     activate DB
     DB --> AppDB: TransferApplication
     deactivate DB
-    AppDB --> VerifController: TransferApplication
+    AppDB --> VerifSvc: TransferApplication
     deactivate AppDB
 
-    VerifController -> VerifController: application.setApplicationStatus("Correction Requested")
+    VerifSvc -> VerifSvc: application.setApplicationStatus("Correction Requested")
 
-    VerifController -> AppDB: save(application)
+    VerifSvc -> AppDB: save(application)
     activate AppDB
     AppDB -> DB: persist(application)
     activate DB
     DB --> AppDB: TransferApplication
     deactivate DB
-    AppDB --> VerifController: TransferApplication
+    AppDB --> VerifSvc: TransferApplication
     deactivate AppDB
 
-    VerifController --> RestController: void
-    deactivate VerifController
+    VerifSvc --> RestController: void
+    deactivate VerifSvc
 
     RestController --> UI: HTTP 200 OK
     deactivate RestController
@@ -140,31 +140,31 @@ else Documents are Valid
     UI -> RestController: PATCH /api/oidb/applications/{applicationId}/documents/lock
     activate RestController
 
-    RestController -> VerifController: markApplicationVerified(applicationId)
-    activate VerifController
+    RestController -> VerifSvc: markApplicationVerified(applicationId)
+    activate VerifSvc
 
-    VerifController -> DocDB: findDocumentById(applicationId)
+    VerifSvc -> DocDB: findDocumentById(applicationId)
     activate DocDB
     DocDB -> DB: read(applicationId)
     activate DB
     DB --> DocDB: List<Document>
     deactivate DB
-    DocDB --> VerifController: List<Document>
+    DocDB --> VerifSvc: List<BaseDocument>
     deactivate DocDB
 
-    VerifController -> VerifController: documents.forEach(d -> d.setLocked(true))
+    VerifSvc -> VerifSvc: documents.forEach(d -> d.setLocked(true))
 
-    VerifController -> DocDB: saveAll(documents)
+    VerifSvc -> DocDB: saveAll(documents)
     activate DocDB
     DocDB -> DB: persist(documents)
     activate DB
     DB --> DocDB: List<Document>
     deactivate DB
-    DocDB --> VerifController: List<Document>
+    DocDB --> VerifSvc: List<BaseDocument>
     deactivate DocDB
 
-    VerifController --> RestController: void
-    deactivate VerifController
+    VerifSvc --> RestController: void
+    deactivate VerifSvc
 
     RestController --> UI: HTTP 200 OK
     deactivate RestController
@@ -183,31 +183,31 @@ else Documents are Valid
         UI -> RestController: PATCH /api/oidb/applications/{applicationId}/route (target=YDYO)
         activate RestController
 
-        RestController -> RouteService: forwardToYDYO(applicationId)
-        activate RouteService
+        RestController -> RoutingSvc: forwardToYDYO(applicationId)
+        activate RoutingSvc
 
-        RouteService -> AppDB: findApplicationById(applicationId)
+        RoutingSvc -> AppDB: findApplicationById(applicationId)
         activate AppDB
         AppDB -> DB: read(applicationId)
         activate DB
         DB --> AppDB: TransferApplication
         deactivate DB
-        AppDB --> RouteService: TransferApplication
+        AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
 
-        RouteService -> RouteService: application.setApplicationStatus("Forwarded to YDYO")
+        RoutingSvc -> RoutingSvc: application.setApplicationStatus("Forwarded to YDYO")
 
-        RouteService -> AppDB: save(application)
+        RoutingSvc -> AppDB: save(application)
         activate AppDB
         AppDB -> DB: persist(application)
         activate DB
         DB --> AppDB: TransferApplication
         deactivate DB
-        AppDB --> RouteService: TransferApplication
+        AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
 
-        RouteService --> RestController: void
-        deactivate RouteService
+        RoutingSvc --> RestController: void
+        deactivate RoutingSvc
 
         RestController --> UI: HTTP 200 OK
         deactivate RestController
@@ -220,31 +220,31 @@ else Documents are Valid
         UI -> RestController: PATCH /api/oidb/applications/{applicationId}/route (target=Rejected)
         activate RestController
 
-        RestController -> RouteService: rejectApplication(applicationId)
-        activate RouteService
+        RestController -> RoutingSvc: rejectApplication(applicationId)
+        activate RoutingSvc
 
-        RouteService -> AppDB: findApplicationById(applicationId)
+        RoutingSvc -> AppDB: findApplicationById(applicationId)
         activate AppDB
         AppDB -> DB: read(applicationId)
         activate DB
         DB --> AppDB: TransferApplication
         deactivate DB
-        AppDB --> RouteService: TransferApplication
+        AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
 
-        RouteService -> RouteService: application.setApplicationStatus("Rejected")
+        RoutingSvc -> RoutingSvc: application.setApplicationStatus("Rejected")
 
-        RouteService -> AppDB: save(application)
+        RoutingSvc -> AppDB: save(application)
         activate AppDB
         AppDB -> DB: persist(application)
         activate DB
         DB --> AppDB: TransferApplication
         deactivate DB
-        AppDB --> RouteService: TransferApplication
+        AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
 
-        RouteService --> RestController: void
-        deactivate RouteService
+        RoutingSvc --> RestController: void
+        deactivate RoutingSvc
 
         RestController --> UI: HTTP 200 OK
         deactivate RestController

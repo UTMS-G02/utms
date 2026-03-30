@@ -8,11 +8,11 @@ actor "Faculty Board Member" as Board
 
 box "Presentation Layer" #LightCyan
     participant "FacultyBoardUI" as UI
-    participant "FacultyBoardRestController" as RestController
+    participant "FacultyBoardRestFacultyBoardSvc" as RestFacultyBoardSvc
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "FacultyBoardController" as Controller
+    participant "FacultyBoardService" as FacultyBoardSvc
 end box
 
 box "Data Access Layer" #LightGreen
@@ -30,35 +30,35 @@ end box
 Board -> UI: selectApplicantReview(applicationId)
 activate UI
 
-UI -> RestController: GET /api/faculty/applications/{applicationId}
-activate RestController
+UI -> RestFacultyBoardSvc: GET /api/faculty/applications/{applicationId}
+activate RestFacultyBoardSvc
 
-RestController -> Controller: fetchApplicationDetails(applicationId)
-activate Controller
+RestFacultyBoardSvc -> FacultyBoardSvc: fetchApplicationDetails(applicationId)
+activate FacultyBoardSvc
 
-Controller -> AppDB: findApplicationById(applicationId)
+FacultyBoardSvc -> AppDB: findApplicationById(applicationId)
 activate AppDB
 AppDB -> DB: read(applicationId)
 activate DB
 DB --> AppDB: TransferApplication
 deactivate DB
-AppDB --> Controller: TransferApplication
+AppDB --> FacultyBoardSvc: TransferApplication
 deactivate AppDB
 
-Controller -> EvalDB: findEvalutionById(applicationId)
+FacultyBoardSvc -> EvalDB: findEvalutionById(applicationId)
 activate EvalDB
 EvalDB -> DB: read(applicationId)
 activate DB
 DB --> EvalDB: EvaluationReport
 deactivate DB
-EvalDB --> Controller: EvaluationReport
+EvalDB --> FacultyBoardSvc: EvaluationReport
 deactivate EvalDB
 
-Controller --> RestController: ConsolidatedData: report
-deactivate Controller
+FacultyBoardSvc --> RestFacultyBoardSvc: ConsolidatedData: report
+deactivate FacultyBoardSvc
 
-RestController --> UI: HTTP 200: report
-deactivate RestController
+RestFacultyBoardSvc --> UI: HTTP 200: report
+deactivate RestFacultyBoardSvc
 
 UI --> Board: Consolidated Report
 deactivate UI
@@ -69,9 +69,9 @@ alt Application Approved
 
     Board -> UI: clickApprove()
     activate UI
-    UI -> RestController: POST /api/faculty/applications/{applicationId}/decision (type=Approved)
-    activate RestController
-    RestController -> Controller: recordFinalDecision(applicationId, "Approved", null)
+    UI -> RestFacultyBoardSvc: POST /api/faculty/applications/{applicationId}/decision (type=Approved)
+    activate RestFacultyBoardSvc
+    RestFacultyBoardSvc -> FacultyBoardSvc: recordFinalDecision(applicationId, "Approved", null)
 
 else Application Rejected
 
@@ -80,54 +80,54 @@ else Application Rejected
     UI --> Board: Rejection Code Dropdown
     Board -> UI: selectRejectionCode(rejectionCode)
     Board -> UI: enterCommentsAndConfirm(comments)
-    UI -> RestController: POST /api/faculty/applications/{applicationId}/decision (type=Rejected, rejectionCode)
-    activate RestController
-    RestController -> Controller: recordFinalDecision(applicationId, "Rejected", rejectionCode)
+    UI -> RestFacultyBoardSvc: POST /api/faculty/applications/{applicationId}/decision (type=Rejected, rejectionCode)
+    activate RestFacultyBoardSvc
+    RestFacultyBoardSvc -> FacultyBoardSvc: recordFinalDecision(applicationId, "Rejected", rejectionCode)
 
 end
 
 == Recording the Decision ==
 
-activate Controller
+activate FacultyBoardSvc
 
 
 
-Controller -> Controller: decision = new BoardDecision(decisionType, rejectionCode, now)
+FacultyBoardSvc -> FacultyBoardSvc: decision = new BoardDecision(decisionType, rejectionCode, now)
 
-Controller -> DecisionDB: save(decision)
+FacultyBoardSvc -> DecisionDB: save(decision)
 activate DecisionDB
 DecisionDB -> DB: persist(decision)
 activate DB
 DB --> DecisionDB: BoardDecision
 deactivate DB
-DecisionDB --> Controller: BoardDecision: savedDecision
+DecisionDB --> FacultyBoardSvc: BoardDecision: savedDecision
 deactivate DecisionDB
 
-Controller -> AppDB: findById(applicationId)
+FacultyBoardSvc -> AppDB: findById(applicationId)
 activate AppDB
 AppDB -> DB: read(applicationId)
 activate DB
 DB --> AppDB: TransferApplication
 deactivate DB
-AppDB --> Controller: TransferApplication
+AppDB --> FacultyBoardSvc: TransferApplication
 deactivate AppDB
 
-Controller -> Controller: application.setFinalDecision(decisionType)
+FacultyBoardSvc -> FacultyBoardSvc: application.setFinalDecision(decisionType)
 
-Controller -> AppDB: save(application)
+FacultyBoardSvc -> AppDB: save(application)
 activate AppDB
 AppDB -> DB: persist(application)
 activate DB
 DB --> AppDB: TransferApplication
 deactivate DB
-AppDB --> Controller: TransferApplication
+AppDB --> FacultyBoardSvc: TransferApplication
 deactivate AppDB
 
-Controller --> RestController: void
-deactivate Controller
+FacultyBoardSvc --> RestFacultyBoardSvc: void
+deactivate FacultyBoardSvc
 
-RestController --> UI: HTTP 200 OK
-deactivate RestController
+RestFacultyBoardSvc --> UI: HTTP 200 OK
+deactivate RestFacultyBoardSvc
 
 UI --> Board: Confirmation("Karar başarıyla kaydedildi")
 deactivate UI

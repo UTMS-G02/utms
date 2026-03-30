@@ -8,11 +8,11 @@ actor "ÖİDB Staff" as Staff
 
 box "Presentation Layer" #LightCyan
     participant "OidbDashboardUI" as UI
-    participant "OidbRestController" as RestController
+    participant "OidbRestFinalizationSvc" as RestFinalizationSvc
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "FinalizationController" as Controller
+    participant "FinalizationService" as FinalizationSvc
     participant "EmailNotificationManager" as EmailManager
 end box
 
@@ -31,13 +31,13 @@ end box
 Staff -> UI: selectApplicationCycle(cycleId)
 activate UI
 
-UI -> RestController: GET /api/oidb/cycles/{cycleId}/decisions
-activate RestController
+UI -> RestFinalizationSvc: GET /api/oidb/cycles/{cycleId}/decisions
+activate RestFinalizationSvc
 
-RestController -> Controller: fetchFinalDecisions(cycleId)
-activate Controller
+RestFinalizationSvc -> FinalizationSvc: fetchFinalDecisions(cycleId)
+activate FinalizationSvc
 
-Controller -> DecisionDB: fetchDecisionsByCycle(cycleId)
+FinalizationSvc -> DecisionDB: fetchDecisionsByCycle(cycleId)
 activate DecisionDB
 DecisionDB -> DB: read(cycleId)
 activate DB
@@ -45,23 +45,23 @@ activate DB
 alt Invalid or Missing Faculty Data
     DB --> DecisionDB: Exception
     deactivate DB
-    DecisionDB --> Controller: DataCorruptedException
+    DecisionDB --> FinalizationSvc: DataCorruptedException
     deactivate DecisionDB
-    Controller --> RestController: DataCorruptedException
-    RestController --> UI: HTTP 500: Missing Data Error
+    FinalizationSvc --> RestFinalizationSvc: DataCorruptedException
+    RestFinalizationSvc --> UI: HTTP 500: Missing Data Error
     UI --> Staff: Error("Eksik veri: Lütfen fakülte kararlarını doğrulayın")
 else Valid Data
     DB --> DecisionDB: List<BoardDecision>
     deactivate DB
-    DecisionDB --> Controller: List<BoardDecision>
+    DecisionDB --> FinalizationSvc: List<BoardDecision>
     deactivate DecisionDB
-    Controller --> RestController: List<BoardDecision>: decisions
-    RestController --> UI: HTTP 200: decisions
+    FinalizationSvc --> RestFinalizationSvc: List<BoardDecision>: decisions
+    RestFinalizationSvc --> UI: HTTP 200: decisions
     UI --> Staff: Decision Data
 end
 
-deactivate Controller
-deactivate RestController
+deactivate FinalizationSvc
+deactivate RestFinalizationSvc
 deactivate UI
 
 == Publish & Notify ==
@@ -69,61 +69,61 @@ deactivate UI
 Staff -> UI: clickPublishResults()
 activate UI
 
-UI -> RestController: POST /api/oidb/cycles/{cycleId}/publish
-activate RestController
+UI -> RestFinalizationSvc: POST /api/oidb/cycles/{cycleId}/publish
+activate RestFinalizationSvc
 
-RestController -> Controller: publishResults(cycleId)
-activate Controller
+RestFinalizationSvc -> FinalizationSvc: publishResults(cycleId)
+activate FinalizationSvc
 
-Controller -> AppDB: updateApplicationStatusByCycleId(cycleId, "Finalized")
+FinalizationSvc -> AppDB: updateApplicationStatusByCycleId(cycleId, "Finalized")
 activate AppDB
 AppDB -> DB: persist(applications)
 activate DB
 DB --> AppDB: void
 deactivate DB
-AppDB --> Controller: void
+AppDB --> FinalizationSvc: void
 deactivate AppDB
 
-Controller -> Controller: triggerNotifications(cycleId)
+FinalizationSvc -> FinalizationSvc: triggerNotifications(cycleId)
 
-Controller -> EmailManager: sendEmail(cycleId)
+FinalizationSvc -> EmailManager: sendEmail(cycleId)
 activate EmailManager
 
 alt Notification Failure
-    EmailManager --> Controller: EmailDeliveryException
+    EmailManager --> FinalizationSvc: EmailDeliveryException
 
-    Controller -> LogDB: save(new Notification(cycleId, status="Failed"))
+    FinalizationSvc -> LogDB: save(new Notification(cycleId, status="Failed"))
     activate LogDB
     LogDB -> DB: persist(notification)
     activate DB
     DB --> LogDB: Notification
     deactivate DB
-    LogDB --> Controller: Notification
+    LogDB --> FinalizationSvc: Notification
     deactivate LogDB
 
-    Controller --> RestController: PartialSuccessException
-    RestController --> UI: HTTP 207: Partial Success
+    FinalizationSvc --> RestFinalizationSvc: PartialSuccessException
+    RestFinalizationSvc --> UI: HTTP 207: Partial Success
     UI --> Staff: Warning("Sonuçlar yayınlandı ancak bazı bildirimler başarısız oldu.")
 else Notification Success
-    EmailManager --> Controller: void
+    EmailManager --> FinalizationSvc: void
     deactivate EmailManager
 
-    Controller -> LogDB: save(new Notification(cycleId, status="Sent"))
+    FinalizationSvc -> LogDB: save(new Notification(cycleId, status="Sent"))
     activate LogDB
     LogDB -> DB: persist(notification)
     activate DB
     DB --> LogDB: Notification
     deactivate DB
-    LogDB --> Controller: Notification
+    LogDB --> FinalizationSvc: Notification
     deactivate LogDB
 
-    Controller --> RestController: void
-    RestController --> UI: HTTP 200 OK
+    FinalizationSvc --> RestFinalizationSvc: void
+    RestFinalizationSvc --> UI: HTTP 200 OK
     UI --> Staff: Confirmation("Sonuçlar başarıyla yayınlandı ve bildirimler gönderildi.")
 end
 
-deactivate Controller
-deactivate RestController
+deactivate FinalizationSvc
+deactivate RestFinalizationSvc
 deactivate UI
 
 @enduml

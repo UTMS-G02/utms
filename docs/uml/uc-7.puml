@@ -12,7 +12,7 @@ box "Presentation Layer" #LightCyan
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "ProficiencyEvaluationService" as BL
+    participant "ProficiencyEvaluationService" as ProficiencySvc
 end box
 
 box "Data Access Layer" #LightGreen
@@ -32,20 +32,20 @@ activate UI
 UI -> RestController: GET /api/ydyo/applications
 activate RestController
 
-RestController -> BL: fetchApplicationList()
-activate BL
+RestController -> ProficiencySvc: fetchApplicationList()
+activate ProficiencySvc
 
-BL -> AppDB: findByApplicationStatus('Forwarded to YDYO')
+ProficiencySvc -> AppDB: findByApplicationStatus('Forwarded to YDYO')
 activate AppDB
 AppDB -> DB: read(status)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> ProficiencySvc: List<TransferApplication>
 deactivate AppDB
 
-BL --> RestController: List<TransferApplication>
-deactivate BL
+ProficiencySvc --> RestController: List<TransferApplication>
+deactivate ProficiencySvc
 
 RestController --> UI: HTTP 200: applications
 deactivate RestController
@@ -61,20 +61,20 @@ activate UI
 UI -> RestController: GET /api/ydyo/applications/{applicationId}
 activate RestController
 
-RestController -> BL: fetchApplicationDetails(applicationId)
-activate BL
+RestController -> ProficiencySvc: fetchApplicationDetails(applicationId)
+activate ProficiencySvc
 
-BL -> ProfDB: findByApplicationId(applicationId)
+ProficiencySvc -> ProfDB: findByApplicationId(applicationId)
 activate ProfDB
 ProfDB -> DB: read(applicationId)
 activate DB
 DB --> ProfDB: EnglishProficiencyRecord
 deactivate DB
-ProfDB --> BL: EnglishProficiencyRecord
+ProfDB --> ProficiencySvc: EnglishProficiencyRecord
 deactivate ProfDB
 
-BL --> RestController: EnglishProficiencyRecord
-deactivate BL
+ProficiencySvc --> RestController: EnglishProficiencyRecord
+deactivate ProficiencySvc
 
 RestController --> UI: HTTP 200: proficiencyRecord
 deactivate RestController
@@ -92,36 +92,36 @@ alt Document Approved (Exempt Path)
     UI -> RestController: PATCH /api/ydyo/applications/{applicationId}/proficiency\n(approvalStatus=Onaylandi, explanation)
     activate RestController
 
-    RestController -> BL: approveDocument(applicationId, explanation)
-    activate BL
+    RestController -> ProficiencySvc: approveDocument(applicationId, explanation)
+    activate ProficiencySvc
 
-    BL -> BL: calculateExemptionStatus('Onaylandi')\n-> examResult = 'Sinav Gerekli Degil'\n-> exemptionStatus = 'Muaf'
+    ProficiencySvc -> ProficiencySvc: calculateExemptionStatus('Onaylandi')\n-> examResult = 'Sinav Gerekli Degil'\n-> exemptionStatus = 'Muaf'
 
-    BL -> ProfDB: findByApplicationId(applicationId)
+    ProficiencySvc -> ProfDB: findByApplicationId(applicationId)
     activate ProfDB
     ProfDB -> DB: read(applicationId)
     activate DB
     DB --> ProfDB: EnglishProficiencyRecord
     deactivate DB
-    ProfDB --> BL: EnglishProficiencyRecord
+    ProfDB --> ProficiencySvc: EnglishProficiencyRecord
     deactivate ProfDB
 
-    BL -> BL: record.setDocumentApprovalStatus('Onaylandi')
-    BL -> BL: record.setExamResult('Sinav Gerekli Degil')
-    BL -> BL: record.setExemptionStatus('Muaf')
-    BL -> BL: record.setExplanationNote(explanation)
+    ProficiencySvc -> ProficiencySvc: record.setDocumentApprovalStatus('Onaylandi')
+    ProficiencySvc -> ProficiencySvc: record.setExamResult('Sinav Gerekli Degil')
+    ProficiencySvc -> ProficiencySvc: record.setExemptionStatus('Muaf')
+    ProficiencySvc -> ProficiencySvc: record.setExplanationNote(explanation)
 
-    BL -> ProfDB: save(record)
+    ProficiencySvc -> ProfDB: save(record)
     activate ProfDB
     ProfDB -> DB: persist(record)
     activate DB
     DB --> ProfDB: EnglishProficiencyRecord
     deactivate DB
-    ProfDB --> BL: EnglishProficiencyRecord
+    ProfDB --> ProficiencySvc: EnglishProficiencyRecord
     deactivate ProfDB
 
-    BL --> RestController: void
-    deactivate BL
+    ProficiencySvc --> RestController: void
+    deactivate ProficiencySvc
 
     RestController --> UI: HTTP 200 OK
     deactivate RestController
@@ -139,41 +139,41 @@ else Document Rejected (Exam Path)
     UI -> RestController: PATCH /api/ydyo/applications/{applicationId}/proficiency\n(approvalStatus=Onaylanmadi, explanation)
     activate RestController
 
-    RestController -> BL: rejectDocument(applicationId, explanation)
-    activate BL
+    RestController -> ProficiencySvc: rejectDocument(applicationId, explanation)
+    activate ProficiencySvc
 
     alt Missing Explanation (8-EX)
-        BL --> RestController: MissingExplanationException
+        ProficiencySvc --> RestController: MissingExplanationException
         RestController --> UI: HTTP 400: Explanation Required
         UI --> Staff: Error('Lutfen aciklama giriniz.')
     else Explanation Provided
-        BL -> BL: calculateExemptionStatus('Onaylanmadi')\n-> examResult = 'Sinav Sonucu Bekleniyor'\n-> exemptionStatus = 'Beklemede'
+        ProficiencySvc -> ProficiencySvc: calculateExemptionStatus('Onaylanmadi')\n-> examResult = 'Sinav Sonucu Bekleniyor'\n-> exemptionStatus = 'Beklemede'
 
-        BL -> ProfDB: findByApplicationId(applicationId)
+        ProficiencySvc -> ProfDB: findByApplicationId(applicationId)
         activate ProfDB
         ProfDB -> DB: read(applicationId)
         activate DB
         DB --> ProfDB: EnglishProficiencyRecord
         deactivate DB
-        ProfDB --> BL: EnglishProficiencyRecord
+        ProfDB --> ProficiencySvc: EnglishProficiencyRecord
         deactivate ProfDB
 
-        BL -> BL: record.setDocumentApprovalStatus('Onaylanmadi')
-        BL -> BL: record.setExamResult('Sinav Sonucu Bekleniyor')
-        BL -> BL: record.setExemptionStatus('Beklemede')
-        BL -> BL: record.setExplanationNote(explanation)
+        ProficiencySvc -> ProficiencySvc: record.setDocumentApprovalStatus('Onaylanmadi')
+        ProficiencySvc -> ProficiencySvc: record.setExamResult('Sinav Sonucu Bekleniyor')
+        ProficiencySvc -> ProficiencySvc: record.setExemptionStatus('Beklemede')
+        ProficiencySvc -> ProficiencySvc: record.setExplanationNote(explanation)
 
-        BL -> ProfDB: save(record)
+        ProficiencySvc -> ProfDB: save(record)
         activate ProfDB
         ProfDB -> DB: persist(record)
         activate DB
         DB --> ProfDB: EnglishProficiencyRecord
         deactivate DB
-        ProfDB --> BL: EnglishProficiencyRecord
+        ProfDB --> ProficiencySvc: EnglishProficiencyRecord
         deactivate ProfDB
 
-        BL --> RestController: void
-        deactivate BL
+        ProficiencySvc --> RestController: void
+        deactivate ProficiencySvc
 
         RestController --> UI: HTTP 200 OK
         deactivate RestController
@@ -189,18 +189,18 @@ else Document Rejected (Exam Path)
 
     UI -> RestController: GET /api/ydyo/applications/{applicationId}
     activate RestController
-    RestController -> BL: fetchApplicationDetails(applicationId)
-    activate BL
-    BL -> ProfDB: findByApplicationId(applicationId)
+    RestController -> ProficiencySvc: fetchApplicationDetails(applicationId)
+    activate ProficiencySvc
+    ProficiencySvc -> ProfDB: findByApplicationId(applicationId)
     activate ProfDB
     ProfDB -> DB: read(applicationId)
     activate DB
     DB --> ProfDB: EnglishProficiencyRecord
     deactivate DB
-    ProfDB --> BL: EnglishProficiencyRecord
+    ProfDB --> ProficiencySvc: EnglishProficiencyRecord
     deactivate ProfDB
-    BL --> RestController: EnglishProficiencyRecord
-    deactivate BL
+    ProficiencySvc --> RestController: EnglishProficiencyRecord
+    deactivate ProficiencySvc
     RestController --> UI: HTTP 200: proficiencyRecord
     deactivate RestController
     UI --> Staff: Student Details
@@ -214,35 +214,35 @@ else Document Rejected (Exam Path)
     UI -> RestController: PATCH /api/ydyo/applications/{applicationId}/exam-result\n(examResult, explanation)
     activate RestController
 
-    RestController -> BL: updateExamResult(applicationId, examResult, explanation)
-    activate BL
+    RestController -> ProficiencySvc: updateExamResult(applicationId, examResult, explanation)
+    activate ProficiencySvc
 
-    BL -> BL: calculateExemptionStatus(examResult)\n-> 'Sinav Basarili' => exemptionStatus = 'Muaf'\n-> 'Sinav Basarisiz' => exemptionStatus = 'Muaf Degil'
+    ProficiencySvc -> ProficiencySvc: calculateExemptionStatus(examResult)\n-> 'Sinav Basarili' => exemptionStatus = 'Muaf'\n-> 'Sinav Basarisiz' => exemptionStatus = 'Muaf Degil'
 
-    BL -> ProfDB: findByApplicationId(applicationId)
+    ProficiencySvc -> ProfDB: findByApplicationId(applicationId)
     activate ProfDB
     ProfDB -> DB: read(applicationId)
     activate DB
     DB --> ProfDB: EnglishProficiencyRecord
     deactivate DB
-    ProfDB --> BL: EnglishProficiencyRecord
+    ProfDB --> ProficiencySvc: EnglishProficiencyRecord
     deactivate ProfDB
 
-    BL -> BL: record.setExamResult(examResult)
-    BL -> BL: record.setExemptionStatus(exemptionStatus)
-    BL -> BL: record.setExplanationNote(explanation)
+    ProficiencySvc -> ProficiencySvc: record.setExamResult(examResult)
+    ProficiencySvc -> ProficiencySvc: record.setExemptionStatus(exemptionStatus)
+    ProficiencySvc -> ProficiencySvc: record.setExplanationNote(explanation)
 
-    BL -> ProfDB: save(record)
+    ProficiencySvc -> ProfDB: save(record)
     activate ProfDB
     ProfDB -> DB: persist(record)
     activate DB
     DB --> ProfDB: EnglishProficiencyRecord
     deactivate DB
-    ProfDB --> BL: EnglishProficiencyRecord
+    ProfDB --> ProficiencySvc: EnglishProficiencyRecord
     deactivate ProfDB
 
-    BL --> RestController: void
-    deactivate BL
+    ProficiencySvc --> RestController: void
+    deactivate ProficiencySvc
 
     RestController --> UI: HTTP 200 OK
     deactivate RestController
@@ -260,45 +260,45 @@ activate UI
 UI -> RestController: POST /api/ydyo/applications/forward-to-oidb
 activate RestController
 
-RestController -> BL: forwardListToOidb()
-activate BL
+RestController -> ProficiencySvc: forwardListToOidb()
+activate ProficiencySvc
 
-BL -> ProfDB: findByExemptionStatus('Beklemede')
+ProficiencySvc -> ProfDB: findByExemptionStatus('Beklemede')
 activate ProfDB
 ProfDB -> DB: read(status)
 activate DB
 DB --> ProfDB: List<EnglishProficiencyRecord>
 deactivate DB
-ProfDB --> BL: List<EnglishProficiencyRecord>
+ProfDB --> ProficiencySvc: List<EnglishProficiencyRecord>
 deactivate ProfDB
 
 alt Incomplete Records Exist (12-EX)
-    BL --> RestController: IncompleteRecordsException
+    ProficiencySvc --> RestController: IncompleteRecordsException
     RestController --> UI: HTTP 400: Incomplete Records
     UI --> Staff: Error('Tum ogrenci kayitlari tamamlanmadan liste iletilemez.')
 else All Records Finalized
-    BL -> AppDB: findByApplicationStatus('Forwarded to YDYO')
+    ProficiencySvc -> AppDB: findByApplicationStatus('Forwarded to YDYO')
     activate AppDB
     AppDB -> DB: read(status)
     activate DB
     DB --> AppDB: List<TransferApplication>
     deactivate DB
-    AppDB --> BL: List<TransferApplication>
+    AppDB --> ProficiencySvc: List<TransferApplication>
     deactivate AppDB
 
-    BL -> BL: applications.forEach(a -> a.setApplicationStatus('YDYO Completed'))
+    ProficiencySvc -> ProficiencySvc: applications.forEach(a -> a.setApplicationStatus('YDYO Completed'))
 
-    BL -> AppDB: saveAll(applications)
+    ProficiencySvc -> AppDB: saveAll(applications)
     activate AppDB
     AppDB -> DB: persist(applications)
     activate DB
     DB --> AppDB: List<TransferApplication>
     deactivate DB
-    AppDB --> BL: List<TransferApplication>
+    AppDB --> ProficiencySvc: List<TransferApplication>
     deactivate AppDB
 
-    BL --> RestController: void
-    deactivate BL
+    ProficiencySvc --> RestController: void
+    deactivate ProficiencySvc
 
     RestController --> UI: HTTP 200 OK
     deactivate RestController

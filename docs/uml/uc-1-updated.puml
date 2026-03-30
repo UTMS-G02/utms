@@ -12,7 +12,7 @@ box "Presentation Layer" #LightCyan
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "RegistrationController" as BL
+    participant "RegistrationService" as RegistrationSvc
     participant "EmailNotificationManager" as EmailManager
 end box
 
@@ -38,59 +38,59 @@ activate UI
 UI -> RestController: POST /api/register (email, password, kvkk)
 activate RestController
 
-RestController -> BL: register(email, password, kvkk)
-activate BL
+RestController -> RegistrationSvc: register(email, password, kvkk)
+activate RegistrationSvc
 
-BL -> BL: validateEmailFormat(email)
+RegistrationSvc -> RegistrationSvc: validateEmailFormat(email)
 alt Invalid Email Format
-    BL --> RestController: EmailFormatException
+    RegistrationSvc --> RestController: EmailFormatException
     RestController --> UI: HTTP 400: Email Format Error
     UI --> Student: Email Format Error
 else Valid Email
-    BL -> BL: validatePasswordStrength(password)
+    RegistrationSvc -> RegistrationSvc: validatePasswordStrength(password)
     alt Invalid Password
-        BL --> RestController: WeakPasswordException
+        RegistrationSvc --> RestController: WeakPasswordException
         RestController --> UI: HTTP 400: Password Security Error
         UI --> Student: Password Security Error
     else Valid Password
-        BL -> DataAccess: findByEmail(email)
+        RegistrationSvc -> DataAccess: findByEmail(email)
         activate DataAccess
         DataAccess -> DB: read(email)
         activate DB
         DB --> DataAccess: Optional<Student>
         deactivate DB
-        DataAccess --> BL: boolean: isRegistered
+        DataAccess --> RegistrationSvc: boolean: isRegistered
         deactivate DataAccess
 
         alt Email Already Registered
-            BL --> RestController: EmailAlreadyExistsException
+            RegistrationSvc --> RestController: EmailAlreadyExistsException
             RestController --> UI: HTTP 409: Email Already Registered
             UI --> Student: Registration Error("Bu e-posta adresi zaten kayıtlı")
         else Email is Available
-            BL -> BL: hashPassword(password)
-            BL -> BL: student = new Student(email, hashedPassword, isActive=false, kvkkAcceptedAt=now)
-            BL -> DataAccess: save(student)
+            RegistrationSvc -> RegistrationSvc: hashPassword(password)
+            RegistrationSvc -> RegistrationSvc: student = new Student(email, hashedPassword, isActive=false, kvkkAcceptedAt=now)
+            RegistrationSvc -> DataAccess: save(student)
             activate DataAccess
             DataAccess -> DB: persist(student)
             activate DB
             DB --> DataAccess: Student
             deactivate DB
-            DataAccess --> BL: Student: newStudent
+            DataAccess --> RegistrationSvc: Student: newStudent
             deactivate DataAccess
 
-            BL -> BL: generateActivationLink()
-            BL -> EmailManager: sendActivationEmail(email, activationLink)
+            RegistrationSvc -> RegistrationSvc: generateActivationLink()
+            RegistrationSvc -> EmailManager: sendActivationEmail(email, activationLink)
             activate EmailManager
 
             alt Email Sending Error
-                EmailManager --> BL: EmailDeliveryException
-                BL --> RestController: EmailDeliveryException
+                EmailManager --> RegistrationSvc: EmailDeliveryException
+                RegistrationSvc --> RestController: EmailDeliveryException
                 RestController --> UI: HTTP 500: Email Delivery Error
                 UI --> Student: Error("E-posta gönderim hatası")
             else Email Sent Successfully
-                EmailManager --> BL: void
+                EmailManager --> RegistrationSvc: void
                 deactivate EmailManager
-                BL --> RestController: void
+                RegistrationSvc --> RestController: void
                 RestController --> UI: HTTP 201 Created
                 UI --> Student: Activation Success Message
             end
@@ -98,7 +98,7 @@ else Valid Email
     end
 end
 
-deactivate BL
+deactivate RegistrationSvc
 deactivate RestController
 deactivate UI
 
@@ -110,54 +110,54 @@ activate UI
 UI -> RestController: GET /api/activate?link={link}
 activate RestController
 
-RestController -> BL: verifyActivationLink(link)
-activate BL
+RestController -> RegistrationSvc: verifyActivationLink(link)
+activate RegistrationSvc
 
 alt Link Invalid or Expired
-    BL --> RestController: InvalidLinkException
+    RegistrationSvc --> RestController: InvalidLinkException
     RestController --> UI: HTTP 400: Invalid Link
     UI --> Student: Error("Aktivasyon bağlantısı geçersiz/süresi dolmuş")
 
     opt Student requests new link
         Student -> UI: requestNewActivationLink()
         UI -> RestController: POST /api/resend-activation (email)
-        RestController -> BL: generateActivationLink()
-        BL -> EmailManager: sendActivationEmail(email, newActivationLink)
+        RestController -> RegistrationSvc: generateActivationLink()
+        RegistrationSvc -> EmailManager: sendActivationEmail(email, newActivationLink)
         activate EmailManager
-        EmailManager --> BL: void
+        EmailManager --> RegistrationSvc: void
         deactivate EmailManager
-        BL --> RestController: void
+        RegistrationSvc --> RestController: void
         RestController --> UI: HTTP 200 OK
         UI --> Student: Success Message("Yeni bağlantı gönderildi")
     end
 
 else Link Valid
-    BL -> DataAccess: findStudentById(studentId)
+        RegistrationSvc -> DataAccess: findStudentById(studentId)
     activate DataAccess
     DataAccess -> DB: read(studentId)
     activate DB
     DB --> DataAccess: Student
     deactivate DB
-    DataAccess --> BL: Student
+    DataAccess --> RegistrationSvc: Student
     deactivate DataAccess
 
-    BL -> BL: student.setIsActive(true)
+    RegistrationSvc -> RegistrationSvc: student.setIsActive(true)
 
-    BL -> DataAccess: save(student)
+    RegistrationSvc -> DataAccess: save(student)
     activate DataAccess
     DataAccess -> DB: persist(student)
     activate DB
     DB --> DataAccess: Student
     deactivate DB
-    DataAccess --> BL: Student
+    DataAccess --> RegistrationSvc: Student
     deactivate DataAccess
 
-    BL --> RestController: void
+    RegistrationSvc --> RestController: void
     RestController --> UI: HTTP 200 OK
     UI --> Student: Success Message("Hesabınız başarıyla etkinleştirildi")
 end
 
-deactivate BL
+deactivate RegistrationSvc
 deactivate RestController
 deactivate UI
 

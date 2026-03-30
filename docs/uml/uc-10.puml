@@ -12,7 +12,7 @@ box "Presentation Layer" #LightCyan
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "DeanRoutingController" as BL
+    participant "DeanRoutingService" as DeanRoutingSvc
 end box
 
 box "Data Access Layer" #LightGreen
@@ -32,20 +32,20 @@ activate UI
 UI -> RestController: GET /api/dean/applications?tab=from-oidb
 activate RestController
 
-RestController -> BL: fetchApplicationsByStatus('Akademik İnceleme Bekliyor')
-activate BL
+RestController -> DeanRoutingSvc: fetchApplicationsByStatus('Akademik İnceleme Bekliyor')
+activate DeanRoutingSvc
 
-BL -> AppDB: findByApplicationStatus('Akademik İnceleme Bekliyor')
+DeanRoutingSvc -> AppDB: findByApplicationStatus('Akademik İnceleme Bekliyor')
 activate AppDB
 AppDB -> DB: read(status)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL --> RestController: List<TransferApplication>
-deactivate BL
+DeanRoutingSvc --> RestController: List<TransferApplication>
+deactivate DeanRoutingSvc
 
 RestController --> UI: HTTP 200: applications
 deactivate RestController
@@ -60,31 +60,31 @@ Staff -> UI: clickForwardToYGK()
 UI -> RestController: PATCH /api/dean/applications/forward-to-ygk (applicationIds)
 activate RestController
 
-RestController -> BL: forwardToYGK(applicationIds)
-activate BL
+RestController -> DeanRoutingSvc: forwardToYGK(applicationIds)
+activate DeanRoutingSvc
 
-BL -> AppDB: findAllById(applicationIds)
+DeanRoutingSvc -> AppDB: findAllById(applicationIds)
 activate AppDB
 AppDB -> DB: read(applicationIds)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL -> BL: applications.forEach(a -> a.setApplicationStatus('YGK Değerlendirmesinde'))
+DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('YGK Değerlendirmesinde'))
 
-BL -> AppDB: saveAll(applications)
+DeanRoutingSvc -> AppDB: saveAll(applications)
 activate AppDB
 AppDB -> DB: persist(applications)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL --> RestController: void
-deactivate BL
+DeanRoutingSvc --> RestController: void
+deactivate DeanRoutingSvc
 
 RestController --> UI: HTTP 200 OK
 deactivate RestController
@@ -101,20 +101,20 @@ activate UI
 UI -> RestController: GET /api/dean/applications?tab=from-ygk
 activate RestController
 
-RestController -> BL: fetchApplicationsByStatus('YGK Değerlendirmesi Tamamlandı')
-activate BL
+RestController -> DeanRoutingSvc: fetchApplicationsByStatus('YGK Değerlendirmesi Tamamlandı')
+activate DeanRoutingSvc
 
-BL -> AppDB: findByApplicationStatus('YGK Değerlendirmesi Tamamlandı')
+DeanRoutingSvc -> AppDB: findByApplicationStatus('YGK Değerlendirmesi Tamamlandı')
 activate AppDB
 AppDB -> DB: read(status)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL --> RestController: List<TransferApplication>
-deactivate BL
+DeanRoutingSvc --> RestController: List<TransferApplication>
+deactivate DeanRoutingSvc
 
 RestController --> UI: HTTP 200: applications
 deactivate RestController
@@ -129,31 +129,31 @@ Staff -> UI: clickForwardToFacultyBoard()
 UI -> RestController: PATCH /api/dean/applications/forward-to-faculty (applicationIds)
 activate RestController
 
-RestController -> BL: forwardToFacultyBoard(applicationIds)
-activate BL
+RestController -> DeanRoutingSvc: forwardToFacultyBoard(applicationIds)
+activate DeanRoutingSvc
 
-BL -> AppDB: findAllById(applicationIds)
+DeanRoutingSvc -> AppDB: findAllById(applicationIds)
 activate AppDB
 AppDB -> DB: read(applicationIds)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL -> BL: applications.forEach(a -> a.setApplicationStatus('Fakülte Kurulu Kararı Bekleniyor'))
+DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('Fakülte Kurulu Kararı Bekleniyor'))
 
-BL -> AppDB: saveAll(applications)
+DeanRoutingSvc -> AppDB: saveAll(applications)
 activate AppDB
 AppDB -> DB: persist(applications)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL --> RestController: void
-deactivate BL
+DeanRoutingSvc --> RestController: void
+deactivate DeanRoutingSvc
 
 RestController --> UI: HTTP 200 OK
 deactivate RestController
@@ -170,20 +170,20 @@ activate UI
 UI -> RestController: GET /api/dean/applications?tab=from-faculty
 activate RestController
 
-RestController -> BL: fetchApplicationsByStatus('Değerlendirme Onaylandı')
-activate BL
+RestController -> DeanRoutingSvc: fetchApplicationsByStatus('Değerlendirme Onaylandı')
+activate DeanRoutingSvc
 
-BL -> AppDB: findByApplicationStatus('Değerlendirme Onaylandı')
+DeanRoutingSvc -> AppDB: findByApplicationStatus('Değerlendirme Onaylandı')
 activate AppDB
 AppDB -> DB: read(status)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL --> RestController: List<TransferApplication>
-deactivate BL
+DeanRoutingSvc --> RestController: List<TransferApplication>
+deactivate DeanRoutingSvc
 
 RestController --> UI: HTTP 200: applications
 deactivate RestController
@@ -198,31 +198,35 @@ Staff -> UI: clickReturnToOidb()
 UI -> RestController: PATCH /api/dean/applications/return-to-oidb (applicationIds)
 activate RestController
 
-RestController -> BL: returnToOidb(applicationIds)
-activate BL
+RestController -> DeanRoutingSvc: returnToOidb(applicationIds)
+activate DeanRoutingSvc
 
-BL -> AppDB: findAllById(applicationIds)
+DeanRoutingSvc -> AppDB: findAllById(applicationIds)
 activate AppDB
 AppDB -> DB: read(applicationIds)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL -> BL: applications.forEach(a -> a.setApplicationStatus('Finalized'))
+alt Applications Approved (status = 'Değerlendirme Onaylandı')
+    DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('Finalized'))
+else Applications Rejected (status = 'Başvuru Reddedildi')
+    DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('Rejected'))
+end
 
-BL -> AppDB: saveAll(applications)
+DeanRoutingSvc -> AppDB: saveAll(applications)
 activate AppDB
 AppDB -> DB: persist(applications)
 activate DB
 DB --> AppDB: List<TransferApplication>
 deactivate DB
-AppDB --> BL: List<TransferApplication>
+AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-BL --> RestController: void
-deactivate BL
+DeanRoutingSvc --> RestController: void
+deactivate DeanRoutingSvc
 
 RestController --> UI: HTTP 200 OK
 deactivate RestController
