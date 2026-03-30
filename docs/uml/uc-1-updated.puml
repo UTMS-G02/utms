@@ -104,7 +104,7 @@ deactivate UI
 
 == Activation Phase ==
 
-Student -> UI: clickActivationLink(link)
+Student -> UI: clickActivationLink()
 activate UI
 
 UI -> RestController: GET /api/activate?link={link}
@@ -132,7 +132,7 @@ alt Link Invalid or Expired
     end
 
 else Link Valid
-    RegistrationSvc -> DataAccess: findById(studentId)
+    RegistrationSvc -> DataAccess: findStudentById(studentId)
     activate DataAccess
     DataAccess -> DB: read(studentId)
     activate DB

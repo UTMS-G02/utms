@@ -14,11 +14,15 @@ end box
 box "Business Logic Layer" #LightYellow
     participant "DocumentVerificationService" as VerifSvc
     participant "RoutingService" as RoutingSvc
+    participant "AuditService" as AuditSvc
+    participant "NotificationService" as NotificationSvc
 end box
 
 box "Data Access Layer" #LightGreen
     participant "TransferApplicationRepository" as AppDB
     participant "DocumentRepository" as DocDB
+    participant "AuditLogRepository" as AuditDB
+    participant "NotificationRepository" as NotificationDB
 end box
 
 box "Database" #LightPink
@@ -36,7 +40,7 @@ activate RestController
 RestController -> VerifSvc: fetchPendingApplications()
 activate VerifSvc
 
-VerifSvc -> AppDB: findByApplicationStatus("Pending")
+VerifSvc -> AppDB: fetchApplicationByStatus("Pending")
 activate AppDB
 AppDB -> DB: read(status)
 activate DB
@@ -65,7 +69,7 @@ activate RestController
 RestController -> VerifSvc: verifyDocuments(applicationId)
 activate VerifSvc
 
-VerifSvc -> AppDB: findById(applicationId)
+VerifSvc -> AppDB: findApplicationById(applicationId)
 activate AppDB
 AppDB -> DB: read(applicationId)
 activate DB
@@ -74,11 +78,11 @@ deactivate DB
 AppDB --> VerifSvc: TransferApplication
 deactivate AppDB
 
-VerifSvc -> DocDB: findByApplicationId(applicationId)
+VerifSvc -> DocDB: findDocumentById(applicationId)
 activate DocDB
 DocDB -> DB: read(applicationId)
 activate DB
-DB --> DocDB: List<BaseDocument>
+DB --> DocDB: List<Document>
 deactivate DB
 DocDB --> VerifSvc: List<BaseDocument>
 deactivate DocDB
@@ -94,7 +98,7 @@ deactivate UI
 
 alt Invalid or Missing Documents
 
-    Staff -> UI: flagDocumentInvalid(note)
+    Staff -> UI: flagDocumentInvalid(documentId, note)
     activate UI
 
     UI -> RestController: PATCH /api/oidb/applications/{applicationId}/status (note)
@@ -103,7 +107,7 @@ alt Invalid or Missing Documents
     RestController -> VerifSvc: requestDocumentCorrection(applicationId, note)
     activate VerifSvc
 
-    VerifSvc -> AppDB: findById(applicationId)
+    VerifSvc -> AppDB: findApplicationById(applicationId)
     activate AppDB
     AppDB -> DB: read(applicationId)
     activate DB
@@ -122,6 +126,32 @@ alt Invalid or Missing Documents
     deactivate DB
     AppDB --> VerifSvc: TransferApplication
     deactivate AppDB
+    VerifSvc -> AuditSvc: logAction(staffId, applicationId, "Correction Requested")
+    activate AuditSvc
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: AuditEntry
+    deactivate DB
+    AuditDB --> AuditSvc: success
+    deactivate AuditDB
+    AuditSvc --> VerifSvc: void
+    deactivate AuditSvc
+
+    VerifSvc -> NotificationSvc: sendNotification(studentId, "Doküman (" + getDocumentType() + ") için düzeltme talebi: " + note)
+    activate NotificationSvc
+    NotificationSvc -> NotificationDB: save(notification)
+    activate NotificationDB
+    NotificationDB -> DB: persist(notification)
+    activate DB
+    DB --> NotificationDB: Notification
+    deactivate DB
+    NotificationDB --> NotificationSvc: success
+    deactivate NotificationDB
+    NotificationSvc --> VerifSvc: void
+    deactivate NotificationSvc
+
 
     VerifSvc --> RestController: void
     deactivate VerifSvc
@@ -143,11 +173,11 @@ else Documents are Valid
     RestController -> VerifSvc: markApplicationVerified(applicationId)
     activate VerifSvc
 
-    VerifSvc -> DocDB: findByApplicationId(applicationId)
+    VerifSvc -> DocDB: findDocumentById(applicationId)
     activate DocDB
     DocDB -> DB: read(applicationId)
     activate DB
-    DB --> DocDB: List<BaseDocument>
+    DB --> DocDB: List<Document>
     deactivate DB
     DocDB --> VerifSvc: List<BaseDocument>
     deactivate DocDB
@@ -158,7 +188,7 @@ else Documents are Valid
     activate DocDB
     DocDB -> DB: persist(documents)
     activate DB
-    DB --> DocDB: List<BaseDocument>
+    DB --> DocDB: List<Document>
     deactivate DB
     DocDB --> VerifSvc: List<BaseDocument>
     deactivate DocDB
@@ -186,7 +216,7 @@ else Documents are Valid
         RestController -> RoutingSvc: forwardToYDYO(applicationId)
         activate RoutingSvc
 
-        RoutingSvc -> AppDB: findById(applicationId)
+        RoutingSvc -> AppDB: findApplicationById(applicationId)
         activate AppDB
         AppDB -> DB: read(applicationId)
         activate DB
@@ -205,6 +235,18 @@ else Documents are Valid
         deactivate DB
         AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
+        RoutingSvc -> AuditSvc: logAction(staffId, applicationId, "Forwarded to YDYO")
+        activate AuditSvc
+        AuditSvc -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: AuditEntry
+        deactivate DB
+        AuditDB --> AuditSvc: success
+        deactivate AuditDB
+        AuditSvc --> RoutingSvc: void
+        deactivate AuditSvc
 
         RoutingSvc --> RestController: void
         deactivate RoutingSvc
@@ -223,7 +265,7 @@ else Documents are Valid
         RestController -> RoutingSvc: rejectApplication(applicationId)
         activate RoutingSvc
 
-        RoutingSvc -> AppDB: findById(applicationId)
+        RoutingSvc -> AppDB: findApplicationById(applicationId)
         activate AppDB
         AppDB -> DB: read(applicationId)
         activate DB
@@ -243,12 +285,25 @@ else Documents are Valid
         AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
 
+        RoutingSvc -> AuditSvc: logAction(staffId, applicationId, "Rejected")
+        activate AuditSvc
+        AuditSvc -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: AuditEntry
+        deactivate DB
+        AuditDB --> AuditSvc: success
+        deactivate AuditDB
+        AuditSvc --> RoutingSvc: void
+        deactivate AuditSvc
+
         RoutingSvc --> RestController: void
         deactivate RoutingSvc
 
         RestController --> UI: HTTP 200 OK
         deactivate RestController
-        UI --> Staff: Action Confirmation("Başvuru reddedildi.")
+        UI --> Staff: Action Confirmation Message("Başvuru reddedildi.")
 
     end
 

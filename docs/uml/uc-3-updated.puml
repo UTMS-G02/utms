@@ -34,7 +34,7 @@ activate RestController
 RestController -> ProfileSvc: getProfileData(studentId)
 activate ProfileSvc
 
-ProfileSvc -> DataAccess: findById(studentId)
+ProfileSvc -> DataAccess: findStudentById(studentId)
 activate DataAccess
 DataAccess -> DB: read(studentId)
 activate DB
@@ -70,7 +70,7 @@ alt Invalid Phone Number
     RestController --> UI: HTTP 400: Validation Error
     UI --> Student: Validation Error
 else Valid Phone Number
-    ProfileSvc -> DataAccess: findById(studentId)
+    ProfileSvc -> DataAccess: findStudentById(studentId)
     activate DataAccess
     DataAccess -> DB: read(studentId)
     activate DB
@@ -119,7 +119,7 @@ activate RestController
 RestController -> ProfileSvc: changePassword(studentId, currentPassword, newPassword, repeatPassword)
 activate ProfileSvc
 
-ProfileSvc -> DataAccess: findById(studentId)
+ProfileSvc -> DataAccess: findStudentById(studentId)
 activate DataAccess
 DataAccess -> DB: read(studentId)
 activate DB
@@ -142,7 +142,7 @@ else Correct Current Password
         RestController --> UI: HTTP 400: Password Requirements Error
         UI --> Student: Password Requirements Error
     else Valid New Password
-        ProfileSvc -> ProfileSvc: newHash = hashNewPassword(newPassword)
+        ProfileSvc -> ProfileSvc: newHash = hashPassword(newPassword)
         ProfileSvc -> ProfileSvc: student.setPasswordHash(newHash)
 
         ProfileSvc -> DataAccess: save(student)
@@ -156,7 +156,7 @@ else Correct Current Password
 
         ProfileSvc --> RestController: void
         RestController --> UI: HTTP 200 OK
-        UI --> Student: showUpdateConfirmation("Şifreniz başarıyla güncellendi")
+        UI --> Student: Update Confirmation Message("Şifreniz başarıyla güncellendi")
     end
 end
 
