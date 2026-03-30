@@ -35,6 +35,11 @@ package "Application Services" #FEF9E7 {
         +verifyDocuments(applicationId : Integer)
         +requestDocumentCorrection(applicationId : Integer)
     }
+    class DocumentManagerService {
+        +uploadDocument(applicationId : Integer, file : MultipartFile) : BaseDocument
+        +deleteDocument(documentId : Integer)
+        +getDocumentsByApplication(applicationId : Integer) : List<BaseDocument>
+    }
     class RoutingService {
         +forwardToYDYO(applicationId : Integer)
         +routeToFaculty(applicationId : Integer, targetDepartment : String)
@@ -152,6 +157,9 @@ ApplicationService ..> TransferApplicationRepository : uses
 ApplicationService ..> BaseDocumentRepository : uses
 DocumentVerificationService ..> TransferApplicationRepository : uses
 DocumentVerificationService ..> BaseDocumentRepository : uses
+DocumentManagerService ..> BaseDocumentRepository : uses
+DocumentManagerService ..> TransferApplicationRepository : uses
+ApplicationService ..> DocumentManagerService : uses
 RoutingService ..> TransferApplicationRepository : uses
 
 @enduml
