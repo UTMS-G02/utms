@@ -22,17 +22,17 @@ erDiagram
         int user_id FK
         int cycle_id
         string message
-        string status "Sent, Read, Failed"
+        string status "Sent, Failed"
         datetime sent_at
     }
 
     INTIBAK_RECORD {
         int intibak_id PK
         int application_id FK
-        string source_course "Old University Course"
-        string target_course "IZTECH Equivalent"
+        string source_course 
+        string target_course 
         int credits
-        string approval_status "Approved, Denied"
+        string approval_status
     }
 
     USER {
@@ -75,7 +75,7 @@ erDiagram
         int student_id FK
         int cycle_id
         string target_department
-        string status "Pending, YDYO_Approved, Routed_to_Faculty, Rejected"
+        string status "Pending, Forwarded_to_YDYO, Approved_by_YDYO, Forwarded_to_Faculty, Rejected, Approved_by_YGK, Rejected_by_YGK, Rejected_by_YDYO, Finalized, Correction_Requested "
         datetime created_at
     }
 
