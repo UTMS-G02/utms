@@ -14,11 +14,15 @@ end box
 box "Business Logic Layer" #LightYellow
     participant "DocumentVerificationService" as VerifSvc
     participant "RoutingService" as RoutingSvc
+    participant "AuditService" as AuditSvc
+    participant "NotificationService" as NotificationSvc
 end box
 
 box "Data Access Layer" #LightGreen
     participant "TransferApplicationRepository" as AppDB
     participant "DocumentRepository" as DocDB
+    participant "AuditLogRepository" as AuditDB
+    participant "NotificationRepository" as NotificationDB
 end box
 
 box "Database" #LightPink
@@ -94,7 +98,7 @@ deactivate UI
 
 alt Invalid or Missing Documents
 
-    Staff -> UI: flagDocumentInvalid(note)
+    Staff -> UI: flagDocumentInvalid(documentId, note)
     activate UI
 
     UI -> RestController: PATCH /api/oidb/applications/{applicationId}/status (note)
@@ -122,6 +126,32 @@ alt Invalid or Missing Documents
     deactivate DB
     AppDB --> VerifSvc: TransferApplication
     deactivate AppDB
+    VerifSvc -> AuditSvc: logAction(staffId, applicationId, "Correction Requested")
+    activate AuditSvc
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: AuditEntry
+    deactivate DB
+    AuditDB --> AuditSvc: success
+    deactivate AuditDB
+    AuditSvc --> VerifSvc: void
+    deactivate AuditSvc
+
+    VerifSvc -> NotificationSvc: sendNotification(studentId, "Doküman (" + getDocumentType() + ") için düzeltme talebi: " + note)
+    activate NotificationSvc
+    NotificationSvc -> NotificationDB: save(notification)
+    activate NotificationDB
+    NotificationDB -> DB: persist(notification)
+    activate DB
+    DB --> NotificationDB: Notification
+    deactivate DB
+    NotificationDB --> NotificationSvc: success
+    deactivate NotificationDB
+    NotificationSvc --> VerifSvc: void
+    deactivate NotificationSvc
+
 
     VerifSvc --> RestController: void
     deactivate VerifSvc
@@ -205,6 +235,18 @@ else Documents are Valid
         deactivate DB
         AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
+        RoutingSvc -> AuditSvc: logAction(staffId, applicationId, "Forwarded to YDYO")
+        activate AuditSvc
+        AuditSvc -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: AuditEntry
+        deactivate DB
+        AuditDB --> AuditSvc: success
+        deactivate AuditDB
+        AuditSvc --> RoutingSvc: void
+        deactivate AuditSvc
 
         RoutingSvc --> RestController: void
         deactivate RoutingSvc
@@ -242,6 +284,19 @@ else Documents are Valid
         deactivate DB
         AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
+
+        RoutingSvc -> AuditSvc: logAction(staffId, applicationId, "Rejected")
+        activate AuditSvc
+        AuditSvc -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: AuditEntry
+        deactivate DB
+        AuditDB --> AuditSvc: success
+        deactivate AuditDB
+        AuditSvc --> RoutingSvc: void
+        deactivate AuditSvc
 
         RoutingSvc --> RestController: void
         deactivate RoutingSvc

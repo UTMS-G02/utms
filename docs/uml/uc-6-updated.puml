@@ -14,12 +14,15 @@ end box
 box "Business Logic Layer" #LightYellow
     participant "FinalizationService" as FinalizationSvc
     participant "EmailNotificationManager" as EmailManager
+    participant "NotificationService" as NotificationSvc
+    participant "AuditService" as AuditSvc
 end box
 
 box "Data Access Layer" #LightGreen
     participant "BoardDecisionRepository" as DecisionDB
     participant "TransferApplicationRepository" as AppDB
-    participant "NotificationRepository" as LogDB
+    participant "AuditLogRepository" as AuditDB
+    participant "NotificationRepository" as NotificationDB
 end box
 
 box "Database" #LightPink
@@ -84,6 +87,34 @@ deactivate DB
 AppDB --> FinalizationSvc: void
 deactivate AppDB
 
+
+FinalizationSvc -> AuditSvc: logAction(staffId, applicationId, "Application is finalized.")
+activate AuditSvc
+AuditSvc -> AuditDB: save(auditEntry)
+activate AuditDB
+AuditDB -> DB: persist(auditEntry)
+activate DB
+DB --> AuditDB: AuditEntry
+deactivate DB
+AuditDB --> AuditSvc: success
+deactivate AuditDB
+AuditSvc --> FinalizationSvc: void
+deactivate AuditSvc
+
+
+FinalizationSvc -> NotificationSvc: sendNotification(studentId, "Başvurunuz sonuçlanmıştır.")
+activate NotificationSvc
+NotificationSvc -> NotificationDB: save(notification)
+activate NotificationDB
+NotificationDB -> DB: persist(notification)
+activate DB
+DB --> NotificationDB: Notification
+deactivate DB
+NotificationDB --> NotificationSvc: success
+deactivate NotificationDB
+NotificationSvc --> FinalizationSvc: void
+deactivate NotificationSvc
+
 FinalizationSvc -> FinalizationSvc: triggerNotifications(cycleId)
 
 FinalizationSvc -> EmailManager: sendEmail(cycleId)
@@ -92,14 +123,14 @@ activate EmailManager
 alt Notification Failure
     EmailManager --> FinalizationSvc: EmailDeliveryException
 
-    FinalizationSvc -> LogDB: save(new Notification(cycleId, status="Failed"))
-    activate LogDB
-    LogDB -> DB: persist(notification)
+    FinalizationSvc -> NotificationDB: save(new Notification(cycleId, status="Failed"))
+    activate NotificationDB
+    NotificationDB -> DB: persist(notification)
     activate DB
-    DB --> LogDB: Notification
+    DB --> NotificationDB: Notification
     deactivate DB
-    LogDB --> FinalizationSvc: Notification
-    deactivate LogDB
+    NotificationDB --> FinalizationSvc: Notification
+    deactivate NotificationDB
 
     FinalizationSvc --> RestFinalizationSvc: PartialSuccessException
     RestFinalizationSvc --> UI: HTTP 207: Partial Success
@@ -108,14 +139,14 @@ else Notification Success
     EmailManager --> FinalizationSvc: void
     deactivate EmailManager
 
-    FinalizationSvc -> LogDB: save(new Notification(cycleId, status="Sent"))
-    activate LogDB
-    LogDB -> DB: persist(notification)
+    FinalizationSvc -> NotificationDB: save(new Notification(cycleId, status="Sent"))
+    activate NotificationDB
+    NotificationDB -> DB: persist(notification)
     activate DB
-    DB --> LogDB: Notification
+    DB --> NotificationDB: Notification
     deactivate DB
-    LogDB --> FinalizationSvc: Notification
-    deactivate LogDB
+    NotificationDB --> FinalizationSvc: Notification
+    deactivate NotificationDB
 
     FinalizationSvc --> RestFinalizationSvc: void
     RestFinalizationSvc --> UI: HTTP 200 OK

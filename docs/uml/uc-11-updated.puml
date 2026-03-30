@@ -8,17 +8,19 @@ actor "Faculty Board Member" as Board
 
 box "Presentation Layer" #LightCyan
     participant "FacultyBoardUI" as UI
-    participant "FacultyBoardRestFacultyBoardSvc" as RestFacultyBoardSvc
+    participant "FacultyBoardRestController" as RestFacultyBoardSvc
 end box
 
 box "Business Logic Layer" #LightYellow
     participant "FacultyBoardService" as FacultyBoardSvc
+    participant "AuditService" as AuditSvc
 end box
 
 box "Data Access Layer" #LightGreen
     participant "TransferApplicationRepository" as AppDB
     participant "EvaluationReportRepository" as EvalDB
     participant "BoardDecisionRepository" as DecisionDB
+    participant "AuditLogRepository" as AuditDB
 end box
 
 box "Database" #LightPink
@@ -72,16 +74,15 @@ alt Application Approved
     UI -> RestFacultyBoardSvc: POST /api/faculty/applications/{applicationId}/decision (type=Approved)
     activate RestFacultyBoardSvc
     RestFacultyBoardSvc -> FacultyBoardSvc: recordFinalDecision(applicationId, "Approved", null)
+    activate FacultyBoardSvc
 
 else Application Rejected
 
     Board -> UI: clickReject()
-    activate UI
     UI --> Board: Rejection Code Dropdown
     Board -> UI: selectRejectionCode(rejectionCode)
     Board -> UI: enterCommentsAndConfirm(comments)
     UI -> RestFacultyBoardSvc: POST /api/faculty/applications/{applicationId}/decision (type=Rejected, rejectionCode)
-    activate RestFacultyBoardSvc
     RestFacultyBoardSvc -> FacultyBoardSvc: recordFinalDecision(applicationId, "Rejected", rejectionCode)
 
 end
@@ -122,6 +123,23 @@ DB --> AppDB: TransferApplication
 deactivate DB
 AppDB --> FacultyBoardSvc: TransferApplication
 deactivate AppDB
+
+
+FacultyBoardSvc -> AuditSvc: logAction(staffId, applicationId, "Final decision recorded.")
+activate AuditSvc
+AuditSvc -> AuditDB: save(auditEntry)
+activate AuditDB
+AuditDB -> DB: persist(auditEntry)
+activate DB
+DB --> AuditDB: AuditEntry
+deactivate DB
+AuditDB --> AuditSvc: success
+deactivate AuditDB
+AuditSvc --> FacultyBoardSvc: void
+deactivate AuditSvc
+
+
+
 
 FacultyBoardSvc --> RestFacultyBoardSvc: void
 deactivate FacultyBoardSvc
