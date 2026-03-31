@@ -1,4 +1,4 @@
-@startuml uc-8
+@startuml scenario-8-ygk-evaluation
 autonumber
 skinparam maxMessageSize 150
 skinparam ParticipantPadding 20
@@ -13,117 +13,151 @@ end box
 
 box "Business Logic Layer" #LightYellow
     participant "EvaluationService" as EvalService
-    participant "CourseEquivalencyService" as EqService
+    participant "RankingService" as RankingService
+    participant "AuditService" as AuditService
 end box
 
 box "Data Access Layer" #LightGreen
-    participant "EquivalencyRepository" as EqRepo
-    participant "EvaluationRepository" as EvalRepo
     participant "TransferApplicationRepository" as AppRepo
+    participant "EvaluationRepository" as EvalRepo
 end box
 
 box "Database" #LightPink
     participant "Database" as DB
 end box
 
-== Initial Review & Evaluation ==
+== 1. Application Loading & Auto-Scoring ==
 
 YGK -> UI: selectApplication(applicationId)
 activate UI
 
-UI -> RestController: GET /api/evaluation/{id}/details
+UI -> RestController: GET /api/evaluation/{id}/context
 activate RestController
 
-RestController -> EvalService: getEvaluationContext(applicationId)
+RestController -> EvalService: initializeEvaluation(applicationId)
 activate EvalService
 
 EvalService -> AppRepo: findById(applicationId)
 activate AppRepo
-AppRepo -> DB: SELECT * FROM applications WHERE id = ?
-activate DB
-DB --> AppRepo: ApplicationData
-deactivate DB
-AppRepo --> EvalService: ApplicationEntity
+AppRepo --> EvalService: ApplicationData (GPA, YKS)
 deactivate AppRepo
 
-== 4a. Department-Specific Conditions ==
+note right of EvalService
+    SRS Rule: 10% GPA + 90% YKS
+    Score is Read-Only for YGK
+end note
 
-alt #Pink Department conditions not met
-    EvalService -> EvalService: identifyShortcomings(ApplicationEntity)
-    EvalService --> RestController: ConditionFailureDTO
-    RestController --> UI: HTTP 422: Unprocessable Entity
-    UI --> YGK: Highlight shortcomings on document
-else Conditions met
-    EvalService --> RestController: EvaluationDTO
-    RestController --> UI: HTTP 200: EvaluationDTO
-    UI --> YGK: Display Transcript & Intibak Table
+EvalService -> EvalService: calculateCompositeScore()
+
+EvalService --> RestController: EvaluationDTO (Score, Documents)
+deactivate EvalService
+
+RestController --> UI: Display Data (Score is\nGreyed Out/Locked)
+deactivate RestController
+
+UI --> YGK: Display Data (Score is\nGreyed Out/Locked)
+deactivate UI
+
+== 2. Qualitative Condition Check ==
+
+YGK -> UI: checkDepartmentSpecificConditions()
+activate UI
+
+alt [Conditions Not Met]
+
+    YGK -> UI: markShortcomings(notes)
+
+    UI -> RestController: POST /api/evaluation/{id}/reject-conditions
+    activate RestController
+
+    RestController -> EvalService: recordConditionFailure(notes)
+    activate EvalService
+
+    EvalService -> AppRepo: updateStatus(id, "REJECTED_BY_YGK")
+    activate AppRepo
+    AppRepo --> RestController: 200 OK
+    deactivate AppRepo
+    deactivate EvalService
+
+    RestController --> UI: Application marked as unsuccessful
+    deactivate RestController
+
+    UI --> YGK: Application marked as unsuccessful
+    deactivate UI
+
+else [Conditions Met]
+
+    YGK -> UI: confirmConditionsMet()
+    activate UI
+
+    UI -> RestController: POST /api/evaluation/{id}/confirm-conditions
+    activate RestController
+
+    RestController --> UI: 200 OK
+    deactivate RestController
+
+    deactivate UI
+
 end
 
-== Course Mapping & Scoring ==
-
-YGK -> UI: mapCourse(sourceCourse, targetCourse, grade)
-UI -> RestController: POST /api/evaluation/map-course
-activate RestController
-RestController -> EqService: validateAndSaveEquivalency(mappingData)
-activate EqService
-EqService -> EqRepo: save(equivalency)
-activate EqRepo
-EqRepo -> DB: INSERT INTO course_equivalencies (...)
-activate DB
-DB --> EqRepo: success
-deactivate DB
-EqRepo --> EqService: true
-deactivate EqRepo
-EqService --> RestController: true
-deactivate EqService
-RestController --> UI: 200 OK
-
-== Finalization & 387a Logic ==
+== 3. Finalization & Ranking ==
 
 YGK -> UI: clickSubmitFinalEvaluation()
-UI -> RestController: POST /api/evaluation/{id}/submit
+activate UI
+
+UI -> RestController: POST /api/evaluation/{id}/finalize
 activate RestController
 
-RestController -> EvalService: finalizeEvaluation(applicationId)
+RestController -> EvalService: finalizeEvaluation(id)
 activate EvalService
 
-EvalService -> EvalService: score = calculateFinalScore()
-
-== 387a. Sorting Logic for Equal Scores ==
-
-EvalService -> AppRepo: findAllByScore(score)
-activate AppRepo
-AppRepo -> DB: SELECT * FROM applications WHERE score = ? ORDER BY application_date ASC
-activate DB
-DB --> AppRepo: List<Application>
-deactivate DB
-AppRepo --> EvalService: SortedList
-deactivate AppRepo
-
-EvalService -> EvalRepo: save(evaluation)
+EvalService -> EvalRepo: save(EvaluationReport)
 activate EvalRepo
-EvalRepo -> DB: INSERT INTO evaluations (score, ygk_notes) VALUES (?, ?)
+EvalRepo -> DB: INSERT INTO evaluations (...)
 activate DB
-DB --> EvalRepo: evalId
+DB --> EvalRepo: void
 deactivate DB
-EvalRepo --> EvalService: true
+EvalRepo --> EvalService: void
 deactivate EvalRepo
 
-EvalService -> AppRepo: updateStatus(applicationId, "EVALUATED")
+== Score Handling ==
+
+EvalService -> RankingService: updateRanking(score)
+activate RankingService
+
+RankingService -> AppRepo: findAppsWithScore(score)
 activate AppRepo
-AppRepo -> DB: UPDATE applications SET status = 'EVALUATED' WHERE id = ?
+AppRepo -> DB: SELECT * FROM apps\nWHERE score=? ORDER BY\napplication_date ASC
 activate DB
-DB --> AppRepo: success
+DB --> AppRepo: SortedList
 deactivate DB
+AppRepo --> RankingService: SortedList
+deactivate AppRepo
+
+RankingService --> EvalService: void
+deactivate RankingService
+
+EvalService -> AuditService: logAction(ygkId, appId,\n"EVALUATION_COMPLETE")
+activate AuditService
+AuditService -> DB: INSERT INTO Audit_Log
+activate DB
+DB --> AuditService: void
+deactivate DB
+AuditService --> EvalService: void
+deactivate AuditService
+
+EvalService -> AppRepo: updateStatus(id, "EVALUATED")
+activate AppRepo
 AppRepo --> EvalService: success
 deactivate AppRepo
 
 EvalService --> RestController: success
 deactivate EvalService
+
 RestController --> UI: HTTP 200 OK
 deactivate RestController
 
-UI --> YGK: Confirmation("Değerlendirme başarıyla kaydedildi")
+UI --> YGK: Confirmation("Report forwarded\nto Dean's Office")
 deactivate UI
 
 @enduml
