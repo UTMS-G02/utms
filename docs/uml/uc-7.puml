@@ -20,7 +20,7 @@ end box
 box "Data Access Layer" #LightGreen
     participant "TransferApplicationRepository" as AppDB
     participant "ProficiencyRecordRepository" as ProfDB
-    participant "AuditRepository" as AuditDB
+    participant "AuditLogRepository" as AuditDB
 end box
 
 box "Database" #LightPink

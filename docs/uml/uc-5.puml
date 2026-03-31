@@ -18,7 +18,7 @@ end box
 
 box "Data Access Layer" #LightGreen
     participant "TransferApplicationRepository" as AppDB
-    participant "AuditRepository" as AuditDB
+    participant "AuditLogRepository" as AuditDB
 end box
 
 box "Database" #LightPink
