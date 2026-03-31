@@ -14,10 +14,12 @@ end box
 
 box "Business Logic Layer" #LightYellow
     participant "DeanRoutingService" as DeanRoutingSvc
+    participant "AuditService" as AuditSvc
 end box
 
 box "Data Access Layer" #LightGreen
     participant "TransferApplicationRepository" as AppDB
+    participant "AuditRepository" as AuditDB
 end box
 
 box "Database" #LightPink
@@ -61,7 +63,7 @@ Staff -> UI: clickForwardToYGK()
 UI -> RestController: PATCH /api/dean/applications/forward-to-ygk (applicationIds)
 activate RestController
 
-RestController -> DeanRoutingSvc: forwardToYGK(applicationIds)
+RestController -> DeanRoutingSvc: forwardToYGK(applicationIds, staffId)
 activate DeanRoutingSvc
 
 DeanRoutingSvc -> AppDB: findAllById(applicationIds)
@@ -83,6 +85,23 @@ DB --> AppDB: List<TransferApplication>
 deactivate DB
 AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
+
+' AUDIT LOG EKLEMESI BASLANGICI
+loop for each application
+    DeanRoutingSvc -> AuditSvc: logAction(staffId, a.id, "Forwarded to YGK")
+    activate AuditSvc
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: AuditEntry
+    deactivate DB
+    AuditDB --> AuditSvc: success
+    deactivate AuditDB
+    AuditSvc --> DeanRoutingSvc: void
+    deactivate AuditSvc
+end
+' AUDIT LOG EKLEMESI SONU
 
 DeanRoutingSvc --> RestController: void
 deactivate DeanRoutingSvc
@@ -132,7 +151,7 @@ Staff -> UI: clickForwardToFacultyBoard()
 UI -> RestController: PATCH /api/dean/applications/forward-to-faculty (applicationIds)
 activate RestController
 
-RestController -> DeanRoutingSvc: forwardToFacultyBoard(applicationIds)
+RestController -> DeanRoutingSvc: forwardToFacultyBoard(applicationIds, staffId)
 activate DeanRoutingSvc
 
 DeanRoutingSvc -> AppDB: findAllById(applicationIds)
@@ -154,6 +173,23 @@ DB --> AppDB: List<TransferApplication>
 deactivate DB
 AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
+
+' AUDIT LOG EKLEMESI BASLANGICI
+loop for each application
+    DeanRoutingSvc -> AuditSvc: logAction(staffId, a.id, "Forwarded to Faculty Board")
+    activate AuditSvc
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: AuditEntry
+    deactivate DB
+    AuditDB --> AuditSvc: success
+    deactivate AuditDB
+    AuditSvc --> DeanRoutingSvc: void
+    deactivate AuditSvc
+end
+' AUDIT LOG EKLEMESI SONU
 
 DeanRoutingSvc --> RestController: void
 deactivate DeanRoutingSvc
@@ -203,7 +239,7 @@ Staff -> UI: clickReturnToOidb()
 UI -> RestController: PATCH /api/dean/applications/return-to-oidb (applicationIds)
 activate RestController
 
-RestController -> DeanRoutingSvc: returnToOidb(applicationIds)
+RestController -> DeanRoutingSvc: returnToOidb(applicationIds, staffId)
 activate DeanRoutingSvc
 
 DeanRoutingSvc -> AppDB: findAllById(applicationIds)
@@ -229,6 +265,23 @@ DB --> AppDB: List<TransferApplication>
 deactivate DB
 AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
+
+' AUDIT LOG EKLEMESI BASLANGICI
+loop for each application
+    DeanRoutingSvc -> AuditSvc: logAction(staffId, a.id, "Status Updated to: " + a.status)
+    activate AuditSvc
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: AuditEntry
+    deactivate DB
+    AuditDB --> AuditSvc: success
+    deactivate AuditDB
+    AuditSvc --> DeanRoutingSvc: void
+    deactivate AuditSvc
+end
+' AUDIT LOG EKLEMESI SONU
 
 DeanRoutingSvc --> RestController: void
 deactivate DeanRoutingSvc
