@@ -45,6 +45,11 @@ package "Application Services" #FEF9E7 {
         +routeToFaculty(applicationId : Integer, targetDepartment : String)
         +rejectApplication(applicationId : Integer)
     }
+    class NotificationService {
+        +getStudentNotifications(studentId : Integer) : List<Notification>
+        +markAsRead(notificationId : Integer)
+        +deleteNotification(notificationId : Integer)
+    }
 }
 
 ' =============================================
@@ -77,7 +82,7 @@ package "Application Domain" #EBF5FB {
         -recipientEmail : String
         -messageBody : String
         -sentDate : LocalDateTime
-        -status : String
+        -isRead : Boolean
     }
 
     interface TransferApplicationRepository {
@@ -113,7 +118,7 @@ package "Document Domain" #EBF5FB {
     class StudentCertificate
     class EnglishProficiencyCertificate
 
-    interface BaseDocumentRepository {
+    interface DocumentRepository {
         +findByApplicationId(applicationId : Integer) : List<BaseDocument>
         +save(doc : BaseDocument) : BaseDocument
     }
@@ -154,12 +159,13 @@ TransferApplication "1" -- "0..*" Notification : triggers >
 
 TransferApplicationManager ..> TransferApplicationRepository : uses
 ApplicationService ..> TransferApplicationRepository : uses
-ApplicationService ..> BaseDocumentRepository : uses
+ApplicationService ..> DocumentRepository : uses
 DocumentVerificationService ..> TransferApplicationRepository : uses
-DocumentVerificationService ..> BaseDocumentRepository : uses
-DocumentManagerService ..> BaseDocumentRepository : uses
+DocumentVerificationService ..> DocumentRepository : uses
+DocumentManagerService ..> DocumentRepository : uses
 DocumentManagerService ..> TransferApplicationRepository : uses
 ApplicationService ..> DocumentManagerService : uses
 RoutingService ..> TransferApplicationRepository : uses
+NotificationService ..> NotificationRepository : uses
 
 @enduml
