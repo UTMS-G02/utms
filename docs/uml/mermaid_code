@@ -1,0 +1,315 @@
+classDiagram
+
+    namespace PresentationLayer {
+        class LoginUI {
+            +displayLoginForm()
+            +showOtpPrompt()
+            +showLockoutMessage()
+        }
+        class ForgotPasswordUI {
+            +displayResetForm()
+            +showPasswordRequirements()
+        }
+        class RegistrationUI {
+            +displayRegistrationForm()
+            +displayEmailFormatError()
+            +showActivationSuccessMessage()
+        }
+        class ApplicationFormUI {
+            +displayApplicationForm()
+            +updateUploadProgressBar()
+            +disableSubmitButton()
+            +showFormatError()
+        }
+        class ProfileUI {
+            +displayProfileData()
+            +toggleShowPassword()
+            +showUpdateConfirmation()
+        }
+        class OidbDashboardUI {
+            +displayPendingApplications()
+            +filterByStatus()
+            +showActionConfirmation()
+        }
+        class YdyoDashboardUI {
+            +displayStudentList()
+            +openDocumentViewer()
+            +enableForwardButton()
+        }
+        class YgkDashboardUI {
+            +displayEvaluationModal()
+            +lockReadonlyFields()
+        }
+        class IntibakFormUI {
+            +renderNewRow()
+            +showCreditFormatError()
+        }
+        class DeanDashboardUI {
+            +displayTab(String tabName)
+            +executeBatchSelection()
+        }
+        class FacultyBoardUI {
+            +displayConsolidatedReport()
+            +showRejectionCodeDropdown()
+        }
+    }
+
+    namespace BusinessLogicLayer {
+        class IExternalVerificationService {
+            <<interface>>
+            +verifyIdentity(String tckn) Boolean
+            +fetchAcademicData(String tckn) ExternalDataResponse
+        }
+        class YoksisVerificationService
+        class OsymVerificationService
+        class EDevletVerificationService
+
+        class ITransferApplicationService {
+            <<interface>>
+            +submitApplication(TransferApplication app)
+            +updateStatus(Integer appId, String status)
+        }
+        class TransferApplicationManager
+
+        class IEvaluationService {
+            <<interface>>
+            +calculateCompositeScore(Float gpa, Integer yks) Float
+            +generateDraftRanking() Student[]
+        }
+        class YgkEvaluationManager
+
+        class INotificationService {
+            <<interface>>
+            +sendStatusUpdate(String email, String message)
+        }
+        class EmailNotificationManager
+
+        class AuthenticationService {
+            +verifyCredentials(String email, String password)
+            +generateOTP() String
+            +verifyOTP(String code) Boolean
+            +lockAccount()
+            +initiatePasswordReset(String email)
+            +updatePassword(String newPassword)
+        }
+        class RegistrationController {
+            +validateEmailFormat(String email)
+            +checkEmailExists(String email)
+            +validatePasswordStrength(String password)
+            +generateActivationLink()
+            +verifyActivationLink(String link)
+        }
+        class ApplicationController {
+            +validateMandatoryFields()
+            +validateFileFormatAndSize(BaseDocument file)
+            +checkInitialEligibility(Float gpa, Integer yksRanking)
+        }
+        class ProfileController {
+            +validatePhoneNumber(String phone)
+            +verifyCurrentPassword(String password)
+            +hashNewPassword(String newPassword)
+        }
+        class DocumentVerificationController {
+            +verifyDocuments(Integer applicationId)
+            +requestDocumentCorrection(Integer applicationId)
+        }
+        class RoutingService {
+            +forwardToYDYO(Integer applicationId)
+            +routeToFaculty(Integer applicationId, String targetDepartment)
+            +rejectApplication(Integer applicationId)
+        }
+        class ProficiencyEvaluationController {
+            +approveDocument()
+            +rejectDocument()
+            +updateExamResult()
+            +calculateExemptionStatus()
+            +forwardListToOidb()
+        }
+        class IntibakManager {
+            +addRow()
+            +removeRow()
+            +validateNumericCredits()
+            +saveTable()
+        }
+        class DeanRoutingController {
+            +forwardToYGK()
+            +forwardToFacultyBoard()
+            +returnToOidb()
+        }
+        class FacultyBoardController {
+            +verifyEquivalencyCompliance()
+            +recordFinalDecision()
+        }
+        class FinalizationController {
+            +publishResults(Integer cycleId)
+            +triggerNotifications()
+        }
+    }
+
+    namespace DataAccessLayer {
+        class User {
+            <<abstract>>
+            +Integer userId
+            +String email
+            +String passwordHash
+            +Date lastLoginDate
+            +login()
+            +resetPassword()
+        }
+        class Student {
+            +String tckn
+            +String firstName
+            +String lastName
+            +String phoneNumber
+            +String address
+            +Date dateOfBirth
+            +Boolean isActive
+            +Boolean kvkkAccepted
+            +Float gpa
+            +String currentUniversity
+            +TransferApplication applications
+            +updateProfileData()
+        }
+        class Staff {
+            <<abstract>>
+            +Integer departmentId
+            +String staffRole
+        }
+        class OidbStaff
+        class YdyoStaff
+        class YgkMember
+        class DeanOfficeStaff
+        class FacultyBoardMember
+
+        class BaseDocument {
+            <<abstract>>
+            +Integer documentId
+            +Date uploadDate
+            +Float fileSize
+            +String fileFormat
+            +String filePath
+            +Boolean isLocked
+            +lockDocument()
+            +updateDocument()
+        }
+        class Transcript
+        class YksResultDocument
+        class StudentCertificate
+        class EnglishProficiencyCertificate
+
+        class TransferApplication {
+            +Integer applicationId
+            +Float gpa
+            +Integer currentYear
+            +String currentDepartment
+            +String targetDepartment
+            +String applicationStatus
+            +String eligibilityStatus
+            +String finalDecision
+            +Student applicant
+            +setStatus(String newStatus)
+        }
+        class EnglishProficiencyRecord {
+            +Integer recordId
+            +String documentApprovalStatus
+            +String examResult
+            +String exemptionStatus
+            +String explanationNote
+        }
+        class EvaluationReport {
+            +Integer reportId
+            +Float compositeScore
+            +Boolean conditionsMet
+            +String generalNote
+            +Integer recommendedRanking
+        }
+        class IntibakTable {
+            +Integer tableId
+            +Integer totalCredits
+        }
+        class IntibakRow {
+            +Integer rowId
+            +String sourceCourseCode
+            +String sourceCourseName
+            +Integer sourceCredit
+            +String targetCourseCode
+            +String targetCourseName
+            +Integer targetCredit
+            +String equivalencyStatus
+        }
+        class BoardDecision {
+            +Integer decisionId
+            +String decisionType
+            +String rejectionCode
+            +Date timestamp
+        }
+        class AuthToken {
+            +String tokenId
+            +Date expiryDate
+            +Boolean isValid
+        }
+        class OTPRecord {
+            +String otpCode
+            +Integer failedAttempts
+            +Date expiryTime
+        }
+        class Notification {
+            +Integer notificationId
+            +String recipientEmail
+            +String messageBody
+            +Date sentDate
+            +String status
+        }
+    }
+
+    %% ==========================================
+    %% INHERITANCE AND IMPLEMENTATION
+    %% ==========================================
+    User <|-- Student
+    User <|-- Staff
+    Staff <|-- OidbStaff
+    Staff <|-- YdyoStaff
+    Staff <|-- YgkMember
+    Staff <|-- DeanOfficeStaff
+    Staff <|-- FacultyBoardMember
+
+    BaseDocument <|-- Transcript
+    BaseDocument <|-- YksResultDocument
+    BaseDocument <|-- StudentCertificate
+    BaseDocument <|-- EnglishProficiencyCertificate
+
+    IExternalVerificationService <|.. YoksisVerificationService
+    IExternalVerificationService <|.. OsymVerificationService
+    IExternalVerificationService <|.. EDevletVerificationService
+
+    ITransferApplicationService <|.. TransferApplicationManager
+    IEvaluationService <|.. YgkEvaluationManager
+    INotificationService <|.. EmailNotificationManager
+
+    %% ==========================================
+    %% DOMAIN RELATIONSHIPS (Data Layer)
+    %% ==========================================
+    Student "1" -- "0..*" TransferApplication : submits
+    TransferApplication "1" *-- "1..*" BaseDocument : contains
+    TransferApplication "1" o-- "0..1" EnglishProficiencyRecord : has
+    TransferApplication "1" o-- "0..1" EvaluationReport : has
+    TransferApplication "1" o-- "0..1" BoardDecision : has
+    EvaluationReport "1" *-- "0..1" IntibakTable : includes
+    IntibakTable "1" *-- "1..*" IntibakRow : contains
+
+    %% ==========================================
+    %% CROSS-LAYER DEPENDENCIES (Presentation -> Business Logic)
+    %% ==========================================
+    LoginUI ..> AuthenticationService
+    ForgotPasswordUI ..> AuthenticationService
+    RegistrationUI ..> RegistrationController
+    ApplicationFormUI ..> ApplicationController
+    ProfileUI ..> ProfileController
+    OidbDashboardUI ..> DocumentVerificationController
+    OidbDashboardUI ..> RoutingService
+    OidbDashboardUI ..> FinalizationController
+    YdyoDashboardUI ..> ProficiencyEvaluationController
+    YgkDashboardUI ..> IEvaluationService
+    IntibakFormUI ..> IntibakManager
+    DeanDashboardUI ..> DeanRoutingController
+    FacultyBoardUI ..> FacultyBoardController

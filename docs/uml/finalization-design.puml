@@ -1,0 +1,100 @@
+@startuml UTMS_Finalization_Design
+
+title UTMS — Finalization & Routing Design
+
+top to bottom direction
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam packageStyle rectangle
+skinparam class {
+    BackgroundColor White
+    BorderColor #2C3E50
+    ArrowColor #2C3E50
+}
+skinparam package {
+    BorderColor #5D6D7E
+}
+
+' =============================================
+' BUSINESS LOGIC LAYER
+' =============================================
+
+package "Finalization Services" #FEF9E7 {
+    class AuditService {
+        +logAction(userId : Integer, targetEntityId : Integer, action : String)
+    }
+    class FinalizationService {
+        +fetchFinalDecisions(cycleId : Integer) : List<BoardDecision>
+        +publishResults(cycleId : Integer)
+        +triggerNotifications(cycleId : Integer)
+    }
+    class DeanRoutingService {
+        +fetchApplicationsByStatus(status : String) : List<TransferApplication>
+        +forwardToYGK(applicationIds : List<Integer>)
+        +forwardToFacultyBoard(applicationIds : List<Integer>)
+        +returnToOidb(applicationIds : List<Integer>)
+    }
+}
+
+' =============================================
+' DATA ACCESS LAYER
+' =============================================
+
+package "Audit Domain" #EBF5FB {
+    class AuditLogEntry {
+        -logId : Integer
+        -userId : Integer
+        -action : String
+        -targetEntityId : Integer
+        -targetEntityType : String
+        -timestamp : LocalDateTime
+        -ipAddress : String
+    }
+
+    interface AuditLogRepository {
+        +save(entry : AuditLogEntry) : AuditLogEntry
+        +findByUserId(userId : Integer) : List<AuditLogEntry>
+        +findByTargetEntityId(entityId : Integer) : List<AuditLogEntry>
+    }
+}
+
+' =============================================
+' REFERENCES FROM OTHER DOMAINS
+' =============================================
+
+class EmailNotificationManager <<User Auth Domain>> #EEEEEE {
+    +sendStatusUpdates(cycleId : Integer)
+    +sendStatusUpdate(email : String, message : String)
+}
+
+interface TransferApplicationRepository <<Application Domain>> #EEEEEE {
+    +findByApplicationStatus(status : String) : List<TransferApplication>
+    +findAllById(ids : List<Integer>) : List<TransferApplication>
+    +saveAll(apps : List<TransferApplication>) : List<TransferApplication>
+    +updateApplicationStatusByCycleId(cycleId : Integer, status : String)
+}
+
+interface BoardDecisionRepository <<Evaluation Domain>> #EEEEEE {
+    +findByCycleId(cycleId : Integer) : List<BoardDecision>
+}
+
+interface NotificationRepository <<Application Domain>> #EEEEEE {
+    +save(notification : Notification) : Notification
+}
+
+' =============================================
+' BUSINESS LOGIC -> DATA ACCESS DEPENDENCIES
+' =============================================
+
+FinalizationService ..> BoardDecisionRepository : uses
+FinalizationService ..> TransferApplicationRepository : uses
+FinalizationService ..> NotificationRepository : uses
+FinalizationService ..> EmailNotificationManager : uses
+AuditService ..> AuditLogRepository : uses
+FinalizationService ..> AuditService : uses
+FinalizationService ..> AuditLogRepository : uses
+DeanRoutingService ..> TransferApplicationRepository : uses
+DeanRoutingService ..> AuditLogRepository : uses
+
+@enduml

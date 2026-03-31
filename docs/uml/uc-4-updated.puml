@@ -1,0 +1,314 @@
+@startuml uc-4
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "ÖİDB Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+    participant "OidbDashboardUI" as UI
+    participant "OidbRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "DocumentVerificationService" as VerifSvc
+    participant "RoutingService" as RoutingSvc
+    participant "AuditService" as AuditSvc
+    participant "NotificationService" as NotificationSvc
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "TransferApplicationRepository" as AppDB
+    participant "DocumentRepository" as DocDB
+    participant "AuditLogRepository" as AuditDB
+    participant "NotificationRepository" as NotificationDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== 1. Accessing the Review Page ==
+
+Staff -> UI: navigateToOidbDashboard()
+activate UI
+
+UI -> RestController: GET /api/oidb/applications?status=Pending
+activate RestController
+
+RestController -> VerifSvc: fetchPendingApplications()
+activate VerifSvc
+
+VerifSvc -> AppDB: fetchApplicationByStatus("Pending")
+activate AppDB
+AppDB -> DB: read(status)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> VerifSvc: List<TransferApplication>
+deactivate AppDB
+
+VerifSvc --> RestController: List<TransferApplication>: pendingApps
+deactivate VerifSvc
+
+RestController --> UI: HTTP 200: pendingApps
+deactivate RestController
+
+UI --> Staff: Pending Applications
+deactivate UI
+
+== 2. Document Verification Process ==
+
+Staff -> UI: selectApplicationForReview(applicationId)
+activate UI
+
+UI -> RestController: GET /api/oidb/applications/{applicationId}
+activate RestController
+
+RestController -> VerifSvc: verifyDocuments(applicationId)
+activate VerifSvc
+
+VerifSvc -> AppDB: findApplicationById(applicationId)
+activate AppDB
+AppDB -> DB: read(applicationId)
+activate DB
+DB --> AppDB: TransferApplication
+deactivate DB
+AppDB --> VerifSvc: TransferApplication
+deactivate AppDB
+
+VerifSvc -> DocDB: findDocumentById(applicationId)
+activate DocDB
+DocDB -> DB: read(applicationId)
+activate DB
+DB --> DocDB: List<Document>
+deactivate DB
+DocDB --> VerifSvc: List<BaseDocument>
+deactivate DocDB
+
+VerifSvc --> RestController: ApplicationData: viewData
+deactivate VerifSvc
+
+RestController --> UI: HTTP 200: viewData
+deactivate RestController
+
+UI --> Staff: Application Documents
+deactivate UI
+
+alt Invalid or Missing Documents
+
+    Staff -> UI: flagDocumentInvalid(documentId, note)
+    activate UI
+
+    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/status (note)
+    activate RestController
+
+    RestController -> VerifSvc: requestDocumentCorrection(applicationId, note)
+    activate VerifSvc
+
+    VerifSvc -> AppDB: findApplicationById(applicationId)
+    activate AppDB
+    AppDB -> DB: read(applicationId)
+    activate DB
+    DB --> AppDB: TransferApplication
+    deactivate DB
+    AppDB --> VerifSvc: TransferApplication
+    deactivate AppDB
+
+    VerifSvc -> VerifSvc: application.setApplicationStatus("Correction Requested")
+
+    VerifSvc -> AppDB: save(application)
+    activate AppDB
+    AppDB -> DB: persist(application)
+    activate DB
+    DB --> AppDB: TransferApplication
+    deactivate DB
+    AppDB --> VerifSvc: TransferApplication
+    deactivate AppDB
+    VerifSvc -> AuditSvc: logAction(staffId, applicationId, "Correction Requested")
+    activate AuditSvc
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: AuditEntry
+    deactivate DB
+    AuditDB --> AuditSvc: success
+    deactivate AuditDB
+    AuditSvc --> VerifSvc: void
+    deactivate AuditSvc
+
+    VerifSvc -> NotificationSvc: sendNotification(studentId, "Doküman (" + getDocumentType() + ") için düzeltme talebi: " + note)
+    activate NotificationSvc
+    NotificationSvc -> NotificationDB: save(notification)
+    activate NotificationDB
+    NotificationDB -> DB: persist(notification)
+    activate DB
+    DB --> NotificationDB: Notification
+    deactivate DB
+    NotificationDB --> NotificationSvc: success
+    deactivate NotificationDB
+    NotificationSvc --> VerifSvc: void
+    deactivate NotificationSvc
+
+
+    VerifSvc --> RestController: void
+    deactivate VerifSvc
+
+    RestController --> UI: HTTP 200 OK
+    deactivate RestController
+
+    UI --> Staff: Action Confirmation("Öğrenciye düzeltme yapılması gerektiği bildirildi.")
+    deactivate UI
+
+else Documents are Valid
+
+    Staff -> UI: approveAllDocuments()
+    activate UI
+
+    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/documents/lock
+    activate RestController
+
+    RestController -> VerifSvc: markApplicationVerified(applicationId)
+    activate VerifSvc
+
+    VerifSvc -> DocDB: findDocumentById(applicationId)
+    activate DocDB
+    DocDB -> DB: read(applicationId)
+    activate DB
+    DB --> DocDB: List<Document>
+    deactivate DB
+    DocDB --> VerifSvc: List<BaseDocument>
+    deactivate DocDB
+
+    VerifSvc -> VerifSvc: documents.forEach(d -> d.setLocked(true))
+
+    VerifSvc -> DocDB: saveAll(documents)
+    activate DocDB
+    DocDB -> DB: persist(documents)
+    activate DB
+    DB --> DocDB: List<Document>
+    deactivate DB
+    DocDB --> VerifSvc: List<BaseDocument>
+    deactivate DocDB
+
+    VerifSvc --> RestController: void
+    deactivate VerifSvc
+
+    RestController --> UI: HTTP 200 OK
+    deactivate RestController
+    UI --> Staff: Documents Verified
+    deactivate UI
+
+    == 3. Application Routing ==
+
+    Staff -> UI: proceedToRouting()
+    activate UI
+
+    alt Needs English Proficiency Prep (YDYO)
+
+        Staff -> UI: routeToYdyo()
+
+        UI -> RestController: PATCH /api/oidb/applications/{applicationId}/route (target=YDYO)
+        activate RestController
+
+        RestController -> RoutingSvc: forwardToYDYO(applicationId)
+        activate RoutingSvc
+
+        RoutingSvc -> AppDB: findApplicationById(applicationId)
+        activate AppDB
+        AppDB -> DB: read(applicationId)
+        activate DB
+        DB --> AppDB: TransferApplication
+        deactivate DB
+        AppDB --> RoutingSvc: TransferApplication
+        deactivate AppDB
+
+        RoutingSvc -> RoutingSvc: application.setApplicationStatus("Forwarded to YDYO")
+
+        RoutingSvc -> AppDB: save(application)
+        activate AppDB
+        AppDB -> DB: persist(application)
+        activate DB
+        DB --> AppDB: TransferApplication
+        deactivate DB
+        AppDB --> RoutingSvc: TransferApplication
+        deactivate AppDB
+        RoutingSvc -> AuditSvc: logAction(staffId, applicationId, "Forwarded to YDYO")
+        activate AuditSvc
+        AuditSvc -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: AuditEntry
+        deactivate DB
+        AuditDB --> AuditSvc: success
+        deactivate AuditDB
+        AuditSvc --> RoutingSvc: void
+        deactivate AuditSvc
+
+        RoutingSvc --> RestController: void
+        deactivate RoutingSvc
+
+        RestController --> UI: HTTP 200 OK
+        deactivate RestController
+        UI --> Staff: Action Confirmation("YDYO'ya yönlendirildi.")
+
+    else Reject Application
+
+        Staff -> UI: rejectApplication()
+
+        UI -> RestController: PATCH /api/oidb/applications/{applicationId}/route (target=Rejected)
+        activate RestController
+
+        RestController -> RoutingSvc: rejectApplication(applicationId)
+        activate RoutingSvc
+
+        RoutingSvc -> AppDB: findApplicationById(applicationId)
+        activate AppDB
+        AppDB -> DB: read(applicationId)
+        activate DB
+        DB --> AppDB: TransferApplication
+        deactivate DB
+        AppDB --> RoutingSvc: TransferApplication
+        deactivate AppDB
+
+        RoutingSvc -> RoutingSvc: application.setApplicationStatus("Rejected")
+
+        RoutingSvc -> AppDB: save(application)
+        activate AppDB
+        AppDB -> DB: persist(application)
+        activate DB
+        DB --> AppDB: TransferApplication
+        deactivate DB
+        AppDB --> RoutingSvc: TransferApplication
+        deactivate AppDB
+
+        RoutingSvc -> AuditSvc: logAction(staffId, applicationId, "Rejected")
+        activate AuditSvc
+        AuditSvc -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: AuditEntry
+        deactivate DB
+        AuditDB --> AuditSvc: success
+        deactivate AuditDB
+        AuditSvc --> RoutingSvc: void
+        deactivate AuditSvc
+
+        RoutingSvc --> RestController: void
+        deactivate RoutingSvc
+
+        RestController --> UI: HTTP 200 OK
+        deactivate RestController
+        UI --> Staff: Action Confirmation Message("Başvuru reddedildi.")
+
+    end
+
+    deactivate UI
+
+end
+
+@enduml

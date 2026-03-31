@@ -1,0 +1,83 @@
+@startuml uc-14
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor Student
+
+box "Presentation Layer" #LightCyan
+    participant "TrackingUI" as UI
+    participant "TrackingRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "ApplicationService" as AppSvc
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "TransferApplicationRepository" as AppDB
+    participant "DocumentRepository" as DocDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Accessing the Tracking Page (Başvuru Takibi) ==
+Student -> UI: clickApplicationTracking()
+activate UI
+
+UI -> RestController: GET /api/tracking/applications/{studentId}
+activate RestController
+
+RestController -> AppSvc: getTrackingDetails(studentId)
+activate AppSvc
+
+AppSvc -> AppDB: findApplicationById(studentId)
+activate AppDB
+AppDB -> DB: read(studentId)
+activate DB
+DB --> AppDB: ResultSet
+deactivate DB
+AppDB --> AppSvc: TransferApplication: appDetails
+deactivate AppDB
+
+alt Application Not Found
+    AppSvc --> RestController: null
+    RestController --> UI: HTTP 404 Not Found
+    UI --> Student: Information Message ("Aktif başvurunuz bulunmamaktadır.")
+else Application Found
+    == Fetching Uploaded Documents ==
+    AppSvc -> DocDB: getDocuments(appDetails.applicationId)
+    activate DocDB
+    DocDB -> DB: read(applicationId)
+    activate DB
+    DB --> DocDB: ResultSet
+    deactivate DB
+    DocDB --> AppSvc: List<BaseDocument>: uploadedDocs
+    deactivate DocDB
+
+    AppSvc -> AppSvc: attachDocuments(appDetails, uploadedDocs)
+    note right: Satisfies the 'contains' relationship defined in the Class Diagram
+    
+    AppSvc --> RestController: TransferApplication: appDetails
+    deactivate AppSvc
+    
+    RestController --> UI: HTTP 200 OK: appDetails
+    deactivate RestController
+
+    == Rendering the Interface ==
+    UI -> UI: renderStatusTimeline(appDetails.applicationStatus)
+    note right: UI visually activates "Gönderildi", "İnceleniyor" or "Sonuçlandı" steps based on status, and explanation about result.
+    
+    UI -> UI: renderApplicationDetails(appDetails)
+    note right: Populates GPA, Target Dept, Dates, etc.
+    
+    UI -> UI: renderDocumentList(appDetails.documents)
+    note right: Renders read-only list of PDFs (Transcript, YKS_Sonuc, etc.)
+    
+    UI --> Student: Tracking Page
+end
+deactivate UI
+@enduml

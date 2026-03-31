@@ -34,7 +34,6 @@ package "Data Access Layer" #EBF5FB {
             +middleName : String
             +lastName : String
             +phoneNumber : String
-            +address : String
             +dateOfBirth : Date
             +isActive : Boolean
             +kvkkAcceptedAt : Date

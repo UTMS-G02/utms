@@ -1,0 +1,146 @@
+@startuml uc-1
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor Student
+box "Presentation Layer" #LightCyan
+participant "RegistrationUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "RegistrationController" as Controller
+end box
+
+box "Data Access Layer" #LightGreen
+participant "Student" as DataAccess
+end box
+
+box "Database" #LightPink
+participant "Database" as DB
+end box
+
+box "External Services" #LightGray
+participant "Email API" as Email
+end box
+
+== Registration Phase ==
+
+Student -> UI: ClickRegisterButton()
+activate UI
+UI --> Student: Registration Form
+deactivate UI
+
+Student -> UI: submitForm(email, password, repeat, KVKK)
+activate UI
+
+UI -> Controller: validateEmailFormat(email)
+activate Controller
+alt Invalid Email Format / Extension
+    Controller --> UI: boolean: false
+    UI --> Student: Email Format Error
+else Valid Email
+    Controller --> UI: boolean: true
+    UI -> Controller: validatePasswordStrength(password)
+    
+    alt Invalid Password
+        Controller --> UI: boolean: false
+        UI --> Student: Password Security Error
+    else Valid Password
+        Controller --> UI: boolean: true
+        
+        UI -> Controller: checkEmailExists(email)
+        Controller -> DataAccess: findByEmail(email)
+        activate DataAccess
+        
+        DataAccess -> DB: SELECT * FROM Students WHERE email = ?
+        activate DB
+        DB --> DataAccess: ResultSet
+        deactivate DB
+        
+        DataAccess --> Controller: boolean: isRegistered
+        deactivate DataAccess
+        
+        alt Email Already Registered (isRegistered == true)
+            Controller --> UI: boolean: true
+            UI --> Student: Registration Error("Bu e-posta adresi zaten kayıtlı")
+        else Email is Available (isRegistered == false)
+            Controller --> UI: boolean: false
+            
+            UI -> Controller: registerStudent(email, password)
+            Controller -> DataAccess: save(Student(isActive=false, kvkk=true))
+            activate DataAccess
+            
+            DataAccess -> DB: INSERT INTO Students (email, passwordHash, ...)
+            activate DB
+            DB --> DataAccess: int: studentId
+            deactivate DB
+            
+            DataAccess --> Controller: Student: newStudent
+            deactivate DataAccess
+            
+            Controller -> Controller: generateActivationLink()
+            
+            Controller -> Email: send(email, activationLink)
+            activate Email
+            
+            alt Email Sending Error 
+                Email --> Controller: Exception / HTTP 500
+                Controller --> UI: Exception: DeliveryError
+                UI --> Student: Error ("E-posta gönderim hatası")
+            else Email Sent Successfully
+                Email --> Controller: HTTP 200 OK
+                deactivate Email
+                Controller --> UI: void
+                UI --> Student: Activation Success Message
+            end
+        end
+    end
+end
+deactivate Controller
+deactivate UI
+
+== Activation Phase ==
+
+Student -> UI: clickActivationLink(link)
+activate UI
+
+UI -> Controller: verifyActivationLink(link)
+activate Controller
+
+alt Link Invalid or Expired
+    Controller --> UI: boolean: false
+    UI --> Student: Error ("Aktivasyon bağlantısı geçersiz/süresi dolmuş")
+    
+    opt Student requests new link
+        Student -> UI: requestNewActivationLink()
+        UI -> Controller: generateActivationLink()
+        Controller -> Email: send(email, newActivationLink)
+        activate Email
+        Email --> Controller: HTTP 200 OK
+        deactivate Email
+        Controller --> UI: void
+        UI --> Student: Success Message ("Yeni bağlantı gönderildi")
+    end
+    
+else Link Valid
+    Controller -> DataAccess: updateProfileData(studentId, isActive = true)
+    activate DataAccess
+    
+    DataAccess -> DB: UPDATE Students SET isActive = true WHERE id = ?
+    activate DB
+    DB --> DataAccess: int: rowsAffected
+    deactivate DB
+    
+    DataAccess --> Controller: boolean: true
+    deactivate DataAccess
+    
+    Controller --> UI: boolean: true
+    UI --> Student: Success Message ("Hesabınız başarıyla etkinleştirildi")
+end
+
+deactivate Controller
+deactivate UI
+
+@enduml

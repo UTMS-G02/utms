@@ -1,0 +1,129 @@
+@startuml uc-6
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "ÖİDB Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+participant "OidbDashboardUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "FinalizationController" as Controller
+participant "EmailNotificationService" as EmailService
+end box
+
+box "Data Access Layer" #LightGreen
+participant "BoardDecision" as DecisionDB
+participant "TransferApplication" as AppDB
+participant "Notification" as LogDB
+end box
+
+box "Database" #LightPink
+participant "Database" as DB
+end box
+
+box "External Services" #LightGray
+participant "Email API" as ExternalEmail
+end box
+
+== Retrieve & Review Decisions ==
+
+Staff -> UI: selectApplicationCycle(cycleId)
+activate UI
+
+UI -> Controller: fetchFinalDecisions(cycleId)
+activate Controller
+
+Controller -> DecisionDB: getDecisionsByCycle(cycleId)
+activate DecisionDB
+
+DecisionDB -> DB: SELECT * FROM BoardDecisions WHERE cycleId = ?
+activate DB
+
+alt Invalid or Missing Faculty Data 
+    DB --> DecisionDB: SQLException / Incomplete ResultSet
+    DecisionDB --> Controller: Exception: DataCorruptedException
+    Controller --> UI: Exception: MissingDataError
+    UI --> Staff: Error ("Eksik veri: Lütfen fakülte kararlarını doğrulayın")
+else Valid Data
+    DB --> DecisionDB: ResultSet
+    deactivate DB
+    
+    DecisionDB --> Controller: List<BoardDecision>: decisions
+    deactivate DecisionDB
+    
+    Controller --> UI: List<BoardDecision>: decisions
+    UI --> Staff: Decision Data
+end
+
+deactivate Controller
+deactivate UI
+
+== Publish & Notify ==
+
+Staff -> UI: clickPublishResults()
+activate UI
+
+UI -> Controller: publishResults(cycleId)
+activate Controller
+
+Controller -> AppDB: updateFinalDecisionStatuses(cycleId)
+activate AppDB
+
+AppDB -> DB: UPDATE TransferApplications SET applicationStatus = 'Finalized' WHERE cycleId = ?
+activate DB
+DB --> AppDB: int: rowsAffected
+deactivate DB
+
+AppDB --> Controller: boolean: true
+deactivate AppDB
+
+Controller -> Controller: triggerNotifications(cycleId)
+Controller -> EmailService: sendStatusUpdates(studentEmails, messages)
+activate EmailService
+
+EmailService -> ExternalEmail: sendBulk(studentEmails, messages)
+activate ExternalEmail
+
+alt Notification Failure 
+    ExternalEmail --> EmailService: Exception / HTTP 500
+    
+    EmailService -> LogDB: save(Notification(status="Failed"))
+    activate LogDB
+    LogDB -> DB: INSERT INTO Notifications (status, ...) VALUES ('Failed', ...)
+    activate DB
+    DB --> LogDB: int: logId
+    deactivate DB
+    LogDB --> EmailService: boolean: true
+    deactivate LogDB
+    
+    EmailService --> Controller: Exception: DeliveryFailure
+    Controller --> UI: boolean: false (with error details)
+    UI --> Staff: Warning ("Sonuçlar yayınlandı ancak bazı bildirimler başarısız oldu.")
+else Notification Success
+    ExternalEmail --> EmailService: HTTP 200 OK
+    deactivate ExternalEmail
+    
+    EmailService -> LogDB: save(Notification(status="Sent"))
+    activate LogDB
+    LogDB -> DB: INSERT INTO Notifications (status, ...) VALUES ('Sent', ...)
+    activate DB
+    DB --> LogDB: int: logId
+    deactivate DB
+    LogDB --> EmailService: boolean: true
+    deactivate LogDB
+    
+    EmailService --> Controller: boolean: true
+    deactivate EmailService
+    
+    Controller --> UI: boolean: true
+    UI --> Staff: Confirmation Message("Sonuçlar başarıyla yayınlandı ve bildirimler gönderildi.")
+end
+
+deactivate Controller
+deactivate UI
+
+@enduml
