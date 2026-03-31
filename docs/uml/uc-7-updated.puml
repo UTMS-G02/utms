@@ -186,58 +186,37 @@ else Document Rejected (Exam Path)
         UI --> Staff: Record Saved & Return to List
         deactivate UI
     end
+end
 
-    newpage
+newpage
 
-    == Phase 2b: Exam Result Entry (after offline exam) ==
+== Phase 2b: Bulk Exam Result Upload (Offline Exam Completed) ==
 
-    Staff -> UI: selectStudent(applicationId)
-    activate UI
+Staff -> UI: uploadExamResultsFile(csvFile)
+activate UI
 
-    UI -> RestController: GET /api/ydyo/applications/{applicationId}
-    activate RestController
-    RestController -> ProficiencySvc: fetchApplicationDetails(applicationId)
-    activate ProficiencySvc
-    ProficiencySvc -> ProfDB: findByApplicationId(applicationId)
+UI -> RestController: POST /api/ydyo/applications/upload-results\n(MultipartFile csvFile)
+activate RestController
+
+RestController -> ProficiencySvc: processBulkResults(csvFile)
+activate ProficiencySvc
+
+ProficiencySvc -> ProficiencySvc: parseFile(csvFile)\n-> List<StudentScore>
+
+loop for each studentScore in List
+    ProficiencySvc -> ProfDB: findByStudentId(studentScore.studentId)
     activate ProfDB
-    ProfDB -> DB: read(applicationId)
-    activate DB
-    DB --> ProfDB: EnglishProficiencyRecord
-    deactivate DB
-    ProfDB --> ProficiencySvc: EnglishProficiencyRecord
-    deactivate ProfDB
-    ProficiencySvc --> RestController: EnglishProficiencyRecord
-    deactivate ProficiencySvc
-    RestController --> UI: HTTP 200: proficiencyRecord
-    deactivate RestController
-    UI --> Staff: Student Details
-    deactivate UI
-
-    Staff -> UI: setExamResult(examResult)
-    Staff -> UI: enterExplanation(explanation)
-    Staff -> UI: clickSave()
-    activate UI
-
-    UI -> RestController: PATCH /api/ydyo/applications/{applicationId}/exam-result\n(examResult, explanation)
-    activate RestController
-
-    RestController -> ProficiencySvc: updateExamResult(applicationId, examResult, explanation)
-    activate ProficiencySvc
-
-    ProficiencySvc -> ProficiencySvc: calculateExemptionStatus(examResult)\n-> 'Sinav Basarili' => exemptionStatus = 'Muaf'\n-> 'Sinav Basarisiz' => exemptionStatus = 'Muaf Degil'
-
-    ProficiencySvc -> ProfDB: findByApplicationId(applicationId)
-    activate ProfDB
-    ProfDB -> DB: read(applicationId)
+    ProfDB -> DB: read(studentId)
     activate DB
     DB --> ProfDB: EnglishProficiencyRecord
     deactivate DB
     ProfDB --> ProficiencySvc: EnglishProficiencyRecord
     deactivate ProfDB
 
-    ProficiencySvc -> ProficiencySvc: record.setExamResult(examResult)
+    ProficiencySvc -> ProficiencySvc: calculateExemptionStatus(studentScore.score)\n-> 'Sinav Basarili' => exemptionStatus = 'Muaf'\n-> 'Sinav Basarisiz' => exemptionStatus = 'Muaf Degil'
+
+    ProficiencySvc -> ProficiencySvc: record.setExamResult(scoreStatus)
     ProficiencySvc -> ProficiencySvc: record.setExemptionStatus(exemptionStatus)
-    ProficiencySvc -> ProficiencySvc: record.setExplanationNote(explanation)
 
     ProficiencySvc -> ProfDB: save(record)
     activate ProfDB
@@ -247,17 +226,16 @@ else Document Rejected (Exam Path)
     deactivate DB
     ProfDB --> ProficiencySvc: EnglishProficiencyRecord
     deactivate ProfDB
-
-    ProficiencySvc --> RestController: void
-    deactivate ProficiencySvc
-
-    RestController --> UI: HTTP 200 OK
-    deactivate RestController
-
-    UI --> Staff: Record Saved & Return to List
-    deactivate UI
-
 end
+
+ProficiencySvc --> RestController: UploadSummary (Success/Fail counts)
+deactivate ProficiencySvc
+
+RestController --> UI: HTTP 200 OK (Summary Data)
+deactivate RestController
+
+UI --> Staff: Display Upload Summary
+deactivate UI
 
 newpage
 
