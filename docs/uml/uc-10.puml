@@ -1,4 +1,5 @@
 @startuml uc-10
+!pragma property dot.max_image_size 15000
 autonumber
 skinparam maxMessageSize 150
 skinparam ParticipantPadding 20
@@ -92,6 +93,8 @@ deactivate RestController
 UI --> Staff: Confirmation('Başvurular YGK'ya iletildi.')
 deactivate UI
 
+newpage
+
 == Scenario B: Routing from YGK to Faculty Board ==
 note over UI, DB: Tab: 'YGK'dan Gelen'
 
@@ -161,6 +164,8 @@ deactivate RestController
 UI --> Staff: Confirmation('Başvurular Fakülte Kurulu'na iletildi.')
 deactivate UI
 
+newpage
+
 == Scenario C: Finalizing to OİDB ==
 note over UI, DB: Tab: 'Fakülte Kurulundan Gelen'
 
@@ -210,7 +215,11 @@ deactivate DB
 AppDB --> DeanRoutingSvc: List<TransferApplication>
 deactivate AppDB
 
-DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('Finalized'))
+alt Applications Approved (status = 'Değerlendirme Onaylandı')
+    DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('Finalized'))
+else Applications Rejected (status = 'Başvuru Reddedildi')
+    DeanRoutingSvc -> DeanRoutingSvc: applications.forEach(a -> a.setApplicationStatus('Rejected'))
+end
 
 DeanRoutingSvc -> AppDB: saveAll(applications)
 activate AppDB

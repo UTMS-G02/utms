@@ -14,11 +14,13 @@ end box
 
 box "Business Logic Layer" #LightYellow
     participant "ProficiencyEvaluationService" as ProficiencySvc
+    participant "AuditService" as AuditSvc
 end box
 
 box "Data Access Layer" #LightGreen
     participant "TransferApplicationRepository" as AppDB
     participant "ProficiencyRecordRepository" as ProfDB
+    participant "AuditRepository" as AuditDB
 end box
 
 box "Database" #LightPink
@@ -97,7 +99,7 @@ alt Document Approved (Exempt Path)
     UI -> RestController: PATCH /api/ydyo/applications/{applicationId}/proficiency\n(approvalStatus=Onaylandi, explanation)
     activate RestController
 
-    RestController -> ProficiencySvc: approveDocument(applicationId, explanation)
+    RestController -> ProficiencySvc: approveDocument(applicationId, explanation, staffId)
     activate ProficiencySvc
 
     ProficiencySvc -> ProficiencySvc: calculateExemptionStatus('Onaylandi')\n-> examResult = 'Sinav Gerekli Degil'\n-> exemptionStatus = 'Muaf'
@@ -125,6 +127,21 @@ alt Document Approved (Exempt Path)
     ProfDB --> ProficiencySvc: EnglishProficiencyRecord
     deactivate ProfDB
 
+    ' AUDIT LOG EKLEMESI BASLANGICI
+    ProficiencySvc -> AuditSvc: logAction(staffId, applicationId, "Document Approved - Exempt")
+    activate AuditSvc
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: AuditEntry
+    deactivate DB
+    AuditDB --> AuditSvc: success
+    deactivate AuditDB
+    AuditSvc --> ProficiencySvc: void
+    deactivate AuditSvc
+    ' AUDIT LOG EKLEMESI SONU
+
     ProficiencySvc --> RestController: void
     deactivate ProficiencySvc
 
@@ -144,7 +161,7 @@ else Document Rejected (Exam Path)
     UI -> RestController: PATCH /api/ydyo/applications/{applicationId}/proficiency\n(approvalStatus=Onaylanmadi, explanation)
     activate RestController
 
-    RestController -> ProficiencySvc: rejectDocument(applicationId, explanation)
+    RestController -> ProficiencySvc: rejectDocument(applicationId, explanation, staffId)
     activate ProficiencySvc
 
     alt Missing Explanation (8-EX)
@@ -177,6 +194,21 @@ else Document Rejected (Exam Path)
         ProfDB --> ProficiencySvc: EnglishProficiencyRecord
         deactivate ProfDB
 
+        ' AUDIT LOG EKLEMESI BASLANGICI
+        ProficiencySvc -> AuditSvc: logAction(staffId, applicationId, "Document Rejected - Exam Pending")
+        activate AuditSvc
+        AuditSvc -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: AuditEntry
+        deactivate DB
+        AuditDB --> AuditSvc: success
+        deactivate AuditDB
+        AuditSvc --> ProficiencySvc: void
+        deactivate AuditSvc
+        ' AUDIT LOG EKLEMESI SONU
+
         ProficiencySvc --> RestController: void
         deactivate ProficiencySvc
 
@@ -198,7 +230,7 @@ activate UI
 UI -> RestController: POST /api/ydyo/applications/upload-results\n(MultipartFile csvFile)
 activate RestController
 
-RestController -> ProficiencySvc: processBulkResults(csvFile)
+RestController -> ProficiencySvc: processBulkResults(csvFile, staffId)
 activate ProficiencySvc
 
 ProficiencySvc -> ProficiencySvc: parseFile(csvFile)\n-> List<StudentScore>
@@ -226,6 +258,21 @@ loop for each studentScore in List
     deactivate DB
     ProfDB --> ProficiencySvc: EnglishProficiencyRecord
     deactivate ProfDB
+
+    ' AUDIT LOG EKLEMESI BASLANGICI (Her ogrenci icin ayri log)
+    ProficiencySvc -> AuditSvc: logAction(staffId, record.applicationId, "Exam Result Bulk Uploaded: " + scoreStatus)
+    activate AuditSvc
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: AuditEntry
+    deactivate DB
+    AuditDB --> AuditSvc: success
+    deactivate AuditDB
+    AuditSvc --> ProficiencySvc: void
+    deactivate AuditSvc
+    ' AUDIT LOG EKLEMESI SONU
 end
 
 ProficiencySvc --> RestController: UploadSummary (Success/Fail counts)
@@ -247,7 +294,7 @@ activate UI
 UI -> RestController: POST /api/ydyo/applications/forward-to-oidb
 activate RestController
 
-RestController -> ProficiencySvc: forwardListToOidb()
+RestController -> ProficiencySvc: forwardListToOidb(staffId)
 activate ProficiencySvc
 
 ProficiencySvc -> ProfDB: findByExemptionStatus('Beklemede')
@@ -283,6 +330,23 @@ else All Records Finalized
     deactivate DB
     AppDB --> ProficiencySvc: List<TransferApplication>
     deactivate AppDB
+
+    ' AUDIT LOG EKLEMESI BASLANGICI (Toplu islem oldugu icin dongu icinde logluyoruz)
+    loop for each application
+        ProficiencySvc -> AuditSvc: logAction(staffId, a.id, "Status Updated to YDYO Completed")
+        activate AuditSvc
+        AuditSvc -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: AuditEntry
+        deactivate DB
+        AuditDB --> AuditSvc: success
+        deactivate AuditDB
+        AuditSvc --> ProficiencySvc: void
+        deactivate AuditSvc
+    end
+    ' AUDIT LOG EKLEMESI SONU
 
     ProficiencySvc --> RestController: void
     deactivate ProficiencySvc

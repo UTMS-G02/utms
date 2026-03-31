@@ -13,10 +13,12 @@ end box
 
 box "Business Logic Layer" #LightYellow
     participant "RoutingService" as RoutingSvc
+    participant "AuditService" as AuditSvc
 end box
 
 box "Data Access Layer" #LightGreen
     participant "TransferApplicationRepository" as AppDB
+    participant "AuditRepository" as AuditDB
 end box
 
 box "Database" #LightPink
@@ -88,10 +90,10 @@ alt YDYO Approved (exemptionStatus = 'Muaf' or document approved)
     Staff -> UI: clickForwardToFaculty()
     activate UI
 
-    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/forward-to-faculty
+    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/forward-to-faculty\n(staffId)
     activate RestController
 
-    RestController -> RoutingSvc: routeToFaculty(applicationId)
+    RestController -> RoutingSvc: routeToFaculty(applicationId, staffId)
     activate RoutingSvc
 
     RoutingSvc -> AppDB: findById(applicationId)
@@ -121,6 +123,21 @@ alt YDYO Approved (exemptionStatus = 'Muaf' or document approved)
         AppDB --> RoutingSvc: TransferApplication
         deactivate AppDB
 
+        ' AUDIT LOG EKLEMESI BASLANGICI
+        RoutingSvc -> AuditSvc: logAction(staffId, applicationId, "Forwarded to Faculty")
+        activate AuditSvc
+        AuditSvc -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: AuditEntry
+        deactivate DB
+        AuditDB --> AuditSvc: success
+        deactivate AuditDB
+        AuditSvc --> RoutingSvc: void
+        deactivate AuditSvc
+        ' AUDIT LOG EKLEMESI SONU
+
         RoutingSvc --> RestController: void
         deactivate RoutingSvc
 
@@ -141,10 +158,10 @@ else YDYO Rejected (exemptionStatus = 'Muaf Degil')
     UI --> Staff: Confirmation Dialog
     Staff -> UI: confirmRejection()
 
-    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/reject
+    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/reject\n(staffId)
     activate RestController
 
-    RestController -> RoutingSvc: rejectApplication(applicationId)
+    RestController -> RoutingSvc: rejectApplication(applicationId, staffId)
     activate RoutingSvc
 
     RoutingSvc -> AppDB: findById(applicationId)
@@ -166,6 +183,21 @@ else YDYO Rejected (exemptionStatus = 'Muaf Degil')
     deactivate DB
     AppDB --> RoutingSvc: TransferApplication
     deactivate AppDB
+
+    ' AUDIT LOG EKLEMESI BASLANGICI
+    RoutingSvc -> AuditSvc: logAction(staffId, applicationId, "Application Rejected by OİDB")
+    activate AuditSvc
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: AuditEntry
+    deactivate DB
+    AuditDB --> AuditSvc: success
+    deactivate AuditDB
+    AuditSvc --> RoutingSvc: void
+    deactivate AuditSvc
+    ' AUDIT LOG EKLEMESI SONU
 
     RoutingSvc --> RestController: void
     deactivate RoutingSvc
