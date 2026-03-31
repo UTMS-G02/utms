@@ -21,6 +21,9 @@ skinparam package {
 ' =============================================
 
 package "Finalization Services" #FEF9E7 {
+    class AuditService {
+        +logAction(userId : Integer, targetEntityId : Integer, action : String)
+    }
     class FinalizationService {
         +fetchFinalDecisions(cycleId : Integer) : List<BoardDecision>
         +publishResults(cycleId : Integer)
@@ -60,21 +63,6 @@ package "Audit Domain" #EBF5FB {
 ' REFERENCES FROM OTHER DOMAINS
 ' =============================================
 
-class TransferApplication <<Application Domain>> #EEEEEE {
-    -applicationId : Integer
-    -applicationStatus : String
-}
-
-class BoardDecision <<Evaluation Domain>> #EEEEEE {
-    -decisionId : Integer
-    -decisionType : String
-}
-
-class Notification <<Application Domain>> #EEEEEE {
-    -notificationId : Integer
-    -status : String
-}
-
 class EmailNotificationManager <<User Auth Domain>> #EEEEEE {
     +sendStatusUpdates(cycleId : Integer)
     +sendStatusUpdate(email : String, message : String)
@@ -103,6 +91,8 @@ FinalizationService ..> BoardDecisionRepository : uses
 FinalizationService ..> TransferApplicationRepository : uses
 FinalizationService ..> NotificationRepository : uses
 FinalizationService ..> EmailNotificationManager : uses
+AuditService ..> AuditLogRepository : uses
+FinalizationService ..> AuditService : uses
 FinalizationService ..> AuditLogRepository : uses
 DeanRoutingService ..> TransferApplicationRepository : uses
 DeanRoutingService ..> AuditLogRepository : uses

@@ -128,6 +128,10 @@ package "Document Domain" #EBF5FB {
 ' REFERENCE FROM USER DOMAIN
 ' =============================================
 
+class AuditService <<Finalization Domain>> #EEEEEE {
+    +logAction(userId : Integer, targetEntityId : Integer, action : String)
+}
+
 class Student <<User Domain>> #EEEEEE {
     -tckn : String
     -gpa : Float
@@ -162,6 +166,8 @@ ApplicationService ..> TransferApplicationRepository : uses
 ApplicationService ..> DocumentRepository : uses
 DocumentVerificationService ..> TransferApplicationRepository : uses
 DocumentVerificationService ..> DocumentRepository : uses
+DocumentVerificationService ..> AuditService : uses
+RoutingService ..> AuditService : uses
 DocumentManagerService ..> DocumentRepository : uses
 DocumentManagerService ..> TransferApplicationRepository : uses
 ApplicationService ..> DocumentManagerService : uses
