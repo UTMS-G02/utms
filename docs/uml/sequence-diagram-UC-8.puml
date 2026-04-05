@@ -14,12 +14,13 @@ end box
 box "Business Logic Layer" #LightYellow
     participant "EvaluationService" as EvalService
     participant "RankingService" as RankingService
-    participant "AuditService" as AuditService
+    participant "AuditService" as AuditSvc
 end box
 
 box "Data Access Layer" #LightGreen
     participant "TransferApplicationRepository" as AppRepo
     participant "EvaluationRepository" as EvalRepo
+    participant "AuditLogRepository" as AuditDB
 end box
 
 box "Database" #LightPink
@@ -42,10 +43,7 @@ activate AppRepo
 AppRepo --> EvalService: ApplicationData (GPA, YKS)
 deactivate AppRepo
 
-note right of EvalService
-    SRS Rule: 10% GPA + 90% YKS
-    Score is Read-Only for YGK
-end note
+
 
 EvalService -> EvalService: calculateCompositeScore()
 
@@ -75,8 +73,27 @@ alt [Conditions Not Met]
 
     EvalService -> AppRepo: updateStatus(id, "REJECTED_BY_YGK")
     activate AppRepo
-    AppRepo --> RestController: 200 OK
+    AppRepo --> EvalService: void
     deactivate AppRepo
+
+    EvalService -> AuditSvc: logAction(staffId, applicationId,\n"Correction Requested")
+    activate AuditSvc
+
+    AuditSvc -> AuditDB: save(auditEntry)
+    activate AuditDB
+
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: void
+    deactivate DB
+
+    AuditDB --> AuditSvc: void
+    deactivate AuditDB
+
+    AuditSvc --> EvalService: void
+    deactivate AuditSvc
+
+    EvalService --> RestController: void
     deactivate EvalService
 
     RestController --> UI: Application marked as unsuccessful
@@ -137,14 +154,20 @@ deactivate AppRepo
 RankingService --> EvalService: void
 deactivate RankingService
 
-EvalService -> AuditService: logAction(ygkId, appId,\n"EVALUATION_COMPLETE")
-activate AuditService
-AuditService -> DB: INSERT INTO Audit_Log
+EvalService -> AuditSvc: logAction(ygkId, appId,\n"EVALUATION_COMPLETE")
+activate AuditSvc
+
+AuditSvc -> AuditDB: save(auditEntry)
+activate AuditDB
+AuditDB -> DB: persist(auditEntry)
 activate DB
-DB --> AuditService: void
+DB --> AuditDB: void
 deactivate DB
-AuditService --> EvalService: void
-deactivate AuditService
+AuditDB --> AuditSvc: void
+deactivate AuditDB
+
+AuditSvc --> EvalService: void
+deactivate AuditSvc
 
 EvalService -> AppRepo: updateStatus(id, "EVALUATED")
 activate AppRepo

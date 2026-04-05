@@ -1,109 +1,101 @@
-@startuml uc-9
+@startuml scenario-9-intibak
 autonumber
 skinparam maxMessageSize 150
 skinparam ParticipantPadding 20
 skinparam BoxPadding 10
 
-actor "Administrative Staff (ÖİDB)" as Admin
+actor "Academic Staff (YGK)" as YGK
 
 box "Presentation Layer" #LightCyan
-    participant "FinalizationUI" as UI
-    participant "FinalizationRestController" as RestController
+    participant "IntibakUI" as UI
+    participant "IntibakRestController" as RestController
 end box
 
 box "Business Logic Layer" #LightYellow
-    participant "FinalizationService" as FinalService
-    participant "EmailNotificationService" as EmailService
+    participant "IntibakManager" as Manager
 end box
 
 box "Data Access Layer" #LightGreen
-    participant "TransferApplicationRepository" as AppRepo
-    participant "NotificationRepository" as LogDB
+    participant "IntibakRepository" as Repo
 end box
 
 box "Database" #LightPink
     participant "Database" as DB
 end box
 
-box "External Services" #LightGray
-    participant "Email API" as ExternalEmail
-end box
+== Row Management (Dynamic Table) ==
 
-== Review & Finalize Decision ==
-
-Admin -> UI: viewEvaluatedApplications()
+YGK -> UI: clickAddCourse()
 activate UI
-
-UI -> RestController: GET /api/admin/finalization/pending
-activate RestController
-
-RestController -> FinalService: getPendingFinalizations()
-activate FinalService
-
-FinalService -> AppRepo: findAllByStatus("EVALUATED")
-activate AppRepo
-AppRepo -> DB: SELECT * FROM applications WHERE status = 'EVALUATED'
-activate DB
-DB --> AppRepo: ResultSet
-deactivate DB
-AppRepo --> FinalService: List<Application>
-deactivate AppRepo
-
-FinalService --> RestController: List<FinalizationDTO>
-deactivate FinalService
-
-RestController --> UI: HTTP 200: Data
-deactivate RestController
-UI --> Admin: Show Evaluated Applications
+UI --> YGK: appendBlankRow()
+note right of UI: UI handles dynamic row\ncreation locally
 deactivate UI
 
-== Final Decision & Notification ==
+loop [For each course in Student Transcript]
 
-Admin -> UI: confirmFinalStatus(appId, "Accepted")
+    YGK -> UI: enterMappingData(sourceCourse,\ntargetCourse, credits)
+    activate UI
+
+    YGK -> UI: selectEquivalencyStatus(status)
+    note right of UI: Options: Tam denklik, Kısmi Denklik,\nDenk değil
+
+    UI -> RestController: POST\n/api/intibak/validate-credits
+    activate RestController
+
+    RestController -> Manager: validateNumericCredits(credits)
+    activate Manager
+
+    alt [Valid Numeric Entry]
+        Manager --> RestController: validationSuccess
+        RestController --> UI: HTTP 200 (Success)
+
+    else [Non-numeric Entry (EX-1)]
+        Manager --> RestController: InvalidCreditException
+        deactivate Manager
+        RestController --> UI: HTTP 400 (Highlight Field Red)\n(cite: 854, 907)
+        deactivate RestController
+    end
+
+    deactivate UI
+
+end
+
+alt [Alternative: Delete  Row ]
+    YGK -> UI: clickDeleteIcon(rowId)
+    activate UI
+    UI --> YGK: removeRowFromDisplay()
+    deactivate UI
+end
+
+== Finalization of Table ==
+
+YGK -> UI: clickSaveAndFinalize()
 activate UI
 
-UI -> RestController: PATCH /api/admin/applications/{id}/finalize
+UI -> RestController: POST\n/api/intibak/{applicationId}/save
 activate RestController
 
-RestController -> FinalService: finalizeAndNotify(appId, "Accepted")
-activate FinalService
+RestController -> Manager: saveTable(mappingList)
+activate Manager
 
-FinalService -> AppRepo: updateFinalStatus(appId, "Accepted")
-activate AppRepo
-AppRepo -> DB: UPDATE applications SET final_status = 'Accepted', status = 'FINALIZED'
+Manager -> Repo: saveAll(mappings)
+activate Repo
+
+Repo -> DB: INSERT/UPDATE\nINTIBAK_RECORD
 activate DB
-DB --> AppRepo: int: rowsAffected
+DB --> Repo: batchSuccess
 deactivate DB
-AppRepo --> FinalService: boolean: true
-deactivate AppRepo
 
-== Notification Flow (Same as UC-6) ==
+Repo --> Manager: true
+deactivate Repo
 
-FinalService -> EmailService: sendStatusUpdate(studentEmail, "Accepted")
-activate EmailService
-
-EmailService -> ExternalEmail: send(studentEmail, message)
-activate ExternalEmail
-
-alt  Notification Failure 
-    ExternalEmail --> EmailService: Exception / HTTP 500
-    EmailService -> LogDB: save(Notification(status="Failed"))
-    EmailService --> FinalService: Exception: DeliveryFailure
-else Notification Success
-    ExternalEmail --> EmailService: HTTP 200 OK
-    deactivate ExternalEmail
-    EmailService -> LogDB: save(Notification(status="Sent"))
-    EmailService --> FinalService: boolean: true
-end
-deactivate EmailService
-
-FinalService --> RestController: boolean: true
-deactivate FinalService
+Manager --> RestController: tableSaved
+deactivate Manager
 
 RestController --> UI: HTTP 200 OK
 deactivate RestController
 
-UI --> Admin: SuccessMessage("Başvuru başarıyla sonuçlandırıldı.")
+UI --> YGK: Confirmation("Intibak\ntablosu kaydedildi!")
 deactivate UI
 
 @enduml
