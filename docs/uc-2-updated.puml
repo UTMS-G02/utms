@@ -1,0 +1,206 @@
+@startuml uc-2-submit-pro-complete
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "Student" as User
+
+box "Presentation Layer" #LightCyan
+    participant "TransferUI" as UI
+    participant "AppRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "AppService" as Service
+    participant "SystemValidator" as Validator
+    participant "AuditService" as Audit
+    participant "EmailManager" as EmailManager
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "AppRepository" as AppDB
+    participant "DocRepository" as DocDB
+    participant "AuditLogRepository" as AuditDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+box "External Services Layer" #LightGray
+    participant "YÖKSİS API" as Yoksis
+end box
+
+== Identity & Eligibility Verification ==
+
+User -> UI: enterDetails(TCKN) & click("Verify")
+note right of User: TCKN collected here as initial\nsign-up only requires email.
+activate UI
+UI -> RestController: GET /api/yoksis/verify?tckn=...
+activate RestController
+
+RestController -> Service: fetchAcademicInfo(tckn)
+activate Service
+
+Service -> Yoksis: GET /students/{tckn}/academic-info
+activate Yoksis
+Yoksis --> Service: AcademicData
+deactivate Yoksis
+
+Service -> Validator: verifyEligibility(AcademicData)
+activate Validator
+
+alt Alt 5a: Ineligible (GPA < 2.50 or YKS low)
+    Validator --> Service: IneligibleException
+    
+    Service -> Audit: logAction(studentId, null, "Eligibility Failed: GPA < 2.50")
+    activate Audit
+    Audit -> AuditDB: save(auditEntry)
+    activate AuditDB
+    AuditDB -> DB: persist(auditEntry)
+    activate DB
+    DB --> AuditDB: void
+    deactivate DB
+    AuditDB --> Audit: void
+    deactivate AuditDB
+    Audit --> Service: void
+    deactivate Audit
+    
+    Service --> RestController: IneligibleResponse
+    RestController --> UI: HTTP 406 Not Acceptable
+    UI --> User: Error("GPA does not meet minimum 2.50.")
+else Eligible
+    Validator --> Service: valid
+    deactivate Validator
+    Service --> RestController: AcademicData
+    RestController --> UI: HTTP 200 OK
+    UI --> User: Unlock Document Uploads
+end
+deactivate Service
+deactivate RestController
+
+== Document Upload & Validation ==
+
+User -> UI: uploadDocuments(Transcript, YKS, etc.)
+UI -> RestController: POST /api/documents/validate
+activate RestController
+
+RestController -> Validator: validateFormatAndSize(files)
+activate Validator
+
+alt Alt 7a: Incorrect Format/Size
+    Validator --> RestController: InvalidDocumentException
+    RestController --> UI: HTTP 400 Bad Request
+    UI --> User: Warning("Files In Incorrect Format or Size.")
+else Files Valid
+    Validator --> RestController: valid
+    deactivate Validator
+    
+    RestController --> UI: HTTP 200 OK
+    UI --> User: Enable "Submit Application" Button
+end
+deactivate RestController
+
+== Final Submission ==
+
+User -> UI: click("Submit Application")
+UI -> RestController: POST /api/applications/submit
+activate RestController
+
+RestController -> Service: processSubmission(studentId, formData)
+activate Service
+
+Service -> Validator: checkApplicationPeriod()
+activate Validator
+
+alt Exception 8-EX: Period Expires
+    Validator --> Service: PeriodClosedException
+    Service --> RestController: DeadlinePassedException
+    RestController --> UI: HTTP 403 Forbidden
+    UI --> User: Error("Period Closed. Draft discarded.")
+else Period Open
+    Validator --> Service: valid
+end
+deactivate Validator
+
+group Atomic Transaction [Submission & Audit]
+    Service -> AppDB: saveApplication(status="Pending")
+    activate AppDB
+    AppDB -> DB: persist(application)
+    activate DB
+    DB --> AppDB: ApplicationRecord
+    deactivate DB
+    AppDB --> Service: ApplicationRecord
+    deactivate AppDB
+
+    Service -> DocDB: lockAndSaveDocuments(documents)
+    activate DocDB
+    
+    alt Exception: File Persistence Failure (Rollback)
+        DocDB -> DB: persistFiles() [FAILED]
+        activate DB
+        DB --> DocDB: PersistenceException
+        deactivate DB
+        DocDB --> Service: FileStorageException
+        deactivate DocDB
+        
+        Service -> DB: rollbackApplicationRecord()
+        activate DB
+        DB --> Service: void
+        deactivate DB
+        
+        Service -> Audit: logAction(studentId, appId, "Submission Failed: Storage Error")
+        activate Audit
+        Audit -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: void
+        deactivate DB
+        AuditDB --> Audit: void
+        deactivate AuditDB
+        Audit --> Service: void
+        deactivate Audit
+        
+        Service --> RestController: PersistenceException
+        RestController --> UI: HTTP 500 Internal Server Error
+        UI --> User: Error("Submission failed due to a storage error.")
+        
+    else Success
+        DocDB -> DB: persistFiles()
+        activate DB
+        DB --> DocDB: void
+        deactivate DB
+        DocDB --> Service: void
+        deactivate DocDB
+
+        Service -> Audit: logAction(studentId, appId, "Application Submitted Successfully")
+        activate Audit
+        Audit -> AuditDB: save(auditEntry)
+        activate AuditDB
+        AuditDB -> DB: persist(auditEntry)
+        activate DB
+        DB --> AuditDB: void
+        deactivate DB
+        AuditDB --> Audit: void
+        deactivate AuditDB
+        Audit --> Service: void
+        deactivate Audit
+        
+        Service -> EmailManager: sendEmail(email, confirmation)
+        activate EmailManager
+        EmailManager --> Service: void
+        deactivate EmailManager
+
+        Service --> RestController: SuccessResponse
+        RestController --> UI: HTTP 201 Created
+        UI --> User: Show Success Notification
+    end
+end
+
+deactivate Service
+deactivate RestController
+deactivate UI
+
+@enduml
