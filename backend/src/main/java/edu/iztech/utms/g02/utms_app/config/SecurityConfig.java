@@ -1,5 +1,6 @@
 package edu.iztech.utms.g02.utms_app.config;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -8,10 +9,14 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtFilter jwtFilter;
 
     /**
      * Spring Security filtre zinciri yapılandırması.
@@ -19,6 +24,7 @@ public class SecurityConfig {
      * - Diğer tüm endpoint'ler authentication gerektirir
      * - CSRF kapalı (REST API olduğu için)
      * - Session stateless (JWT kullanıyoruz)
+     * - JwtFilter, filtre zincirine eklenir!
      */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -28,16 +34,17 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/**", "/error").permitAll()
                         .anyRequest().authenticated()
-                );
+                )
+                // En önemli satır: Filtremiz Spring'in kendi filtresinden önce çalışsın
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
     /**
      * Şifre hashleme için BCrypt encoder.
-     * AuthService bu bean'i kullanarak şifreleri hashler ve doğrular.
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
