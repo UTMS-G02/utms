@@ -1,4 +1,4 @@
-package edu.iztech.utms.g02.utms_app.dal.user;
+package edu.iztech.utms.g02.utms_app.dal.user.entity;
 
 public enum UserRole {
     STUDENT,

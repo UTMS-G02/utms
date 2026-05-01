@@ -1,4 +1,4 @@
-package edu.iztech.utms.g02.utms_app.dal.user;
+package edu.iztech.utms.g02.utms_app.dal.user.entity;
 
 import jakarta.persistence.*;
 import lombok.Getter;
