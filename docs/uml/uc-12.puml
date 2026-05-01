@@ -1,0 +1,153 @@
+@startuml uc-12
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "User (Student/Staff)" as User
+
+box "Presentation Layer" #LightCyan
+participant "LoginUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "AuthenticationService" as AuthService
+participant "EmailNotificationService" as EmailService
+end box
+
+box "Data Access Layer" #LightGreen
+participant "User" as UserDB
+participant "OTPRecord" as OTPDB
+end box
+
+box "Database" #LightPink
+participant "Database" as DB
+end box
+
+box "External Systems" #LightGray
+participant "Email API" as EmailAPI
+end box
+
+== Primary Authentication (Email & Password) ==
+User -> UI: navigateToLogin()
+activate UI
+UI --> User: Login Form
+
+User -> UI: enterCredentials(email, password)
+UI -> AuthService: verifyCredentials(email, password)
+activate AuthService
+
+AuthService -> UserDB: findByEmail(email)
+activate UserDB
+UserDB -> DB: SELECT * FROM Users WHERE email = ?
+activate DB
+DB --> UserDB: ResultSet
+deactivate DB
+UserDB --> AuthService: User: userData
+deactivate UserDB
+
+alt Invalid Credentials 
+    AuthService -> UserDB: incrementFailedLoginAttempts(userId)
+    activate UserDB
+    UserDB -> DB: UPDATE Users SET failedAttempts = failedAttempts + 1 WHERE id = ?
+    activate DB
+    DB --> UserDB: int: rowsAffected
+    deactivate DB
+    UserDB --> AuthService: boolean: true
+    deactivate UserDB
+    
+    alt Excessive Failed Attempts 
+        AuthService -> AuthService: lockAccount()
+        AuthService --> UI: Exception: AccountLocked
+        UI --> User: Lockout Message ("Çok sayıda başarısız...")
+    else Less than 5 failed attempts
+        AuthService --> UI: boolean: false
+        UI --> User: Error ("Geçersiz Kimlik Bilgileri...")
+    end
+    
+else Valid Credentials
+    == OTP Generation and Delivery ==
+    AuthService -> AuthService: String: otpCode = generateOTP()
+    
+    AuthService -> OTPDB: createOTP(userId, otpCode, expiryTime)
+    activate OTPDB
+    OTPDB -> DB: INSERT INTO OTPRecords (userId, otpCode, expiryTime) VALUES (?, ?, ?)
+    activate DB
+    DB --> OTPDB: int: otpId
+    deactivate DB
+    OTPDB --> AuthService: boolean: true
+    deactivate OTPDB
+    
+    AuthService -> EmailService: sendStatusUpdate(email, otpMessage)
+    activate EmailService
+    
+    EmailService -> EmailAPI: send(email, otpMessage)
+    activate EmailAPI
+    
+    alt Email API Service Error 
+        EmailAPI --> EmailService: Exception / HTTP 500
+        EmailService --> AuthService: Exception: DeliveryFailure
+        AuthService --> UI: Exception: SystemError
+        UI --> User: Error ("Bir sistem hatası oluştu...")
+    else Email Sent Successfully
+        EmailAPI --> EmailService: HTTP 200 OK
+        deactivate EmailAPI
+        EmailService --> AuthService: boolean: true
+        deactivate EmailService
+        
+        AuthService --> UI: boolean: true
+        UI --> User: OTP Prompt
+    end
+end
+deactivate AuthService
+
+== Secondary Authentication (OTP) ==
+User -> UI: enterOTP(code)
+UI -> AuthService: verifyOTP(userId, code)
+activate AuthService
+
+AuthService -> OTPDB: getActiveOTP(userId)
+activate OTPDB
+OTPDB -> DB: SELECT * FROM OTPRecords WHERE userId = ? AND isValid = true
+activate DB
+DB --> OTPDB: ResultSet
+deactivate DB
+OTPDB --> AuthService: OTPRecord: otpData
+deactivate OTPDB
+
+alt Invalid or Expired OTP 
+    AuthService -> OTPDB: incrementFailedAttempts(otpId)
+    activate OTPDB
+    OTPDB -> DB: UPDATE OTPRecords SET failedAttempts = failedAttempts + 1 WHERE id = ?
+    activate DB
+    DB --> OTPDB: int: rowsAffected
+    deactivate DB
+    OTPDB --> AuthService: boolean: true
+    deactivate OTPDB
+    
+    alt Excessive Failed OTP Attempts 
+        AuthService --> UI: Exception: MaxOtpAttemptsReached
+        UI --> User: Error ("Çok fazla başarısız doğrulama...") & redirectToLogin()
+    else Less than 3 failed attempts
+        AuthService --> UI: boolean: false
+        UI --> User: Error ("Doğrulama kodu geçersiz veya süresi dolmuş.")
+    end
+    
+else Valid OTP
+    AuthService -> OTPDB: invalidateOTP(otpId)
+    activate OTPDB
+    OTPDB -> DB: UPDATE OTPRecords SET isValid = false WHERE id = ?
+    activate DB
+    DB --> OTPDB: int: rowsAffected
+    deactivate DB
+    OTPDB --> AuthService: boolean: true
+    deactivate OTPDB
+
+    AuthService --> UI: boolean: true
+    UI --> User: Redirected to Dashboard
+end
+
+deactivate AuthService
+deactivate UI
+
+@enduml

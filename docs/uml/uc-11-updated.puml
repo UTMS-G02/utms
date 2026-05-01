@@ -1,0 +1,153 @@
+@startuml uc-11
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "Faculty Board Member" as Board
+
+box "Presentation Layer" #LightCyan
+    participant "FacultyBoardUI" as UI
+    participant "FacultyBoardRestController" as RestFacultyBoardSvc
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "FacultyBoardService" as FacultyBoardSvc
+    participant "AuditService" as AuditSvc
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "TransferApplicationRepository" as AppDB
+    participant "EvaluationReportRepository" as EvalDB
+    participant "BoardDecisionRepository" as DecisionDB
+    participant "AuditLogRepository" as AuditDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Application Review ==
+
+Board -> UI: selectApplicantReview(applicationId)
+activate UI
+
+UI -> RestFacultyBoardSvc: GET /api/faculty/applications/{applicationId}
+activate RestFacultyBoardSvc
+
+RestFacultyBoardSvc -> FacultyBoardSvc: fetchApplicationDetails(applicationId)
+activate FacultyBoardSvc
+
+FacultyBoardSvc -> AppDB: findApplicationById(applicationId)
+activate AppDB
+AppDB -> DB: read(applicationId)
+activate DB
+DB --> AppDB: TransferApplication
+deactivate DB
+AppDB --> FacultyBoardSvc: TransferApplication
+deactivate AppDB
+
+FacultyBoardSvc -> EvalDB: findEvalutionById(applicationId)
+activate EvalDB
+EvalDB -> DB: read(applicationId)
+activate DB
+DB --> EvalDB: EvaluationReport
+deactivate DB
+EvalDB --> FacultyBoardSvc: EvaluationReport
+deactivate EvalDB
+
+FacultyBoardSvc --> RestFacultyBoardSvc: ConsolidatedData: report
+deactivate FacultyBoardSvc
+
+RestFacultyBoardSvc --> UI: HTTP 200: report
+deactivate RestFacultyBoardSvc
+
+UI --> Board: Consolidated Report
+deactivate UI
+
+== Decision Making ==
+
+alt Application Approved
+
+    Board -> UI: clickApprove()
+    activate UI
+    UI -> RestFacultyBoardSvc: POST /api/faculty/applications/{applicationId}/decision (type=Approved)
+    activate RestFacultyBoardSvc
+    RestFacultyBoardSvc -> FacultyBoardSvc: recordFinalDecision(applicationId, "Approved", null)
+    activate FacultyBoardSvc
+
+else Application Rejected
+
+    Board -> UI: clickReject()
+    UI --> Board: Rejection Code Dropdown
+    Board -> UI: selectRejectionCode(rejectionCode)
+    Board -> UI: enterCommentsAndConfirm(comments)
+    UI -> RestFacultyBoardSvc: POST /api/faculty/applications/{applicationId}/decision (type=Rejected, rejectionCode)
+    RestFacultyBoardSvc -> FacultyBoardSvc: recordFinalDecision(applicationId, "Rejected", rejectionCode)
+
+end
+
+== Recording the Decision ==
+
+activate FacultyBoardSvc
+
+
+
+FacultyBoardSvc -> FacultyBoardSvc: decision = new BoardDecision(decisionType, rejectionCode, now)
+
+FacultyBoardSvc -> DecisionDB: save(decision)
+activate DecisionDB
+DecisionDB -> DB: persist(decision)
+activate DB
+DB --> DecisionDB: BoardDecision
+deactivate DB
+DecisionDB --> FacultyBoardSvc: BoardDecision: savedDecision
+deactivate DecisionDB
+
+FacultyBoardSvc -> AppDB: findById(applicationId)
+activate AppDB
+AppDB -> DB: read(applicationId)
+activate DB
+DB --> AppDB: TransferApplication
+deactivate DB
+AppDB --> FacultyBoardSvc: TransferApplication
+deactivate AppDB
+
+FacultyBoardSvc -> FacultyBoardSvc: application.setFinalDecision(decisionType)
+
+FacultyBoardSvc -> AppDB: save(application)
+activate AppDB
+AppDB -> DB: persist(application)
+activate DB
+DB --> AppDB: TransferApplication
+deactivate DB
+AppDB --> FacultyBoardSvc: TransferApplication
+deactivate AppDB
+
+
+FacultyBoardSvc -> AuditSvc: logAction(staffId, applicationId, "Final decision recorded.")
+activate AuditSvc
+AuditSvc -> AuditDB: save(auditEntry)
+activate AuditDB
+AuditDB -> DB: persist(auditEntry)
+activate DB
+DB --> AuditDB: AuditEntry
+deactivate DB
+AuditDB --> AuditSvc: success
+deactivate AuditDB
+AuditSvc --> FacultyBoardSvc: void
+deactivate AuditSvc
+
+
+
+
+FacultyBoardSvc --> RestFacultyBoardSvc: void
+deactivate FacultyBoardSvc
+
+RestFacultyBoardSvc --> UI: HTTP 200 OK
+deactivate RestFacultyBoardSvc
+
+UI --> Board: Confirmation("Karar başarıyla kaydedildi")
+deactivate UI
+
+@enduml

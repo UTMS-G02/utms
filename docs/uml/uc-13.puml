@@ -1,0 +1,157 @@
+@startuml uc-13
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "User (Student/Staff)" as User
+
+box "Presentation Layer" #LightCyan
+participant "LoginUI" as LoginUI
+participant "ForgotPasswordUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "AuthenticationService" as AuthService
+participant "EmailNotificationService" as EmailService
+end box
+
+box "Data Access Layer" #LightGreen
+participant "User" as UserDB
+participant "AuthToken" as TokenDB
+end box
+
+box "Database" #LightPink
+participant "Database" as DB
+end box
+
+box "External Systems" #LightGray
+participant "Email API" as EmailAPI
+end box
+
+== Initiation ==
+User -> LoginUI: clickForgotPasswordButton()
+activate LoginUI
+LoginUI -> UI: routeToResetProcess()
+deactivate LoginUI
+
+activate UI
+UI --> User: Reset Form
+
+User -> UI: submitEmail(email)
+UI -> AuthService: initiatePasswordReset(email)
+activate AuthService
+
+AuthService -> UserDB: findByEmail(email)
+activate UserDB
+UserDB -> DB: SELECT * FROM Users WHERE email = ?
+activate DB
+DB --> UserDB: User: userData
+deactivate DB
+UserDB --> AuthService: User: userData
+deactivate UserDB
+
+alt Account not found 
+    AuthService --> UI: boolean: false
+    UI --> User: Error ("Kayıtlı e-posta bulunamadı")
+else Account exists
+    AuthService -> AuthService: String: resetToken = generateToken()
+    
+    AuthService -> TokenDB: saveResetToken(userId, resetToken, expiryDate)
+    activate TokenDB
+    TokenDB -> DB: INSERT INTO AuthTokens (userId, tokenId, expiryDate, isValid) VALUES (?, ?, ?, true)
+    activate DB
+    DB --> TokenDB: int: insertedId
+    deactivate DB
+    TokenDB --> AuthService: boolean: true
+    deactivate TokenDB
+
+    AuthService -> EmailService: sendStatusUpdate(email, resetLink)
+    activate EmailService
+
+    EmailService -> EmailAPI: send(email, resetMessage)
+    activate EmailAPI
+    EmailAPI --> EmailService: HTTP 200 OK
+    deactivate EmailAPI
+
+    EmailService --> AuthService: boolean: true
+    deactivate EmailService
+
+    AuthService --> UI: boolean: true
+    UI --> User: Confirmation Message ("Sıfırlama bağlantısı gönderildi")
+end
+deactivate AuthService
+
+== Password Reset Execution ==
+User -> UI: clickResetLink(token)
+UI -> AuthService: verifyResetToken(token)
+activate AuthService
+
+AuthService -> TokenDB: getTokenDetails(token)
+activate TokenDB
+TokenDB -> DB: SELECT * FROM AuthTokens WHERE tokenId = ? AND isValid = true
+activate DB
+DB --> TokenDB: AuthToken: tokenData
+deactivate DB
+TokenDB --> AuthService: AuthToken: tokenData
+deactivate TokenDB
+
+alt Verification code expired or invalid 
+    AuthService --> UI: Exception: InvalidTokenError
+    UI --> User: Error ("Geçersiz veya süresi dolmuş bağlantı")
+    
+    opt User requests new code (Alternative 6.a)
+        User -> UI: requestNewLink(email)
+        UI -> AuthService: initiatePasswordReset(email)
+        note right: Flow repeats from token generation
+    end
+    
+else Token valid
+    AuthService --> UI: boolean: true
+    UI --> User: Reset Form
+
+    User -> UI: submitNewPassword(newPassword, confirmPassword)
+    UI -> AuthService: updatePassword(tokenData.userId, newPassword)
+
+    AuthService -> AuthService: validateSecurityPolicies(newPassword)
+
+    alt Password does not meet security requirements (Alternative 8.a)
+        AuthService --> UI: boolean: false
+        UI --> User: Password Requirements
+        note right: User re-enters valid password
+        
+    else Valid Password
+        AuthService -> AuthService: String: newHash = hashPassword(newPassword)
+        
+        AuthService -> UserDB: updatePasswordHash(userId, newHash)
+        activate UserDB
+        UserDB -> DB: UPDATE Users SET passwordHash = ? WHERE id = ?
+        activate DB
+        DB --> UserDB: int: rowsAffected
+        deactivate DB
+        UserDB --> AuthService: boolean: true
+        deactivate UserDB
+
+        AuthService -> TokenDB: invalidateToken(tokenId)
+        activate TokenDB
+        TokenDB -> DB: UPDATE AuthTokens SET isValid = false WHERE tokenId = ?
+        activate DB
+        DB --> TokenDB: int: rowsAffected
+        deactivate DB
+        TokenDB --> AuthService: boolean: true
+        deactivate TokenDB
+
+        AuthService --> UI: boolean: true
+        UI --> User: Update Confirmation Message ("Şifre başarıyla güncellendi") & Return to Login page
+    end
+end
+
+opt Cancellation of Password Reset 
+    User -> UI: clickCancel()
+    UI --> User: Changes discarded & Return to Login page
+end
+
+deactivate AuthService
+deactivate UI
+
+@enduml

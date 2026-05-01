@@ -1,0 +1,127 @@
+@startuml UTMS_Evaluation_Design
+
+title UTMS — Evaluation Design
+
+top to bottom direction
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam packageStyle rectangle
+skinparam class {
+    BackgroundColor White
+    BorderColor #2C3E50
+    ArrowColor #2C3E50
+}
+skinparam package {
+    BorderColor #5D6D7E
+}
+
+' =============================================
+' BUSINESS LOGIC LAYER
+' =============================================
+
+package "Evaluation Services" #FEF9E7 {
+    class YgkEvaluationService {
+        +fetchApplicationList() : List<TransferApplication>
+        +fetchEvaluationReport(applicationId : Integer) : EvaluationReport
+        +calculateCompositeScore(gpa : Float, yksRanking : Integer) : Float
+        +generateRankingList(cycleId : Integer)
+        +verifyDepartmentConditions(applicationId : Integer) : Boolean
+    }
+    class FacultyBoardService {
+        +fetchApplicationDetails(applicationId : Integer) : EvaluationReport
+        +recordFinalDecision(applicationId : Integer, decisionType : String, rejectionCode : String)
+        +verifyEquivalencyCompliance(applicationId : Integer) : Boolean
+    }
+}
+
+' =============================================
+' DATA ACCESS LAYER
+' =============================================
+
+package "Evaluation Domain" #EBF5FB {
+    class EvaluationReport {
+        -reportId : Integer
+        -compositeScore : Float
+        -rankingPosition : Integer
+        -listType : String
+        -departmentConditionsMet : Boolean
+        -generalNote : String
+        -submittedAt : LocalDateTime
+    }
+    class IntibakRow {
+        -rowId : Integer
+        -sourceCourseCode : String
+        -sourceCourseName : String
+        -sourceCredit : Integer
+        -targetCourseCode : String
+        -targetCourseName : String
+        -targetCredit : Integer
+        -equivalencyStatus : String
+    }
+    class BoardDecision {
+        -decisionId : Integer
+        -decisionType : String
+        -rejectionCode : String
+        -equivalencyComplianceVerified : Boolean
+        -evaluatorId : Integer
+        -timestamp : LocalDateTime
+    }
+
+    interface EvaluationReportRepository {
+        +findByApplicationId(applicationId : Integer) : EvaluationReport
+        +findByCycleId(cycleId : Integer) : List<EvaluationReport>
+        +save(report : EvaluationReport) : EvaluationReport
+    }
+    interface IntibakRowRepository {
+        +findByReportId(reportId : Integer) : List<IntibakRow>
+        +save(row : IntibakRow) : IntibakRow
+        +saveAll(rows : List<IntibakRow>) : List<IntibakRow>
+    }
+    interface BoardDecisionRepository {
+        +findByApplicationId(applicationId : Integer) : Optional<BoardDecision>
+        +save(decision : BoardDecision) : BoardDecision
+    }
+}
+
+' =============================================
+' REFERENCES FROM OTHER DOMAINS
+' =============================================
+
+class TransferApplication <<Application Domain>> #EEEEEE {
+    -applicationId : Integer
+    -gpa : Float
+    -yksRanking : Integer
+    -finalDecision : String
+}
+
+interface TransferApplicationRepository <<Application Domain>> #EEEEEE {
+    +findById(applicationId : Integer) : Optional<TransferApplication>
+    +save(app : TransferApplication) : TransferApplication
+}
+
+class AuditService <<Finalization Domain>> #EEEEEE {
+    +logAction(userId : Integer, targetEntityId : Integer, action : String)
+}
+
+' =============================================
+' DOMAIN ASSOCIATIONS
+' =============================================
+
+TransferApplication "1" -- "1" EvaluationReport : has >
+EvaluationReport "1" *-- "0..*" IntibakRow : contains >
+TransferApplication "1" -- "0..1" BoardDecision : receives >
+
+' =============================================
+' BUSINESS LOGIC -> DATA ACCESS DEPENDENCIES
+' =============================================
+
+YgkEvaluationService ..> EvaluationReportRepository : uses
+YgkEvaluationService ..> IntibakRowRepository : uses
+YgkEvaluationService ..> TransferApplicationRepository : uses
+FacultyBoardService ..> EvaluationReportRepository : uses
+FacultyBoardService ..> BoardDecisionRepository : uses
+FacultyBoardService ..> TransferApplicationRepository : uses
+FacultyBoardService ..> AuditService : uses
+
+@enduml

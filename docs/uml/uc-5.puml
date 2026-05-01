@@ -1,0 +1,181 @@
+@startuml uc-5
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "ÖİDB Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+    participant "OidbDashboardUI" as UI
+    participant "OidbRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "RoutingService" as RoutingSvc
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "TransferApplicationRepository" as AppDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Phase 1: View YDYO-Evaluated Applications ==
+
+Staff -> UI: navigateToDashboard()
+activate UI
+
+UI -> RestController: GET /api/oidb/applications?status=YDYO+Completed
+activate RestController
+
+RestController -> RoutingSvc: fetchEvaluatedApplications()
+activate RoutingSvc
+
+RoutingSvc -> AppDB: findByApplicationStatus('YDYO Completed')
+activate AppDB
+AppDB -> DB: read(status)
+activate DB
+DB --> AppDB: List<TransferApplication>
+deactivate DB
+AppDB --> RoutingSvc: List<TransferApplication>
+deactivate AppDB
+
+RoutingSvc --> RestController: List<TransferApplication>
+deactivate RoutingSvc
+
+RestController --> UI: HTTP 200: applications
+deactivate RestController
+
+UI --> Staff: Evaluated Application List
+deactivate UI
+
+== Phase 2: Select Student & View Details ==
+
+Staff -> UI: selectStudent(applicationId)
+activate UI
+
+UI -> RestController: GET /api/oidb/applications/{applicationId}
+activate RestController
+
+RestController -> RoutingSvc: fetchApplicationDetails(applicationId)
+activate RoutingSvc
+
+RoutingSvc -> AppDB: findById(applicationId)
+activate AppDB
+AppDB -> DB: read(applicationId)
+activate DB
+DB --> AppDB: TransferApplication
+deactivate DB
+AppDB --> RoutingSvc: TransferApplication
+deactivate AppDB
+
+RoutingSvc --> RestController: TransferApplication
+deactivate RoutingSvc
+
+RestController --> UI: HTTP 200: application
+deactivate RestController
+
+UI --> Staff: Student Details & YDYO Evaluation Result
+deactivate UI
+
+== Phase 3A: Approved Path — Forward to Faculty ==
+
+alt YDYO Approved (exemptionStatus = 'Muaf' or document approved)
+
+    Staff -> UI: clickForwardToFaculty()
+    activate UI
+
+    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/forward-to-faculty
+    activate RestController
+
+    RestController -> RoutingSvc: routeToFaculty(applicationId)
+    activate RoutingSvc
+
+    RoutingSvc -> AppDB: findById(applicationId)
+    activate AppDB
+    AppDB -> DB: read(applicationId)
+    activate DB
+    DB --> AppDB: TransferApplication
+    deactivate DB
+    AppDB --> RoutingSvc: TransferApplication
+    deactivate AppDB
+
+    RoutingSvc -> RoutingSvc: targetDepartment = application.getTargetDepartment()
+
+    alt No Dean's Office Mapped for Department (REL-2)
+        RoutingSvc --> RestController: UnmappedDepartmentException
+        RestController --> UI: HTTP 400: No Faculty Mapped
+        UI --> Staff: Error('Hedef bölüm için yetkili fakülte bulunamadı.')
+    else Dean's Office Found
+        RoutingSvc -> RoutingSvc: application.setApplicationStatus('Fakültede')
+
+        RoutingSvc -> AppDB: save(application)
+        activate AppDB
+        AppDB -> DB: persist(application)
+        activate DB
+        DB --> AppDB: TransferApplication
+        deactivate DB
+        AppDB --> RoutingSvc: TransferApplication
+        deactivate AppDB
+
+        RoutingSvc --> RestController: void
+        deactivate RoutingSvc
+
+        RestController --> UI: HTTP 200 OK
+        deactivate RestController
+
+        UI --> Staff: Confirmation('Başvuru fakülteye iletildi.')
+        deactivate UI
+    end
+
+== Phase 3B: Rejected Path — Reject Application ==
+
+else YDYO Rejected (exemptionStatus = 'Muaf Degil')
+
+    Staff -> UI: clickRejectApplication()
+    activate UI
+
+    UI --> Staff: Confirmation Dialog
+    Staff -> UI: confirmRejection()
+
+    UI -> RestController: PATCH /api/oidb/applications/{applicationId}/reject
+    activate RestController
+
+    RestController -> RoutingSvc: rejectApplication(applicationId)
+    activate RoutingSvc
+
+    RoutingSvc -> AppDB: findById(applicationId)
+    activate AppDB
+    AppDB -> DB: read(applicationId)
+    activate DB
+    DB --> AppDB: TransferApplication
+    deactivate DB
+    AppDB --> RoutingSvc: TransferApplication
+    deactivate AppDB
+
+    RoutingSvc -> RoutingSvc: application.setApplicationStatus('Reddedildi')
+
+    RoutingSvc -> AppDB: save(application)
+    activate AppDB
+    AppDB -> DB: persist(application)
+    activate DB
+    DB --> AppDB: TransferApplication
+    deactivate DB
+    AppDB --> RoutingSvc: TransferApplication
+    deactivate AppDB
+
+    RoutingSvc --> RestController: void
+    deactivate RoutingSvc
+
+    RestController --> UI: HTTP 200 OK
+    deactivate RestController
+
+    UI --> Staff: Confirmation('Başvuru reddedildi.')
+    deactivate UI
+
+end
+
+@enduml

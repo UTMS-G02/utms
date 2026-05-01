@@ -1,0 +1,173 @@
+@startuml uc-3
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor Student
+
+box "Presentation Layer" #LightCyan
+    participant "ProfileUI" as UI
+    participant "ProfileRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "ProfileService" as ProfileSvc
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "StudentRepository" as DataAccess
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== View Profile ==
+
+Student -> UI: clickProfileButton()
+activate UI
+
+UI -> RestController: GET /api/profile/{studentId}
+activate RestController
+
+RestController -> ProfileSvc: getProfileData(studentId)
+activate ProfileSvc
+
+ProfileSvc -> DataAccess: findStudentById(studentId)
+activate DataAccess
+DataAccess -> DB: read(studentId)
+activate DB
+DB --> DataAccess: Student
+deactivate DB
+DataAccess --> ProfileSvc: Student
+deactivate DataAccess
+
+ProfileSvc --> RestController: Student: profileData
+deactivate ProfileSvc
+
+RestController --> UI: HTTP 200: profileData
+deactivate RestController
+
+UI --> Student: Profile Data
+deactivate UI
+
+== Update Basic Information ==
+
+Student -> UI: submitProfileUpdate(phone)
+activate UI
+
+UI -> RestController: PUT /api/profile/{studentId} (phone)
+activate RestController
+
+RestController -> ProfileSvc: updateBasicInfo(studentId, phone)
+activate ProfileSvc
+
+ProfileSvc -> ProfileSvc: validatePhoneNumber(phone)
+
+alt Invalid Phone Number
+    ProfileSvc --> RestController: InvalidPhoneException
+    RestController --> UI: HTTP 400: Validation Error
+    UI --> Student: Validation Error
+else Valid Phone Number
+    ProfileSvc -> DataAccess: findStudentById(studentId)
+    activate DataAccess
+    DataAccess -> DB: read(studentId)
+    activate DB
+    DB --> DataAccess: Student
+    deactivate DB
+    DataAccess --> ProfileSvc: Student
+    deactivate DataAccess
+
+    ProfileSvc -> ProfileSvc: student.setPhoneNumber(phone)
+
+    ProfileSvc -> DataAccess: save(student)
+    activate DataAccess
+
+    alt Database Error
+        DataAccess --> ProfileSvc: DatabaseException
+        deactivate DataAccess
+        ProfileSvc --> RestController: DatabaseException
+        RestController --> UI: HTTP 500: Update Failed
+        UI --> Student: Error("Geçici bir sistem hatası oluştu...")
+    else Save Successful
+        DataAccess -> DB: persist(student)
+        activate DB
+        DB --> DataAccess: Student
+        deactivate DB
+        DataAccess --> ProfileSvc: Student
+        deactivate DataAccess
+
+        ProfileSvc --> RestController: void
+        RestController --> UI: HTTP 200 OK
+        UI --> Student: showUpdateConfirmation("Bilgileriniz başarıyla güncellendi")
+    end
+end
+
+deactivate ProfileSvc
+deactivate RestController
+deactivate UI
+
+== Password Change ==
+
+Student -> UI: submitPasswordChange(current, new, repeat)
+activate UI
+
+UI -> RestController: PUT /api/profile/{studentId}/password (current, new, repeat)
+activate RestController
+
+RestController -> ProfileSvc: changePassword(studentId, currentPassword, newPassword, repeatPassword)
+activate ProfileSvc
+
+ProfileSvc -> DataAccess: findStudentById(studentId)
+activate DataAccess
+DataAccess -> DB: read(studentId)
+activate DB
+DB --> DataAccess: Student
+deactivate DB
+DataAccess --> ProfileSvc: Student
+deactivate DataAccess
+
+ProfileSvc -> ProfileSvc: verifyCurrentPassword(currentPassword, student.passwordHash)
+
+alt Incorrect Current Password
+    ProfileSvc --> RestController: WrongPasswordException
+    RestController --> UI: HTTP 400: Wrong Password
+    UI --> Student: Error("Mevcut şifreniz hatalı. Lütfen tekrar deneyin.")
+else Correct Current Password
+    ProfileSvc -> ProfileSvc: validateSecurityPolicies(newPassword, repeatPassword)
+
+    alt New Password Fails Rules or Matches Old Password
+        ProfileSvc --> RestController: WeakPasswordException
+        RestController --> UI: HTTP 400: Password Requirements Error
+        UI --> Student: Password Requirements Error
+    else Valid New Password
+        ProfileSvc -> ProfileSvc: newHash = hashPassword(newPassword)
+        ProfileSvc -> ProfileSvc: student.setPasswordHash(newHash)
+
+        ProfileSvc -> DataAccess: save(student)
+        activate DataAccess
+        DataAccess -> DB: persist(student)
+        activate DB
+        DB --> DataAccess: Student
+        deactivate DB
+        DataAccess --> ProfileSvc: Student
+        deactivate DataAccess
+
+        ProfileSvc --> RestController: void
+        RestController --> UI: HTTP 200 OK
+        UI --> Student: Update Confirmation Message("Şifreniz başarıyla güncellendi")
+    end
+end
+
+deactivate ProfileSvc
+deactivate RestController
+
+opt Cancellation
+    Student -> UI: clickCancel()
+    UI --> Student: redirect to previous page
+end
+
+deactivate UI
+
+@enduml

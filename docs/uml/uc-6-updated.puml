@@ -1,0 +1,160 @@
+@startuml uc-6
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "ÖİDB Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+    participant "OidbDashboardUI" as UI
+    participant "OidbRestFinalizationSvc" as RestFinalizationSvc
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "FinalizationService" as FinalizationSvc
+    participant "EmailNotificationManager" as EmailManager
+    participant "NotificationService" as NotificationSvc
+    participant "AuditService" as AuditSvc
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "BoardDecisionRepository" as DecisionDB
+    participant "TransferApplicationRepository" as AppDB
+    participant "AuditLogRepository" as AuditDB
+    participant "NotificationRepository" as NotificationDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Retrieve & Review Decisions ==
+
+Staff -> UI: selectApplicationCycle(cycleId)
+activate UI
+
+UI -> RestFinalizationSvc: GET /api/oidb/cycles/{cycleId}/decisions
+activate RestFinalizationSvc
+
+RestFinalizationSvc -> FinalizationSvc: fetchFinalDecisions(cycleId)
+activate FinalizationSvc
+
+FinalizationSvc -> DecisionDB: fetchDecisionsByCycle(cycleId)
+activate DecisionDB
+DecisionDB -> DB: read(cycleId)
+activate DB
+
+alt Invalid or Missing Faculty Data
+    DB --> DecisionDB: Exception
+    deactivate DB
+    DecisionDB --> FinalizationSvc: DataCorruptedException
+    deactivate DecisionDB
+    FinalizationSvc --> RestFinalizationSvc: DataCorruptedException
+    RestFinalizationSvc --> UI: HTTP 500: Missing Data Error
+    UI --> Staff: Error("Eksik veri: Lütfen fakülte kararlarını doğrulayın")
+else Valid Data
+    DB --> DecisionDB: List<BoardDecision>
+    deactivate DB
+    DecisionDB --> FinalizationSvc: List<BoardDecision>
+    deactivate DecisionDB
+    FinalizationSvc --> RestFinalizationSvc: List<BoardDecision>: decisions
+    RestFinalizationSvc --> UI: HTTP 200: decisions
+    UI --> Staff: Decision Data
+end
+
+deactivate FinalizationSvc
+deactivate RestFinalizationSvc
+deactivate UI
+
+== Publish & Notify ==
+
+Staff -> UI: clickPublishResults()
+activate UI
+
+UI -> RestFinalizationSvc: POST /api/oidb/cycles/{cycleId}/publish
+activate RestFinalizationSvc
+
+RestFinalizationSvc -> FinalizationSvc: publishResults(cycleId)
+activate FinalizationSvc
+
+FinalizationSvc -> AppDB: updateApplicationStatusByCycleId(cycleId, "Finalized")
+activate AppDB
+AppDB -> DB: persist(applications)
+activate DB
+DB --> AppDB: void
+deactivate DB
+AppDB --> FinalizationSvc: void
+deactivate AppDB
+
+
+FinalizationSvc -> AuditSvc: logAction(staffId, applicationId, "Application is finalized.")
+activate AuditSvc
+AuditSvc -> AuditDB: save(auditEntry)
+activate AuditDB
+AuditDB -> DB: persist(auditEntry)
+activate DB
+DB --> AuditDB: AuditEntry
+deactivate DB
+AuditDB --> AuditSvc: success
+deactivate AuditDB
+AuditSvc --> FinalizationSvc: void
+deactivate AuditSvc
+
+
+FinalizationSvc -> NotificationSvc: sendNotification(studentId, "Başvurunuz sonuçlanmıştır.")
+activate NotificationSvc
+NotificationSvc -> NotificationDB: save(notification)
+activate NotificationDB
+NotificationDB -> DB: persist(notification)
+activate DB
+DB --> NotificationDB: Notification
+deactivate DB
+NotificationDB --> NotificationSvc: success
+deactivate NotificationDB
+NotificationSvc --> FinalizationSvc: void
+deactivate NotificationSvc
+
+FinalizationSvc -> FinalizationSvc: triggerNotifications(cycleId)
+
+FinalizationSvc -> EmailManager: sendEmail(cycleId)
+activate EmailManager
+
+alt Notification Failure
+    EmailManager --> FinalizationSvc: EmailDeliveryException
+
+    FinalizationSvc -> NotificationDB: save(new Notification(cycleId, status="Failed"))
+    activate NotificationDB
+    NotificationDB -> DB: persist(notification)
+    activate DB
+    DB --> NotificationDB: Notification
+    deactivate DB
+    NotificationDB --> FinalizationSvc: Notification
+    deactivate NotificationDB
+
+    FinalizationSvc --> RestFinalizationSvc: PartialSuccessException
+    RestFinalizationSvc --> UI: HTTP 207: Partial Success
+    UI --> Staff: Warning("Sonuçlar yayınlandı ancak bazı bildirimler başarısız oldu.")
+else Notification Success
+    EmailManager --> FinalizationSvc: void
+    deactivate EmailManager
+
+    FinalizationSvc -> NotificationDB: save(new Notification(cycleId, status="Sent"))
+    activate NotificationDB
+    NotificationDB -> DB: persist(notification)
+    activate DB
+    DB --> NotificationDB: Notification
+    deactivate DB
+    NotificationDB --> FinalizationSvc: Notification
+    deactivate NotificationDB
+
+    FinalizationSvc --> RestFinalizationSvc: void
+    RestFinalizationSvc --> UI: HTTP 200 OK
+    UI --> Staff: Confirmation("Sonuçlar başarıyla yayınlandı ve bildirimler gönderildi.")
+end
+
+deactivate FinalizationSvc
+deactivate RestFinalizationSvc
+deactivate UI
+
+@enduml

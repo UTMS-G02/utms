@@ -1,0 +1,98 @@
+@startuml UTMS_Architecture_Overview
+
+title UTMS — Undergraduate Transfer Management System\nArchitecture Overview
+
+top to bottom direction
+
+skinparam defaultFontSize 12
+skinparam packageStyle rectangle
+skinparam package {
+    BorderColor #2C3E50
+}
+skinparam rectangle {
+    BackgroundColor White
+    BorderColor #2C3E50
+    FontSize 12
+}
+skinparam database {
+    BackgroundColor White
+    BorderColor #2C3E50
+}
+skinparam cloud {
+    BackgroundColor #FDFEFE
+    BorderColor #7F8C8D
+}
+
+' =============================================
+' EXTERNAL SYSTEMS
+' =============================================
+
+cloud "External Systems" #FDFEFE {
+    rectangle "YÖKSİS" as YOKSIS
+    rectangle "ÖSYM" as OSYM
+    rectangle "e-Devlet" as EDEVLET
+}
+
+' =============================================
+' PRESENTATION LAYER
+' =============================================
+
+package "Presentation Layer" #FADBD8 {
+    rectangle "Web UI\n(React + Ant Design)" as UI
+}
+
+' =============================================
+' BUSINESS LOGIC LAYER
+' =============================================
+
+package "Business Logic Layer" #FEF9E7 {
+    rectangle "External Services" as BL_EXT #FDEBD0
+    rectangle "Auth & Registration" as BL_AUTH #FDEBD0
+    rectangle "Application Services" as BL_APP #FDEBD0
+    rectangle "Workflow Services" as BL_WF #FDEBD0
+}
+
+' =============================================
+' DATA ACCESS LAYER
+' =============================================
+
+package "Data Access Layer" #EBF5FB {
+    rectangle "User Domain" as DAL_USER #D6EAF8
+    rectangle "Authentication" as DAL_AUTH #D6EAF8
+    rectangle "Application Domain" as DAL_APP #D6EAF8
+    rectangle "Document Domain" as DAL_DOC #D6EAF8
+    rectangle "Evaluation Domain" as DAL_EVAL #D6EAF8
+}
+
+' =============================================
+' DATABASE
+' =============================================
+
+database "PostgreSQL" as DB #EBF5FB
+
+' =============================================
+' RELATIONSHIPS
+' =============================================
+
+UI --> BL_AUTH : REST API
+UI --> BL_APP : REST API
+UI --> BL_WF : REST API
+
+BL_EXT --> YOKSIS : identity & academic data
+BL_EXT --> OSYM : YKS score verification
+BL_EXT --> EDEVLET : identity verification
+
+BL_AUTH --> DAL_USER
+BL_AUTH --> DAL_AUTH
+BL_APP --> DAL_APP
+BL_APP --> DAL_DOC
+BL_WF --> DAL_EVAL
+BL_WF --> DAL_APP
+
+DAL_USER --> DB
+DAL_AUTH --> DB
+DAL_APP --> DB
+DAL_DOC --> DB
+DAL_EVAL --> DB
+
+@enduml

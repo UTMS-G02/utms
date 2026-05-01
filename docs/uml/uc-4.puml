@@ -1,0 +1,158 @@
+@startuml uc-4
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "ÖİDB Staff" as Staff
+
+box "Presentation Layer" #LightCyan
+participant "OidbDashboardUI" as UI
+end box
+
+box "Business Logic Layer" #LightYellow
+participant "DocumentVerificationController" as VerifController
+participant "RoutingService" as RouteController
+end box
+
+box "Data Access Layer" #LightGreen
+participant "TransferApplication" as AppDB
+participant "BaseDocument" as DocDB
+end box
+
+box "Database" #LightPink
+participant "Database" as DB
+end box
+
+== 1. Accessing the Review Page ==
+Staff -> UI: navigateToOidbDashboard()
+activate UI
+
+UI -> UI: filterByStatus("Pending Verification")
+note right: Filters the view to only show incoming applications
+
+UI -> VerifController: fetchPendingApplications()
+activate VerifController
+
+VerifController -> AppDB: getApplicationsByStatus("Pending")
+activate AppDB
+AppDB -> DB: SELECT * FROM TransferApplications WHERE applicationStatus = 'Pending'
+activate DB
+DB --> AppDB: ResultSet
+deactivate DB
+AppDB --> VerifController: List<TransferApplication>: pendingApps
+deactivate AppDB
+
+VerifController --> UI: List<TransferApplication>: pendingApps
+deactivate VerifController
+
+UI --> Staff: Pending Applications
+
+== 2. Document Verification Process ==
+Staff -> UI: selectApplicationForReview(applicationId)
+UI -> VerifController: verifyDocuments(applicationId)
+activate VerifController
+
+VerifController -> AppDB: findById(applicationId)
+activate AppDB
+AppDB -> DB: SELECT * FROM TransferApplications WHERE id = ?
+activate DB
+DB --> AppDB: ResultSet
+deactivate DB
+AppDB --> VerifController: TransferApplication: appDetails
+deactivate AppDB
+
+VerifController -> DocDB: getDocumentsByApplicationId(applicationId)
+activate DocDB
+DocDB -> DB: SELECT * FROM BaseDocuments WHERE applicationId = ?
+activate DB
+DB --> DocDB: ResultSet
+deactivate DB
+DocDB --> VerifController: List<BaseDocument>: documents
+deactivate DocDB
+
+VerifController --> UI: ApplicationData: viewData
+deactivate VerifController
+
+UI --> Staff: Application Document
+
+alt Invalid or Missing Documents (Alternative Flow)
+    Staff -> UI: flagDocumentInvalid(note)
+    UI -> VerifController: requestDocumentCorrection(applicationId, note)
+    activate VerifController
+
+    VerifController -> AppDB: updateStatus(applicationId, "Correction Requested")
+    activate AppDB
+    AppDB -> DB: UPDATE TransferApplications SET applicationStatus = 'Correction Requested' WHERE id = ?
+    activate DB
+    DB --> AppDB: int: rowsAffected
+    deactivate DB
+    AppDB --> VerifController: boolean: true
+    deactivate AppDB
+
+    VerifController --> UI: boolean: true
+    deactivate VerifController
+    
+    UI --> Staff: Action Confirmation Message ("Öğrenciye düzeltme yapılması gerektiği bildirildi.")
+
+else Documents are Valid (Normal Flow)
+    Staff -> UI: approveAllDocuments()
+    UI -> VerifController: markApplicationVerified(applicationId)
+    activate VerifController
+    
+    VerifController -> DocDB: lockDocuments(applicationId)
+    note right: isLocked is set to true to prevent further student uploads
+    activate DocDB
+    DocDB -> DB: UPDATE BaseDocuments SET isLocked = true WHERE applicationId = ?
+    activate DB
+    DB --> DocDB: int: rowsAffected
+    deactivate DB
+    DocDB --> VerifController: boolean: true
+    deactivate DocDB
+    
+    VerifController --> UI: boolean: true
+    deactivate VerifController
+
+    == 3. Application Routing ==
+    Staff -> UI: proceedToRouting()
+    
+    alt Needs English Proficiency Prep (YDYO)
+        Staff -> UI: routeToYdyo()
+        UI -> RouteController: forwardToYDYO(applicationId)
+        activate RouteController
+        
+        RouteController -> AppDB: updateStatus(applicationId, "YDYO'a iletildi.")
+        activate AppDB
+        AppDB -> DB: UPDATE TransferApplications SET applicationStatus = 'Forwarded to YDYO' WHERE id = ?
+        activate DB
+        DB --> AppDB: int: rowsAffected
+        deactivate DB
+        AppDB --> RouteController: boolean: true
+        deactivate AppDB
+        
+        RouteController --> UI: boolean: true
+        deactivate RouteController
+        UI --> Staff: Action Confirmation Message ("YDYO'ya yönlendirildi.")
+        
+    else Reject Application 
+        Staff -> UI: rejectApplication()
+        UI -> RouteController: rejectApplication(applicationId)
+        activate RouteController
+        
+        RouteController -> AppDB: updateStatus(applicationId, "Rejected")
+        activate AppDB
+        AppDB -> DB: UPDATE TransferApplications SET applicationStatus = 'Rejected' WHERE id = ?
+        activate DB
+        DB --> AppDB: int: rowsAffected
+        deactivate DB
+        AppDB --> RouteController: boolean: true
+        deactivate AppDB
+        
+        RouteController --> UI: boolean: true
+        deactivate RouteController
+        UI --> Staff: Action Confirmation Messsage ("Başvuru reddedildi.")
+    end
+end
+
+deactivate UI
+@enduml

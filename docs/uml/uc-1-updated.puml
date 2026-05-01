@@ -1,0 +1,164 @@
+@startuml uc-1
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor Student
+
+box "Presentation Layer" #LightCyan
+    participant "RegistrationUI" as UI
+    participant "RegistrationRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "RegistrationService" as RegistrationSvc
+    participant "EmailNotificationManager" as EmailManager
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "StudentRepository" as DataAccess
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+
+== Registration Phase ==
+
+Student -> UI: clickRegisterButton()
+activate UI
+UI --> Student: Registration Form
+deactivate UI
+
+Student -> UI: submitForm(email, password, repeat, kvkk)
+activate UI
+
+UI -> RestController: POST /api/register (email, password, kvkk)
+activate RestController
+
+RestController -> RegistrationSvc: register(email, password, kvkk)
+activate RegistrationSvc
+
+RegistrationSvc -> RegistrationSvc: validateEmailFormat(email)
+alt Invalid Email Format
+    RegistrationSvc --> RestController: EmailFormatException
+    RestController --> UI: HTTP 400: Email Format Error
+    UI --> Student: Email Format Error
+else Valid Email
+    RegistrationSvc -> RegistrationSvc: validatePasswordStrength(password)
+    alt Invalid Password
+        RegistrationSvc --> RestController: WeakPasswordException
+        RestController --> UI: HTTP 400: Password Security Error
+        UI --> Student: Password Security Error
+    else Valid Password
+        RegistrationSvc -> DataAccess: findByEmail(email)
+        activate DataAccess
+        DataAccess -> DB: read(email)
+        activate DB
+        DB --> DataAccess: Optional<Student>
+        deactivate DB
+        DataAccess --> RegistrationSvc: boolean: isRegistered
+        deactivate DataAccess
+
+        alt Email Already Registered
+            RegistrationSvc --> RestController: EmailAlreadyExistsException
+            RestController --> UI: HTTP 409: Email Already Registered
+            UI --> Student: Registration Error("Bu e-posta adresi zaten kayıtlı")
+        else Email is Available
+            RegistrationSvc -> RegistrationSvc: hashPassword(password)
+            RegistrationSvc -> RegistrationSvc: student = new Student(email, hashedPassword, isActive=false, kvkkAcceptedAt=now)
+            RegistrationSvc -> DataAccess: save(student)
+            activate DataAccess
+            DataAccess -> DB: persist(student)
+            activate DB
+            DB --> DataAccess: Student
+            deactivate DB
+            DataAccess --> RegistrationSvc: Student: newStudent
+            deactivate DataAccess
+
+            RegistrationSvc -> RegistrationSvc: generateActivationLink()
+            RegistrationSvc -> EmailManager: sendActivationEmail(email, activationLink)
+            activate EmailManager
+
+            alt Email Sending Error
+                EmailManager --> RegistrationSvc: EmailDeliveryException
+                RegistrationSvc --> RestController: EmailDeliveryException
+                RestController --> UI: HTTP 500: Email Delivery Error
+                UI --> Student: Error("E-posta gönderim hatası")
+            else Email Sent Successfully
+                EmailManager --> RegistrationSvc: void
+                deactivate EmailManager
+                RegistrationSvc --> RestController: void
+                RestController --> UI: HTTP 201 Created
+                UI --> Student: Activation Success Message
+            end
+        end
+    end
+end
+
+deactivate RegistrationSvc
+deactivate RestController
+deactivate UI
+
+== Activation Phase ==
+
+Student -> UI: clickActivationLink()
+activate UI
+
+UI -> RestController: GET /api/activate?link={link}
+activate RestController
+
+RestController -> RegistrationSvc: verifyActivationLink(link)
+activate RegistrationSvc
+
+alt Link Invalid or Expired
+    RegistrationSvc --> RestController: InvalidLinkException
+    RestController --> UI: HTTP 400: Invalid Link
+    UI --> Student: Error("Aktivasyon bağlantısı geçersiz/süresi dolmuş")
+
+    opt Student requests new link
+        Student -> UI: requestNewActivationLink()
+        UI -> RestController: POST /api/resend-activation (email)
+        RestController -> RegistrationSvc: generateActivationLink()
+        RegistrationSvc -> EmailManager: sendActivationEmail(email, newActivationLink)
+        activate EmailManager
+        EmailManager --> RegistrationSvc: void
+        deactivate EmailManager
+        RegistrationSvc --> RestController: void
+        RestController --> UI: HTTP 200 OK
+        UI --> Student: Success Message("Yeni bağlantı gönderildi")
+    end
+
+else Link Valid
+    RegistrationSvc -> DataAccess: findStudentById(studentId)
+    activate DataAccess
+    DataAccess -> DB: read(studentId)
+    activate DB
+    DB --> DataAccess: Student
+    deactivate DB
+    DataAccess --> RegistrationSvc: Student
+    deactivate DataAccess
+
+    RegistrationSvc -> RegistrationSvc: student.setIsActive(true)
+
+    RegistrationSvc -> DataAccess: save(student)
+    activate DataAccess
+    DataAccess -> DB: persist(student)
+    activate DB
+    DB --> DataAccess: Student
+    deactivate DB
+    DataAccess --> RegistrationSvc: Student
+    deactivate DataAccess
+
+    RegistrationSvc --> RestController: void
+    RestController --> UI: HTTP 200 OK
+    UI --> Student: Success Message("Hesabınız başarıyla etkinleştirildi")
+end
+
+deactivate RegistrationSvc
+deactivate RestController
+deactivate UI
+
+@enduml

@@ -1,0 +1,192 @@
+@startuml uc-13
+autonumber
+skinparam maxMessageSize 150
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+actor "User (Student/Staff)" as User
+
+box "Presentation Layer" #LightCyan
+    participant "LoginUI" as LoginUI
+    participant "ForgotPasswordUI" as UI
+    participant "AuthRestController" as RestController
+end box
+
+box "Business Logic Layer" #LightYellow
+    participant "AuthenticationService" as AuthService
+    participant "EmailNotificationManager" as EmailManager
+end box
+
+box "Data Access Layer" #LightGreen
+    participant "UserRepository" as UserDB
+    participant "AuthTokenRepository" as TokenDB
+end box
+
+box "Database" #LightPink
+    participant "Database" as DB
+end box
+
+== Initiation ==
+
+User -> LoginUI: clickForgotPasswordButton()
+activate LoginUI
+LoginUI -> UI: routeToResetProcess()
+deactivate LoginUI
+
+activate UI
+UI --> User: Reset Form
+
+User -> UI: submitEmail(email)
+UI -> RestController: POST /api/auth/forgot-password (email)
+activate RestController
+
+RestController -> AuthService: initiatePasswordReset(email)
+activate AuthService
+
+AuthService -> UserDB: findByEmail(email)
+activate UserDB
+UserDB -> DB: read(email)
+activate DB
+DB --> UserDB: Optional<User>
+deactivate DB
+UserDB --> AuthService: Optional<User>
+deactivate UserDB
+
+alt Account Not Found
+    AuthService --> RestController: UserNotFoundException
+    RestController --> UI: HTTP 404: Account Not Found
+    UI --> User: Error('Kayitli e-posta bulunamadi')
+else Account Exists
+    AuthService -> AuthService: resetToken = generateToken()
+    AuthService -> AuthService: token = new AuthToken(user, resetToken, expiryDate)
+
+    AuthService -> TokenDB: save(token)
+    activate TokenDB
+    TokenDB -> DB: persist(token)
+    activate DB
+    DB --> TokenDB: AuthToken
+    deactivate DB
+    TokenDB --> AuthService: AuthToken
+    deactivate TokenDB
+
+    AuthService -> EmailManager: sendEmail(email, resetLink)
+    activate EmailManager
+    EmailManager --> AuthService: void
+    deactivate EmailManager
+
+    AuthService --> RestController: void
+    RestController --> UI: HTTP 200 OK
+    UI --> User: Confirmation('Sifirlama baglantisi gonderildi')
+end
+
+deactivate AuthService
+deactivate RestController
+
+== Password Reset Execution ==
+
+User -> UI: clickResetLink(token)
+UI -> RestController: GET /api/auth/reset-password?token={token}
+activate RestController
+
+RestController -> AuthService: verifyResetToken(token)
+activate AuthService
+
+AuthService -> TokenDB: findById(token)
+activate TokenDB
+TokenDB -> DB: read(token)
+activate DB
+DB --> TokenDB: Optional<AuthToken>
+deactivate DB
+TokenDB --> AuthService: Optional<AuthToken>
+deactivate TokenDB
+
+alt Token Invalid or Expired
+    AuthService --> RestController: InvalidTokenException
+    RestController --> UI: HTTP 400: Invalid Token
+    UI --> User: Error('Gecersiz veya suresi dolmus baglanti')
+
+    opt User Requests New Link
+        User -> UI: requestNewLink(email)
+        UI -> RestController: POST /api/auth/forgot-password (email)
+        note right: Initiation asamasindaki akis tekrarlanir
+    end
+
+else Token Valid
+    AuthService --> RestController: void
+    RestController --> UI: HTTP 200 OK
+    UI --> User: Reset Form
+
+    User -> UI: submitNewPassword(newPassword, confirmPassword)
+    UI -> RestController: POST /api/auth/reset-password (token, newPassword, confirmPassword)
+    activate RestController
+
+    RestController -> AuthService: updatePassword(token, newPassword, confirmPassword)
+    activate AuthService
+
+    AuthService -> AuthService: validateSecurityPolicies(newPassword, confirmPassword)
+
+    alt Password Does Not Meet Requirements
+        AuthService --> RestController: WeakPasswordException
+        RestController --> UI: HTTP 400: Password Requirements Error
+        UI --> User: Password Requirements Error
+    else Valid Password
+        AuthService -> AuthService: newHash = hashPassword(newPassword)
+
+        AuthService -> TokenDB: findById(token)
+        activate TokenDB
+        TokenDB -> DB: read(token)
+        activate DB
+        DB --> TokenDB: AuthToken
+        deactivate DB
+        TokenDB --> AuthService: AuthToken
+        deactivate TokenDB
+
+        AuthService -> UserDB: findById(authToken.userId)
+        activate UserDB
+        UserDB -> DB: read(userId)
+        activate DB
+        DB --> UserDB: User
+        deactivate DB
+        UserDB --> AuthService: User
+        deactivate UserDB
+
+        AuthService -> AuthService: user.setPasswordHash(newHash)
+
+        AuthService -> UserDB: save(user)
+        activate UserDB
+        UserDB -> DB: persist(user)
+        activate DB
+        DB --> UserDB: User
+        deactivate DB
+        UserDB --> AuthService: User
+        deactivate UserDB
+
+        AuthService -> TokenDB: delete(token)
+        activate TokenDB
+        TokenDB -> DB: delete(token)
+        activate DB
+        DB --> TokenDB: void
+        deactivate DB
+        TokenDB --> AuthService: void
+        deactivate TokenDB
+
+        AuthService --> RestController: void
+        RestController --> UI: HTTP 200 OK
+        UI --> User: Confirmation('Sifre basariyla guncellendi') & Return to Login
+    end
+
+    deactivate AuthService
+    deactivate RestController
+end
+
+deactivate AuthService
+deactivate RestController
+
+opt Cancellation
+    User -> UI: clickCancel()
+    UI --> User: Changes Discarded & Return to Login
+end
+
+deactivate UI
+
+@enduml
