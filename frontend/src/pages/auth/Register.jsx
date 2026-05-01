@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, Form, Input, Button, Checkbox, message } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { validateInstitutionalEmail, validateStrongPassword } from '../../utils/validators';
+import { institutionalEmailRule, passwordRule } from '../../utils/validators';
 
 const Register = () => {
   const [form] = Form.useForm();
@@ -15,40 +15,25 @@ const Register = () => {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center' }}>
-      <Card title="Kayıt Ol" style={{ width: 420 }}>
+    <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', background: '#fafafa' }}>
+      <Card title="Kayıt Ol" style={{ width: 420, boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}>
         <Form form={form} layout="vertical" onFinish={onFinish}>
+          
           <Form.Item
-            label="E-posta"
+            label="Kurumsal E-posta"
             name="email"
-            rules={[
-              { required: true, message: 'E-posta gerekli.' },
-              {
-                validator: (_, value) => {
-                  const res = validateInstitutionalEmail(value);
-                  return res.valid ? Promise.resolve() : Promise.reject(res.message);
-                },
-              },
-            ]}
+            rules={[institutionalEmailRule()]}
           >
-            <Input />
+            <Input placeholder="isim@iyte.edu.tr" />
           </Form.Item>
 
           <Form.Item
             label="Şifre"
             name="password"
-            rules={[
-              { required: true, message: 'Şifre gerekli.' },
-              {
-                validator: (_, value) => {
-                  const res = validateStrongPassword(value);
-                  return res.valid ? Promise.resolve() : Promise.reject(res.message);
-                },
-              },
-            ]}
+            rules={[passwordRule()]}
             hasFeedback
           >
-            <Input.Password />
+            <Input.Password placeholder="En az 8 karakter" />
           </Form.Item>
 
           <Form.Item
@@ -68,7 +53,7 @@ const Register = () => {
               }),
             ]}
           >
-            <Input.Password />
+            <Input.Password placeholder="Şifrenizi doğrulayın" />
           </Form.Item>
 
           <Form.Item
@@ -79,8 +64,8 @@ const Register = () => {
             <Checkbox>KVKK'yi okudum ve onaylıyorum</Checkbox>
           </Form.Item>
 
-          <Form.Item>
-            <Button type="primary" htmlType="submit" block>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" block style={{ height: 40, background: '#8B1A2B' }}>
               Kayıt Ol
             </Button>
           </Form.Item>
