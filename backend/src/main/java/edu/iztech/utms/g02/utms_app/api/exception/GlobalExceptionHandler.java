@@ -11,12 +11,18 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Centralized exception handler for all controllers.
+ * Catches exceptions thrown anywhere in the application and returns
+ * a consistent JSON error response instead of Spring's default error page.
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     /**
-     * AuthException (email zaten kayıtlı, şifre hatalı vb.) yakalanır.
-     * HTTP 400 Bad Request döner.
+     * Handles business logic errors thrown by the auth layer
+     * (e.g. duplicate email, wrong password, KVKK not accepted).
+     * Returns HTTP 400 Bad Request.
      */
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<Map<String, Object>> handleAuthException(AuthException ex) {
@@ -29,9 +35,8 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * @Valid annotation ile DTO validation hataları yakalanır.
-     * Hangi alanın hatalı olduğu detaylı şekilde döner.
-     * HTTP 400 Bad Request döner.
+     * Handles {@code @Valid} validation failures on request DTOs.
+     * Returns HTTP 400 Bad Request with a map of field names to error messages.
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidationException(MethodArgumentNotValidException ex) {
