@@ -26,6 +26,10 @@ spring:
           starttls:
             enable: true
 
+jwt:
+  secret: dXRtcy1zZWNyZXQta2V5LWZvci1qd3Qtc2lnbmluZy11dG1zLWcwMi0yMDI2
+  expiration-ms: 86400000
+
 server:
   port: 8080
 
