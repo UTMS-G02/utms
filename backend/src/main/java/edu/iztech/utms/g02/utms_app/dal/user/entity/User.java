@@ -1,6 +1,7 @@
 package edu.iztech.utms.g02.utms_app.dal.user.entity;
 
 import jakarta.persistence.*;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -41,6 +42,7 @@ public abstract class User {
 
     private LocalDate lastLoginDate;
 
+    @Builder.Default
     @Column(nullable = false)
     private boolean active = true;
 }
