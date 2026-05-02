@@ -11,7 +11,7 @@ A web-based management system for digitizing inter-institutional transfer applic
 |---|---|
 | Backend | Spring Boot 3.5, Java 21 |
 | Database | PostgreSQL |
-| Frontend | React + Ant Design *(upcoming)* |
+| Frontend | React + Ant Design + Vite |
 | Architecture | Three-Tier (Presentation / Business Logic / Data Access) |
 
 ---
@@ -20,9 +20,34 @@ A web-based management system for digitizing inter-institutional transfer applic
 
 ```
 utms/
-├── backend/        # Spring Boot application
+├── backend/                        # Spring Boot application
+│   └── src/main/java/.../utms_app/
+│       ├── api/                    # Controllers and DTOs (Presentation Layer)
+│       │   ├── auth/
+│       │   │   ├── AuthController.java
+│       │   │   └── dto/            # LoginRequest, RegisterRequest, ...
+│       │   └── exception/
+│       │       └── GlobalExceptionHandler.java
+│       ├── bl/                     # Business Logic Layer
+│       │   └── auth/
+│       │       ├── AuthService.java
+│       │       ├── JwtService.java
+│       │       ├── UserDetailsServiceImpl.java
+│       │       └── AuthException.java
+│       ├── dal/                    # Data Access Layer
+│       │   └── user/
+│       │       ├── entity/         # User (abstract), Student, Staff, UserRole
+│       │       └── repository/     # UserRepository, StudentRepository, StaffRepository
+│       └── config/                 # Spring Security, JWT filter, DataInitializer
+├── frontend/                       # React + Ant Design application (Vite)
+│   └── src/
+│       ├── api/                    # Axios client and API functions
+│       ├── components/             # Shared components (Layout, ProtectedRoute)
+│       ├── contexts/               # AuthContext
+│       └── pages/                  # auth/Login, auth/Register, ...
 ├── docs/
-│   └── uml/        # PlantUML diagrams (.puml)
+│   └── uml/                        # PlantUML diagrams (.puml)
+├── docker-compose.yml              # PostgreSQL container
 └── README.md
 ```
 
@@ -33,7 +58,8 @@ utms/
 ### Prerequisites
 - Java 21
 - Maven 3.9+
-- PostgreSQL 15+
+- Docker (runs PostgreSQL in a container — no separate installation needed)
+- Node.js 18+ (frontend için)
 - VS Code + [PlantUML extension](https://marketplace.visualstudio.com/items?itemName=jebbs.plantuml) *(for UML preview)*
 
 ### Clone the Repository
@@ -43,12 +69,30 @@ git clone https://github.com/UTMS-G02/utms.git
 cd utms
 ```
 
+### Run the Database
+
+```bash
+docker compose up -d
+```
+
 ### Run the Backend
 
 ```bash
 cd backend
 ./mvnw spring-boot:run
 ```
+
+Once running, Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+
+### Run the Frontend
+
+```bash
+cd frontend
+npm install   # first time only
+npm run dev
+```
+
+Frontend: `http://localhost:5173`
 
 ---
 
