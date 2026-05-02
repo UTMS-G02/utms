@@ -15,6 +15,10 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+/**
+ * Business logic for user authentication and student registration.
+ * Handles UC-1 (Sign up) and UC-12 (Login).
+ */
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -24,32 +28,27 @@ public class AuthService {
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
 
+    /**
+     * Registers a new student account.
+     * Validates uniqueness of email and TCKN, and requires KVKK consent.
+     *
+     * @param request registration form data
+     * @throws AuthException if email or TCKN already exists, or KVKK is not accepted
+     */
     public void register(RegisterRequest request) {
-        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            throw new AuthException("Bu e-posta zaten kayıtlı.");
-        }
-        if (studentRepository.findByTckn(request.getTckn()).isPresent()) {
-            throw new AuthException("Bu TCKN zaten kayıtlı.");
-        }
-        if (!Boolean.TRUE.equals(request.getKvkkAccepted())) {
-            throw new AuthException("KVKK onayı zorunludur.");
-        }
-
-        Student student = new Student();
-        student.setEmail(request.getEmail());
-        student.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        student.setFirstName(request.getFirstName());
-        student.setMiddleName(request.getMiddleName());
-        student.setLastName(request.getLastName());
-        student.setTckn(request.getTckn());
-        student.setPhoneNumber(request.getPhoneNumber());
-        student.setDateOfBirth(request.getDateOfBirth());
-        student.setKvkkAcceptedAt(LocalDateTime.now());
-        student.setRole(UserRole.STUDENT);
-
-        studentRepository.save(student);
+        validateRegistration(request);
+        studentRepository.save(buildStudent(request));
     }
 
+    /**
+     * Authenticates a user and returns a JWT token.
+     * The same error message is returned for both wrong email and wrong password
+     * to prevent user enumeration attacks.
+     *
+     * @param request login credentials
+     * @return LoginResponse containing the JWT token and basic user info
+     * @throws AuthException if credentials are invalid or the account is inactive
+     */
     public LoginResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new AuthException("E-posta veya şifre hatalı."));
@@ -74,5 +73,41 @@ public class AuthService {
                 user.getRole(),
                 token
         );
+    }
+
+    /**
+     * Validates that the registration request meets all business rules.
+     *
+     * @throws AuthException if any validation rule is violated
+     */
+    private void validateRegistration(RegisterRequest request) {
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            throw new AuthException("Bu e-posta zaten kayıtlı.");
+        }
+        if (studentRepository.findByTckn(request.getTckn()).isPresent()) {
+            throw new AuthException("Bu TCKN zaten kayıtlı.");
+        }
+        if (!Boolean.TRUE.equals(request.getKvkkAccepted())) {
+            throw new AuthException("KVKK onayı zorunludur.");
+        }
+    }
+
+    /**
+     * Builds a Student entity from the registration request.
+     * Password is hashed with BCrypt before being stored.
+     */
+    private Student buildStudent(RegisterRequest request) {
+        return Student.builder()
+                .email(request.getEmail())
+                .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .firstName(request.getFirstName())
+                .middleName(request.getMiddleName())
+                .lastName(request.getLastName())
+                .tckn(request.getTckn())
+                .phoneNumber(request.getPhoneNumber())
+                .dateOfBirth(request.getDateOfBirth())
+                .kvkkAcceptedAt(LocalDateTime.now())
+                .role(UserRole.STUDENT)
+                .build();
     }
 }

@@ -1,5 +1,6 @@
 package edu.iztech.utms.g02.utms_app.bl.auth;
 
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -9,6 +10,10 @@ import org.springframework.stereotype.Service;
 import javax.crypto.SecretKey;
 import java.util.Date;
 
+/**
+ * Service for generating and validating JWT tokens.
+ * Tokens are signed with HMAC-SHA and contain the user's email as the subject.
+ */
 @Service
 public class JwtService {
 
@@ -18,6 +23,12 @@ public class JwtService {
     @Value("${jwt.expiration-ms}")
     private long expirationMs;
 
+    /**
+     * Generates a signed JWT token for the given email.
+     *
+     * @param email the user's email, stored as the token subject
+     * @return signed JWT token string
+     */
     public String generateToken(String email) {
         return Jwts.builder()
                 .subject(email)
@@ -27,7 +38,14 @@ public class JwtService {
                 .compact();
     }
 
-    public String extractEmail(String token) {
+    /**
+     * Extracts the email (subject) from a JWT token.
+     *
+     * @param token the JWT token string
+     * @return the email stored in the token
+     * @throws io.jsonwebtoken.JwtException if the token is invalid or expired
+     */
+    public String extractEmail(String token) throws JwtException {
         return Jwts.parser()
                 .verifyWith(getSigningKey())
                 .build()
@@ -36,6 +54,12 @@ public class JwtService {
                 .getSubject();
     }
 
+    /**
+     * Checks whether a JWT token is valid (well-formed, correctly signed, not expired).
+     *
+     * @param token the JWT token string
+     * @return true if valid, false otherwise
+     */
     public boolean isTokenValid(String token) {
         try {
             Jwts.parser()
@@ -48,6 +72,9 @@ public class JwtService {
         }
     }
 
+    /**
+     * Decodes the Base64 secret from application.yml and returns an HMAC-SHA signing key.
+     */
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
     }

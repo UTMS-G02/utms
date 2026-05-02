@@ -11,6 +11,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * Spring Security configuration for the UTMS application.
+ */
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
@@ -19,12 +22,16 @@ public class SecurityConfig {
     private final JwtFilter jwtFilter;
 
     /**
-     * Spring Security filtre zinciri yapılandırması.
-     * - /api/auth/** endpoint'leri herkese açık (register ve login)
-     * - Diğer tüm endpoint'ler authentication gerektirir
-     * - CSRF kapalı (REST API olduğu için)
-     * - Session stateless (JWT kullanıyoruz)
-     * - JwtFilter, filtre zincirine eklenir!
+     * Configures the security filter chain.
+     *
+     * <ul>
+     *   <li>CSRF is disabled — not needed for stateless REST APIs.</li>
+     *   <li>Sessions are stateless — authentication is handled via JWT, not server-side sessions.</li>
+     *   <li>/api/auth/**, /error, and Swagger UI paths are publicly accessible.</li>
+     *   <li>All other endpoints require authentication.</li>
+     *   <li>{@link JwtFilter} runs before Spring's default username/password filter
+     *       so that JWT-based authentication is resolved first.</li>
+     * </ul>
      */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -34,17 +41,17 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/error").permitAll()
+                        .requestMatchers("/api/auth/**", "/error",
+                                "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                // En önemli satır: Filtremiz Spring'in kendi filtresinden önce çalışsın
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
     /**
-     * Şifre hashleme için BCrypt encoder.
+     * Provides a BCrypt password encoder bean used for hashing and verifying passwords.
      */
     @Bean
     public PasswordEncoder passwordEncoder() {

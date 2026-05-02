@@ -16,6 +16,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * JWT authentication filter that runs once per request.
+ * Reads the Authorization header, validates the token, and sets the authenticated
+ * user in Spring Security's SecurityContext so that protected endpoints can be accessed.
+ *
+ * <p>If the token is missing, invalid, or expired, the filter passes the request
+ * through without setting authentication. Spring Security then rejects the request
+ * with HTTP 401 if the endpoint requires authentication.
+ */
 @Component
 @RequiredArgsConstructor
 public class JwtFilter extends OncePerRequestFilter {
@@ -32,42 +41,40 @@ public class JwtFilter extends OncePerRequestFilter {
         final String jwt;
         final String userEmail;
 
-        // Header'da "Bearer " yoksa, isteği serbest bırak (SecurityConfig'de korunanlar yine engellenecek)
+        // If there is no Bearer token, pass the request through.
+        // SecurityConfig will still block protected endpoints.
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        jwt = authHeader.substring(7); // "Bearer " sonrasını al
+        jwt = authHeader.substring(7); // Strip "Bearer " prefix
         try {
-            userEmail = jwtService.extractEmail(jwt); // Token'dan emaili çıkar
+            userEmail = jwtService.extractEmail(jwt);
 
-            // Token'da e-posta var ve kullanıcı henüz SecurityContext'te doğrulanmamışsa:
+            // Only authenticate if the token contains an email and the user
+            // is not already authenticated in this request
             if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                
-                // Kullanıcıyı veritabanından çek (Roller vs. yüklenir)
+
+                // Load full user details (including roles) from the database
                 UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
 
-                // Token geçerliliği doğrulanıyorsa
                 if (jwtService.isTokenValid(jwt)) {
-                    // Kullanıcı için yetkilendirme objesi (Token) oluştur
+                    // Create an authentication token and register it in the SecurityContext
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userDetails,
                             null,
                             userDetails.getAuthorities()
                     );
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    
-                    // İşlemler başarılı, artık kullanıcı kimliği doğrulanmış olarak kaydedilir
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
         } catch (Exception e) {
-            // Token süresi geçmiş veya hatalı ise yakalanır.
-            // İşlem sessizce devam eder ve Spring Security erişimi reddeder (HTTP 401/403)
+            // Invalid or expired token — authentication is skipped.
+            // Spring Security will return HTTP 401 for protected endpoints.
         }
 
-        // Filtre zincirinin çalışmasına devam et
         filterChain.doFilter(request, response);
     }
 }
