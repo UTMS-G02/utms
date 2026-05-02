@@ -15,6 +15,19 @@ skinparam package {
 }
 
 ' =============================================
+' ENUMS
+' =============================================
+
+enum UserRole {
+    STUDENT
+    OIDB
+    YDYO
+    YGK
+    DEAN_OFFICE
+    FACULTY_BOARD
+}
+
+' =============================================
 ' BUSINESS LOGIC LAYER
 ' =============================================
 
@@ -23,22 +36,14 @@ package "Business Logic Layer" #FEF9E7 {
     package "Auth & Registration" #FDEBD0 {
         class AuthenticationService {
             +verifyCredentials(email : String, password : String)
-            +generateOTP() : String
-            +verifyOTP(userId : Integer, code : String) : Boolean
-            +lockAccount(userId : Integer)
-            +initiatePasswordReset(email : String)
-            +verifyResetToken(token : String)
-            +updatePassword(token : String, newPassword : String, confirmPassword : String)
-            +validateSecurityPolicies(newPassword : String, confirmPassword : String)
             +hashPassword(password : String) : String
+            +lockAccount(userId : Integer)
         }
         class RegistrationService {
             +validateEmailFormat(email : String)
             +checkEmailExists(email : String)
             +validatePasswordStrength(password : String)
             +hashPassword(password : String) : String
-            +generateActivationLink() : String
-            +verifyActivationLink(link : String)
         }
         class ProfileService {
             +validatePhoneNumber(phone : String)
@@ -64,31 +69,21 @@ package "Data Access Layer" #EBF5FB {
             -passwordHash : String
             -lastLoginDate : LocalDate
             -isActive : Boolean
-        }
-        class Student {
-            -tckn : String
             -firstName : String
             -middleName : String
             -lastName : String
+            -role : UserRole
+        }
+        class Student {
+            -tckn : String
             -phoneNumber : String
             -dateOfBirth : LocalDate
-            -kvkkAcceptedAt : LocalDate
+            -kvkkAcceptedAt : LocalDateTime
             -gpa : Float
             -currentUniversity : String
             -currentDepartment : String
         }
-        abstract class Staff {
-            -title : String
-        }
-        class OidbStaff
-        class YdyoStaff
-        class YgkMember {
-            -departmentId : Integer
-        }
-        class DeanOfficeStaff {
-            -departmentId : Integer
-        }
-        class FacultyBoardMember {
+        class Staff {
             -departmentId : Integer
         }
 
@@ -96,6 +91,12 @@ package "Data Access Layer" #EBF5FB {
             +findByEmail(email : String) : Optional<User>
             +findById(userId : Integer) : Optional<User>
             +save(user : User) : User
+        }
+        interface StudentRepository {
+            +findByTckn(tckn : String) : Optional<Student>
+        }
+        interface StaffRepository {
+            +findByRole(role : UserRole) : List<Staff>
         }
     }
 
@@ -105,17 +106,7 @@ package "Data Access Layer" #EBF5FB {
             -expiryDate : LocalDateTime
             -isValid : Boolean
         }
-        class OTPRecord {
-            -otpCode : String
-            -failedAttempts : Integer
-            -expiryTime : LocalDateTime
-        }
 
-        interface OTPRecordRepository {
-            +findByUserId(userId : Integer) : OTPRecord
-            +save(otp : OTPRecord) : OTPRecord
-            +delete(otp : OTPRecord)
-        }
         interface AuthTokenRepository {
             +findById(tokenId : String) : Optional<AuthToken>
             +save(token : AuthToken) : AuthToken
@@ -130,27 +121,22 @@ package "Data Access Layer" #EBF5FB {
 
 User <|-- Student
 User <|-- Staff
-Staff <|-- OidbStaff
-Staff <|-- YdyoStaff
-Staff <|-- YgkMember
-Staff <|-- DeanOfficeStaff
-Staff <|-- FacultyBoardMember
 
 ' =============================================
 ' DOMAIN ASSOCIATIONS
 ' =============================================
 
+User --> UserRole : role
 User "1" -- "0..*" AuthToken : has >
-User "1" -- "0..1" OTPRecord : has >
 
 ' =============================================
 ' BUSINESS LOGIC -> DATA ACCESS DEPENDENCIES
 ' =============================================
 
 AuthenticationService ..> UserRepository : uses
-AuthenticationService ..> OTPRecordRepository : uses
 AuthenticationService ..> AuthTokenRepository : uses
 RegistrationService ..> UserRepository : uses
+RegistrationService ..> StudentRepository : uses
 ProfileService ..> UserRepository : uses
 
 @enduml
