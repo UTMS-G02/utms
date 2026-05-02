@@ -50,7 +50,8 @@ export function AuthProvider({ children }) {
     try {
       // Önce gerçek API'ye istek atmayı dener
       const response = await apiClient.post('/auth/login', { email, password });
-      const { token: jwt, user: userData } = response.data;
+      const { token: jwt, userId, firstName, lastName, role } = response.data;
+      const userData = { id: userId, name: `${firstName} ${lastName}`, email, role };
       
       setToken(jwt);
       setUser(userData);
