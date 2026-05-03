@@ -1,8 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/auth/Login';
-import Register from './pages/auth/Register';
-// Ekran görüntündeki büyük/küçük harflere göre yollar düzeltildi:
 import AppLayout from './components/Layout/AppLayout'; 
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROLES } from './contexts/AuthContext';
@@ -20,7 +18,8 @@ export default function App() {
       {/* Herkese Açık Rotalar */}
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+      <Route path="/register" element={<Login initialModal="register" />} />
+      <Route path="/forgot-password" element={<Login initialModal="forgot" />} />
 
       {/* Öğrenci Portalı */}
       <Route
@@ -39,7 +38,7 @@ export default function App() {
       <Route
         path="/dean"
         element={
-          <ProtectedRoute allowedRoles={[ROLES.DEAN]}>
+          <ProtectedRoute allowedRoles={[ROLES.DEAN_OFFICE]}>
             <AppLayout />
           </ProtectedRoute>
         }
