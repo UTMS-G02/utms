@@ -1,53 +1,37 @@
-import { useState } from 'react'
-import { useNavigate, Link, useLocation } from 'react-router-dom'
-import { Form, Input, Button, Divider, Typography, App } from 'antd'
-import { MailOutlined, LockOutlined, ArrowRightOutlined } from '@ant-design/icons'
+﻿import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Form, Input, Button, Typography, App, Modal, Checkbox, DatePicker, Row, Col } from 'antd'
+import { MailOutlined, LockOutlined } from '@ant-design/icons'
 import { useAuth, ROLE_HOME } from '../../contexts/AuthContext'
+import { authApi } from '../../api/auth' // Gerçek API bağlantımız
+import { tcknRule, phoneRule, dobRule } from '../../utils/validators' // Doğrulama kurallarımız
 import iyteLogo from '../../assets/iyte_logo.png'
 
 const { Title, Text } = Typography
 
-// ─── Styles (scoped inline to avoid global pollution) ─────────────────────────
 const styles = {
   page: {
     minHeight: '100vh',
-    background: '#fafafa',
+    background: '#f2f2f7',
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     fontFamily: "'DM Sans', sans-serif",
-    position: 'relative',
-    overflow: 'hidden',
+    padding: '24px',
+    transition: 'filter 0.2s ease',
   },
-  decorCircle1: {
-    position: 'absolute',
-    top: -120,
-    right: -120,
-    width: 400,
-    height: 400,
-    borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(139,26,43,0.06) 0%, transparent 70%)',
-    pointerEvents: 'none',
-  },
-  decorCircle2: {
-    position: 'absolute',
-    bottom: -100,
-    left: -100,
-    width: 360,
-    height: 360,
-    borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(139,26,43,0.04) 0%, transparent 70%)',
-    pointerEvents: 'none',
+  pageBlur: {
+    filter: 'blur(8px)',
   },
   card: {
     background: '#ffffff',
-    borderRadius: 16,
-    padding: '48px 44px',
+    borderRadius: 10,
+    padding: 24,
     width: '100%',
-    maxWidth: 440,
-    boxShadow: '0 4px 32px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)',
+    maxWidth: 480,
+    boxShadow: '0 16px 40px rgba(0,0,0,0.08)',
     position: 'relative',
-    zIndex: 1,
   },
   logoWrap: {
     display: 'flex',
@@ -56,28 +40,102 @@ const styles = {
     marginBottom: 32,
     gap: 16,
   },
-  logoContainer: {
+  linkRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    marginLeft: 4,
+    marginRight: 4,
+  },
+  actionText: {
+    color: '#8B1A2B',
+    fontSize: 15,
+    fontWeight: 700,
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+  },
+  modalContent: {
+    paddingTop: 8,
+  },
+  checkbox: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+    background: '#f9f9f9',
+    padding: '8px',
+    borderRadius: 6,
   },
 }
 
-export default function LoginPage() {
+export default function LoginPage({ initialModal }) {
   const [form] = Form.useForm()
+  const [registerForm] = Form.useForm()
+  const [forgotForm] = Form.useForm()
   const [loading, setLoading] = useState(false)
+  const [registerLoading, setRegisterLoading] = useState(false) // Kayıt için ayrı loading state'i
+  const [modalType, setModalType] = useState(initialModal || '')
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const { message } = App.useApp()
 
+  useEffect(() => {
+    if (initialModal) {
+      setModalType(initialModal)
+    }
+  }, [initialModal])
+
   const from = location.state?.from?.pathname ?? null
+
+  const closeModal = () => {
+    setModalType('')
+    if (location.pathname !== '/login') {
+      navigate('/login', { replace: true })
+    }
+  }
+
+  // --- GERÇEK API KAYIT İŞLEMİ ---
+  const handleRegister = async (values) => {
+    setRegisterLoading(true)
+    try {
+      const payload = {
+        email: values.email,
+        password: values.password,
+        firstName: values.firstName,
+        middleName: values.middleName || "", // Opsiyonel alan
+        lastName: values.lastName,
+        tckn: values.tckn,
+        phoneNumber: values.phoneNumber,
+        dateOfBirth: values.dateOfBirth.format('YYYY-MM-DD'), // Tarih objesini string'e çeviriyoruz
+        kvkkAccepted: values.kvkk
+      };
+
+      await authApi.register(payload)
+      message.success('Kayıt başarılı. Şimdi giriş yapabilirsiniz.')
+      registerForm.resetFields()
+      closeModal()
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Kayıt olurken bir hata oluştu.'
+      message.error(errorMsg)
+    } finally {
+      setRegisterLoading(false)
+    }
+  }
+
+  const handleForgotPassword = async ({ email }) => {
+    await new Promise((r) => setTimeout(r, 1000))
+    message.success('Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.')
+    forgotForm.resetFields()
+    closeModal()
+  }
 
   const handleSubmit = async ({ email, password }) => {
     setLoading(true)
     try {
       const user = await login(email, password)
-      message.success(`Hoş geldiniz, ${user.name}!`)
+      message.success(`Hoş geldiniz, ${user.firstName}!`)
       const destination = from ?? ROLE_HOME[user.role] ?? '/'
       navigate(destination, { replace: true })
     } catch (err) {
@@ -96,30 +154,20 @@ export default function LoginPage() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.decorCircle1} />
-      <div style={styles.decorCircle2} />
-
-      <div style={styles.card}>
-        {/* Logo + title */}
-        <div style={styles.logoWrap}>
-          <div style={styles.logoContainer}>
-            <img
-              src={iyteLogo}
-              alt="İYTE logo"
-              style={{ width: 100, height: 100, objectFit: 'contain' }}
-            />
-          </div>
+      <div style={styles.logoWrap}>
+          <img
+            src={iyteLogo}
+            alt="İYTE logo"
+            style={{ width: 156, height: 156, objectFit: 'contain' }}
+          />
           <div style={{ textAlign: 'center' }}>
-            <Title level={4} style={{ margin: 0, color: '#1a1a2e', fontWeight: 700, letterSpacing: '-0.02em' }}>
+            <Title level={4} style={{ margin: 0, color: '#1f212b', fontWeight: 500 }}>
               Yatay Geçiş Başvuru Portalı
             </Title>
-            <Text type="secondary" style={{ fontSize: 16 }}>
-              İzmir Yüksek Teknoloji Enstitüsü
-            </Text>
           </div>
         </div>
+      <div style={styles.card}>
 
-        {/* Form */}
         <Form
           form={form}
           layout="vertical"
@@ -146,37 +194,24 @@ export default function LoginPage() {
             label="Şifre"
             name="password"
             rules={[{ required: true, message: 'Şifre zorunludur.' }]}
-            style={{ marginBottom: 8 }}
           >
             <Input.Password
               prefix={<LockOutlined style={{ color: '#9ca3af' }} />}
-              placeholder="••••••••"
+              placeholder="Şifrenizi girin"
               autoComplete="current-password"
             />
           </Form.Item>
 
-          {/* Forgot password */}
-          <div style={{ textAlign: 'right', marginBottom: 24 }}>
-            <Link
-              to="/forgot-password"
-              style={{ color: '#8B1A2B', fontSize: 13, fontWeight: 500 }}
-            >
-              Şifremi Unuttum
-            </Link>
-          </div>
-
-          <Form.Item style={{ marginBottom: 16 }}>
+          <Form.Item style={{ marginBottom: 24 }}>
             <Button
               type="primary"
               htmlType="submit"
               loading={loading}
               block
-              icon={!loading && <ArrowRightOutlined />}
-              iconPosition="end"
               style={{
                 background: '#8B1A2B',
                 borderColor: '#8B1A2B',
-                height: 46,
+                height: 45,
                 fontWeight: 600,
                 fontSize: 15,
                 letterSpacing: '0.01em',
@@ -187,20 +222,203 @@ export default function LoginPage() {
           </Form.Item>
         </Form>
 
-        <Divider style={{ margin: '0 0 16px', borderColor: '#f0f0f0' }} />
-
-        <div style={{ textAlign: 'center' }}>
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            Hesabınız yok mu?{' '}
-          </Text>
-          <Link
-            to="/register"
-            style={{ color: '#8B1A2B', fontWeight: 600, fontSize: 13 }}
-          >
+        <div style={styles.linkRow}>
+          <button type="button" style={styles.actionText} onClick={() => setModalType('register')}>
             Kayıt Ol
-          </Link>
+          </button>
+          <button type="button" style={styles.actionText} onClick={() => setModalType('forgot')}>
+            Şifremi Unuttum
+          </button>
         </div>
       </div>
+
+      {/* --- KAYIT OL MODALI --- */}
+      <Modal
+        open={modalType === 'register'}
+        title="Hesap Oluştur"
+        onCancel={closeModal}
+        footer={null}
+        centered
+        width={600} // Form genişlediği için width 500'den 600'e çıkarıldı
+      >
+        <div style={styles.modalContent}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+            Yatay geçiş portalına erişmek için kayıt olun
+          </Text>
+
+          <Form
+            form={registerForm}
+            layout="vertical"
+            onFinish={handleRegister}
+            requiredMark={false}
+            size="large"
+          >
+            {/* Ad ve İkinci Ad */}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="Ad *" name="firstName" rules={[{ required: true, message: 'Ad zorunludur.' }]}>
+                  <Input placeholder="Örn: Ahmet" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="İkinci Ad (Opsiyonel)" name="middleName">
+                  <Input placeholder="Örn: Can" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {/* Soyad ve TCKN */}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="Soyad *" name="lastName" rules={[{ required: true, message: 'Soyad zorunludur.' }]}>
+                  <Input placeholder="Örn: Yılmaz" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="TC Kimlik No *" name="tckn" rules={[tcknRule()]}>
+                  <Input placeholder="11 haneli TCKN" maxLength={11} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {/* Telefon ve Doğum Tarihi */}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="Telefon *" name="phoneNumber" rules={[phoneRule()]}>
+                  <Input placeholder="Örn: 05xxxxxxxxx" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="Doğum Tarihi *" name="dateOfBirth" rules={[dobRule()]}>
+                  <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="Seçiniz" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {/* E-posta */}
+            <Form.Item
+              label="E-posta Adresi *"
+              name="email"
+              rules={[
+                { required: true, message: 'E-posta adresi zorunludur.' },
+                { type: 'email', message: 'Geçerli bir e-posta adresi giriniz.' },
+                { pattern: /^[^\s@]+@[^\s@]+\.edu\.tr$/i, message: 'Kurumsal e-posta (.edu.tr) giriniz.' }
+              ]}
+            >
+              <Input placeholder="eposta@iyte.edu.tr" autoComplete="email" />
+            </Form.Item>
+
+            {/* Şifreler */}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="Şifre *"
+                  name="password"
+                  rules={[
+                    { required: true, message: 'Şifre zorunludur.' },
+                    { min: 8, message: 'En az 8 karakter olmalıdır.' },
+                  ]}
+                  hasFeedback
+                >
+                  <Input.Password placeholder="Şifre oluşturun" autoComplete="new-password" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label="Şifre Tekrar *"
+                  name="confirm"
+                  dependencies={["password"]}
+                  hasFeedback
+                  rules={[
+                    { required: true, message: 'Şifrenizi tekrar girin.' },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        if (!value || getFieldValue('password') === value) {
+                          return Promise.resolve()
+                        }
+                        return Promise.reject(new Error('Şifreler eşleşmiyor.'))
+                      },
+                    }),
+                  ]}
+                >
+                  <Input.Password placeholder="Şifrenizi tekrar girin" autoComplete="new-password" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {/* KVKK Onayı */}
+            <Form.Item
+              name="kvkk"
+              valuePropName="checked"
+              rules={[{ validator: (_, value) => (value ? Promise.resolve() : Promise.reject('Aydınlatma Metni onayı gerekli.')) }]}
+            >
+              <div style={styles.checkbox}>
+              <Checkbox style={{fontSize: 12}}>
+                Yatay geçiş başvurum kapsamında kişisel verilerimin işlenmesine ilişkin <a href="/kvkk" target="_blank" rel="noopener noreferrer" style={{ color: '#8B1A2B' }}>Aydınlatma Metni</a>’ni okudum, anladım ve onaylıyorum.
+              </Checkbox>
+              </div>
+            </Form.Item>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+              <Button onClick={closeModal} style={{ minWidth: 60 }}>
+                İptal
+              </Button>
+              <Button type="primary" htmlType="submit" loading={registerLoading} style={{ minWidth: 60, background: '#8B1A2B', borderColor: '#8B1A2B' }}>
+                Kayıt Ol
+              </Button>
+            </div>
+          </Form>
+        </div>
+      </Modal>
+
+      {/* --- ŞİFREMİ UNUTTUM MODALI --- */}
+      <Modal
+        open={modalType === 'forgot'}
+        title="Şifre Sıfırlama"
+        onCancel={closeModal}
+        footer={null}
+        centered
+        width={550}
+      >
+        <div style={styles.modalContent}>
+          <Text type="secondary" style={{ display: 'block'}}>
+            E-posta adresinizi girin, size şifre sıfırlama talimatları gönderelim
+          </Text>
+
+          <Form
+            form={forgotForm}
+            layout="vertical"
+            onFinish={handleForgotPassword}
+            requiredMark={false}
+            size="large"
+            style={{ marginTop: 16 }}
+          >
+            <Form.Item
+              label="E-posta Adresi *"
+              name="email"
+              rules={[
+                { required: true, message: 'E-posta adresi zorunludur.' },
+                { type: 'email', message: 'Geçerli bir e-posta adresi giriniz.' },
+              ]}
+            >
+              <Input
+                prefix={<MailOutlined style={{ color: '#9ca3af' }} />}
+                placeholder="eposta@ogrenci.edu.tr"
+                autoComplete="email"
+              />
+            </Form.Item>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+              <Button onClick={closeModal} style={{ minWidth: 60 }}>
+                İptal
+              </Button>
+              <Button type="primary" htmlType="submit" style={{ minWidth: 60, background: '#8B1A2B', borderColor: '#8B1A2B' }}>
+                Sıfırlama Bağlantısı Gönder
+              </Button>
+            </div>
+          </Form>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -37,7 +37,7 @@ const MENU_CONFIG = {
     { key: '/ygk/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
     { key: '/ygk/intibak', icon: <FileTextOutlined />, label: 'İntibak Tablosu' },
   ],
-  [ROLES.DEAN]: [
+  [ROLES.DEAN_OFFICE]: [
     { key: '/dean/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
   ],
   [ROLES.FACULTY_BOARD]: [
@@ -45,7 +45,6 @@ const MENU_CONFIG = {
   ],
 }
 
-// İYTE logo SVG (simplified emblem for sidebar)
 function IyteLogo({ collapsed }) {
   return (
     <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
@@ -216,11 +215,11 @@ export default function AppLayout() {
                   size={32}
                   style={{ background: 'var(--color-primary)', fontWeight: 600 }}
                 >
-                  {user?.name?.[0]?.toUpperCase() ?? 'U'}
+                  {user?.firstName?.[0]?.toUpperCase() ?? 'U'}
                 </Avatar>
                 <div style={{ lineHeight: 1.3 }}>
                   <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
-                    {user?.name ?? 'Kullanıcı'}
+                    {`${user?.firstName ?? 'Kullanıcı'} ${user?.lastName ?? ''}`}
                   </Text>
                   <Text
                     type="secondary"
