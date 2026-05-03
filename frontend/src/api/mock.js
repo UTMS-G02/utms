@@ -26,7 +26,7 @@ export const mockApplications = [
 ]
 
 export const mockApplicationDetail = {
-  applicationId: 42,
+  applicationId: 50,
   studentId: 1,
   studentName: 'Ali Veli',
   targetDepartment: 'Elektrik-Elektronik Mühendisliği',
@@ -46,6 +46,18 @@ export const mockApplicationDetail = {
       docType: 'ID_CARD',
       fileName: 'kimlik.pdf',
       uploadedAt: '2026-04-15T11:05:00Z',
+    },
+    {
+      documentId: 103,
+      docType: 'LANGUAGE_CERT',
+      fileName: 'yds_belgesi.pdf',
+      uploadedAt: '2026-04-15T11:10:00Z',
+    },
+    {
+      documentId: 104,
+      docType: 'OTHER',
+      fileName: 'sgk_belgesi.pdf',
+      uploadedAt: '2026-04-15T11:15:00Z',
     },
   ],
   statusHistory: [
