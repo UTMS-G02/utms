@@ -1,8 +1,10 @@
 ﻿import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Form, Input, Button, Typography, App, Modal, Checkbox } from 'antd'
+import { Form, Input, Button, Typography, App, Modal, Checkbox, DatePicker, Row, Col } from 'antd'
 import { MailOutlined, LockOutlined } from '@ant-design/icons'
 import { useAuth, ROLE_HOME } from '../../contexts/AuthContext'
+import { authApi } from '../../api/auth' // Gerçek API bağlantımız
+import { tcknRule, phoneRule, dobRule } from '../../utils/validators' // Doğrulama kurallarımız
 import iyteLogo from '../../assets/iyte_logo.png'
 
 const { Title, Text } = Typography
@@ -72,6 +74,7 @@ export default function LoginPage({ initialModal }) {
   const [registerForm] = Form.useForm()
   const [forgotForm] = Form.useForm()
   const [loading, setLoading] = useState(false)
+  const [registerLoading, setRegisterLoading] = useState(false) // Kayıt için ayrı loading state'i
   const [modalType, setModalType] = useState(initialModal || '')
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -93,11 +96,32 @@ export default function LoginPage({ initialModal }) {
     }
   }
 
+  // --- GERÇEK API KAYIT İŞLEMİ ---
   const handleRegister = async (values) => {
-    await new Promise((r) => setTimeout(r, 1000))
-    message.success('Kayıt başarılı. Giriş sayfasına yönlendiriliyorsunuz.')
-    registerForm.resetFields()
-    closeModal()
+    setRegisterLoading(true)
+    try {
+      const payload = {
+        email: values.email,
+        password: values.password,
+        firstName: values.firstName,
+        middleName: values.middleName || "", // Opsiyonel alan
+        lastName: values.lastName,
+        tckn: values.tckn,
+        phoneNumber: values.phoneNumber,
+        dateOfBirth: values.dateOfBirth.format('YYYY-MM-DD'), // Tarih objesini string'e çeviriyoruz
+        kvkkAccepted: values.kvkk
+      };
+
+      await authApi.register(payload)
+      message.success('Kayıt başarılı. Şimdi giriş yapabilirsiniz.')
+      registerForm.resetFields()
+      closeModal()
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Kayıt olurken bir hata oluştu.'
+      message.error(errorMsg)
+    } finally {
+      setRegisterLoading(false)
+    }
   }
 
   const handleForgotPassword = async ({ email }) => {
@@ -111,7 +135,7 @@ export default function LoginPage({ initialModal }) {
     setLoading(true)
     try {
       const user = await login(email, password)
-      message.success(`Hoş geldiniz, ${user.name}!`)
+      message.success(`Hoş geldiniz, ${user.firstName}!`)
       const destination = from ?? ROLE_HOME[user.role] ?? '/'
       navigate(destination, { replace: true })
     } catch (err) {
@@ -208,16 +232,17 @@ export default function LoginPage({ initialModal }) {
         </div>
       </div>
 
+      {/* --- KAYIT OL MODALI --- */}
       <Modal
         open={modalType === 'register'}
         title="Hesap Oluştur"
         onCancel={closeModal}
         footer={null}
         centered
-        width={500}
+        width={600} // Form genişlediği için width 500'den 600'e çıkarıldı
       >
         <div style={styles.modalContent}>
-          <Text type="secondary" style={{ display: 'block' }}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
             Yatay geçiş portalına erişmek için kayıt olun
           </Text>
 
@@ -228,49 +253,100 @@ export default function LoginPage({ initialModal }) {
             requiredMark={false}
             size="large"
           >
+            {/* Ad ve İkinci Ad */}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="Ad *" name="firstName" rules={[{ required: true, message: 'Ad zorunludur.' }]}>
+                  <Input placeholder="Örn: Ahmet" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="İkinci Ad (Opsiyonel)" name="middleName">
+                  <Input placeholder="Örn: Can" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {/* Soyad ve TCKN */}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="Soyad *" name="lastName" rules={[{ required: true, message: 'Soyad zorunludur.' }]}>
+                  <Input placeholder="Örn: Yılmaz" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="TC Kimlik No *" name="tckn" rules={[tcknRule()]}>
+                  <Input placeholder="11 haneli TCKN" maxLength={11} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {/* Telefon ve Doğum Tarihi */}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="Telefon *" name="phoneNumber" rules={[phoneRule()]}>
+                  <Input placeholder="Örn: 05xxxxxxxxx" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="Doğum Tarihi *" name="dateOfBirth" rules={[dobRule()]}>
+                  <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="Seçiniz" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {/* E-posta */}
             <Form.Item
               label="E-posta Adresi *"
               name="email"
               rules={[
                 { required: true, message: 'E-posta adresi zorunludur.' },
                 { type: 'email', message: 'Geçerli bir e-posta adresi giriniz.' },
+                { pattern: /^[^\s@]+@[^\s@]+\.edu\.tr$/i, message: 'Kurumsal e-posta (.edu.tr) giriniz.' }
               ]}
             >
-              <Input placeholder="eposta@ogrenci.edu.tr" autoComplete="email" />
+              <Input placeholder="eposta@iyte.edu.tr" autoComplete="email" />
             </Form.Item>
 
-            <Form.Item
-              label="Şifre *"
-              name="password"
-              rules={[
-                { required: true, message: 'Şifre zorunludur.' },
-                { min: 8, message: 'Şifre en az 8 karakter olmalıdır.' },
-              ]}
-              hasFeedback
-            >
-              <Input.Password placeholder="Şifre oluşturun" autoComplete="new-password" />
-            </Form.Item>
+            {/* Şifreler */}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="Şifre *"
+                  name="password"
+                  rules={[
+                    { required: true, message: 'Şifre zorunludur.' },
+                    { min: 8, message: 'En az 8 karakter olmalıdır.' },
+                  ]}
+                  hasFeedback
+                >
+                  <Input.Password placeholder="Şifre oluşturun" autoComplete="new-password" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label="Şifre Tekrar *"
+                  name="confirm"
+                  dependencies={["password"]}
+                  hasFeedback
+                  rules={[
+                    { required: true, message: 'Şifrenizi tekrar girin.' },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        if (!value || getFieldValue('password') === value) {
+                          return Promise.resolve()
+                        }
+                        return Promise.reject(new Error('Şifreler eşleşmiyor.'))
+                      },
+                    }),
+                  ]}
+                >
+                  <Input.Password placeholder="Şifrenizi tekrar girin" autoComplete="new-password" />
+                </Form.Item>
+              </Col>
+            </Row>
 
-            <Form.Item
-              label="Şifre Tekrar *"
-              name="confirm"
-              dependencies={["password"]}
-              hasFeedback
-              rules={[
-                { required: true, message: 'Şifrenizi tekrar girin.' },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (!value || getFieldValue('password') === value) {
-                      return Promise.resolve()
-                    }
-                    return Promise.reject(new Error('Şifreler eşleşmiyor.'))
-                  },
-                }),
-              ]}
-            >
-              <Input.Password placeholder="Şifrenizi tekrar girin" autoComplete="new-password" />
-            </Form.Item>
-
+            {/* KVKK Onayı */}
             <Form.Item
               name="kvkk"
               valuePropName="checked"
@@ -287,7 +363,7 @@ export default function LoginPage({ initialModal }) {
               <Button onClick={closeModal} style={{ minWidth: 60 }}>
                 İptal
               </Button>
-              <Button type="primary" htmlType="submit" style={{ minWidth: 60, background: '#8B1A2B', borderColor: '#8B1A2B' }}>
+              <Button type="primary" htmlType="submit" loading={registerLoading} style={{ minWidth: 60, background: '#8B1A2B', borderColor: '#8B1A2B' }}>
                 Kayıt Ol
               </Button>
             </div>
@@ -295,6 +371,7 @@ export default function LoginPage({ initialModal }) {
         </div>
       </Modal>
 
+      {/* --- ŞİFREMİ UNUTTUM MODALI --- */}
       <Modal
         open={modalType === 'forgot'}
         title="Şifre Sıfırlama"
@@ -314,6 +391,7 @@ export default function LoginPage({ initialModal }) {
             onFinish={handleForgotPassword}
             requiredMark={false}
             size="large"
+            style={{ marginTop: 16 }}
           >
             <Form.Item
               label="E-posta Adresi *"

@@ -38,7 +38,7 @@ export default function App() {
       <Route
         path="/dean"
         element={
-          <ProtectedRoute allowedRoles={[ROLES.DEAN]}>
+          <ProtectedRoute allowedRoles={[ROLES.DEAN_OFFICE]}>
             <AppLayout />
           </ProtectedRoute>
         }

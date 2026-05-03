@@ -10,7 +10,7 @@ export const ROLES = {
   OIDB: 'OIDB',
   YDYO: 'YDYO',
   YGK: 'YGK',
-  DEAN: 'DEAN',
+  DEAN_OFFICE: 'DEAN_OFFICE',
   FACULTY_BOARD: 'FACULTY_BOARD',
 }
 
@@ -20,7 +20,7 @@ export const ROLE_HOME = {
   [ROLES.OIDB]: '/oidb/dashboard',
   [ROLES.YDYO]: '/ydyo/dashboard',
   [ROLES.YGK]: '/ygk/dashboard',
-  [ROLES.DEAN]: '/dean/dashboard',
+  [ROLES.DEAN_OFFICE]: '/dean/dashboard',
   [ROLES.FACULTY_BOARD]: '/faculty-board/dashboard',
 }
 
@@ -50,7 +50,8 @@ export function AuthProvider({ children }) {
     try {
       // Önce gerçek API'ye istek atmayı dener
       const response = await apiClient.post('/auth/login', { email, password });
-      const { token: jwt, user: userData } = response.data;
+      const { token: jwt, userId, firstName, lastName, role } = response.data;
+      const userData = { userId, firstName, lastName, role };
       
       setToken(jwt);
       setUser(userData);
