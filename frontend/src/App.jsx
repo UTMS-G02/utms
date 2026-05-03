@@ -1,16 +1,11 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/auth/Login';
+import StudentDashboard from './pages/student/Dashboard';
 import AppLayout from './components/Layout/AppLayout'; 
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROLES } from './contexts/AuthContext';
 
-const Dashboard = () => (
-  <div style={{ padding: 24 }}>
-    <h2>Dashboard</h2>
-    <p>Sisteme başarıyla giriş yaptınız. İçerik buraya gelecek.</p>
-  </div>
-);
 
 export default function App() {
   return (
@@ -30,8 +25,9 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="profile" element={<Dashboard />} />
+        <Route index element={<StudentDashboard />} />
+        <Route path="dashboard" element={<StudentDashboard />} />
+        <Route path="profile" element={<StudentDashboard />} />
       </Route>
 
       {/* Dekanlık Portalı */}
@@ -43,7 +39,7 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="dashboard" element={<div style={{ padding: 24 }}><h2>Dean Dashboard</h2></div>} />
       </Route>
 
       {/* Yanlış URL girilirse Login'e at */}
