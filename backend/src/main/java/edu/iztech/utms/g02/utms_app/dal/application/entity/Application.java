@@ -1,11 +1,14 @@
 package edu.iztech.utms.g02.utms_app.dal.application.entity;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 
 
@@ -28,8 +31,10 @@ import java.time.LocalDate;
 @Table(name = "applications")
 @Getter
 @Setter
+@Builder
 @NoArgsConstructor
-public abstract class Application {
+@AllArgsConstructor
+public class Application {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -44,9 +49,22 @@ public abstract class Application {
     @Column(nullable = false)
     private String targetFaculty;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ApplicationStatus status = ApplicationStatus.DRAFT;
+
+    @Column
+    private Boolean oidbApproved;
+
+    @Column
+    private Boolean ydyoApproved;
+
+    @Column
+    private Boolean facultyApproved;
+
+    @Column
+    private Boolean deanOfficeApproved;
 
     @Column(nullable = false)
     private String oidbNotes;
@@ -54,15 +72,29 @@ public abstract class Application {
     @Column(nullable = false)
     private String ydyoNotes;
 
+    @Column
+    private Long oidbReviewedBy;
+
+    @Column
+    private Long ydyoReviewedBy;
+
+    @Column
+    private LocalDateTime oidbReviewedDate;
+
+    @Column
+    private LocalDateTime ydyoReviewedDate;
+
     @Column(nullable = false)
     private String facultyNotes;
 
     @Column(nullable = false)
     private String deanOfficeNotes;
 
+    @Builder.Default
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Builder.Default
     @Column(nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
 
@@ -78,6 +110,7 @@ public abstract class Application {
     @Column(nullable = false)
     private String semester;
 
+    @Builder.Default
     @Column(nullable = false)
     private boolean active = true;
 }
