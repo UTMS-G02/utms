@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { delay } from './mock'
 
 export const authApi = {
   login: (email, password) =>
@@ -18,4 +19,13 @@ export const authApi = {
 
   getMe: () =>
     apiClient.get('/auth/me'),
+
+  // TODO: replace with real API call (PATCH /users/me/password)
+  changePassword: async ({ currentPassword, newPassword }) => {
+    await delay(500)
+    if (currentPassword === 'wrong') {
+      throw new Error('Mevcut şifre hatalı')
+    }
+    return { success: true, message: 'Şifre başarıyla güncellendi' }
+  },
 }
