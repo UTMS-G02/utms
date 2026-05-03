@@ -4,6 +4,7 @@ import Login from './pages/auth/Login';
 import StudentDashboard from './pages/student/Dashboard';
 import ApplicationList from './pages/student/ApplicationList';
 import ApplicationDetail from './pages/student/ApplicationDetail';
+import ApplicationForm from './pages/student/ApplicationForm';
 import Profile from './pages/student/Profile';
 import AppLayout from './components/Layout/AppLayout'; 
 import ProtectedRoute from './components/ProtectedRoute';
@@ -31,6 +32,7 @@ export default function App() {
         <Route index element={<StudentDashboard />} />
         <Route path="dashboard" element={<StudentDashboard />} />
         <Route path="applications" element={<ApplicationList />} />
+        <Route path="applications/new" element={<ApplicationForm />} />
         <Route path="applications/:id" element={<ApplicationDetail />} />
         <Route path="profile" element={<Profile />} />
       </Route>

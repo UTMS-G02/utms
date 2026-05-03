@@ -20,8 +20,7 @@ const { Text } = Typography
 const MENU_CONFIG = {
   [ROLES.STUDENT]: [
     { key: '/student/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
-    { key: '/student/apply', icon: <FileTextOutlined />, label: 'Başvuru Yap' },
-    { key: '/student/applications', icon: <FolderOpenOutlined />, label: 'Başvurularım' },
+    { key: '/student/applications/new', icon: <FileTextOutlined />, label: 'Başvuru Yap' },    { key: '/student/applications', icon: <FolderOpenOutlined />, label: 'Başvurularım' },
     { key: '/student/profile', icon: <UserOutlined />, label: 'Profil' },
   ],
   [ROLES.OIDB]: [
