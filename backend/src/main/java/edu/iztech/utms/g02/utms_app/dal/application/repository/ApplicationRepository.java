@@ -27,5 +27,5 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
     List<Application> findByDeanOfficeApproved(boolean deanOfficeApproved);
 
     // Aynı öğrencinin, aynı döneme ve aynı bölüme kaydı var mı kontrolü
-    boolean checkIfApplicationExists(String studentId, String targetDept, String academicYear);
+    boolean existsByStudentIdAndTargetDeptAndAcademicYear(String studentId, String targetDept, String academicYear);
 }
