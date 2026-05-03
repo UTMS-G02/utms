@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { message } from 'antd'
 import apiClient from '../api/client'
+import { authApi } from '../api/auth'
 
 const AuthContext = createContext(null)
 
@@ -31,19 +32,29 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const storedToken = localStorage.getItem('utms_token')
-    const storedUser = localStorage.getItem('utms_user')
-    if (storedToken && storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser)
-        setToken(storedToken)
-        setUser(parsedUser)
-        apiClient.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
-      } catch {
+    if (!storedToken) {
+      setLoading(false)
+      return
+    }
+
+    apiClient.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
+    setToken(storedToken)
+
+    authApi.getMe()
+      .then((response) => {
+        const { userId, email, role, fullName } = response.data
+        const userData = { id: userId, name: fullName, email, role }
+        setUser(userData)
+        localStorage.setItem('utms_user', JSON.stringify(userData))
+      })
+      .catch(() => {
+        setToken(null)
+        setUser(null)
+        delete apiClient.defaults.headers.common['Authorization']
         localStorage.removeItem('utms_token')
         localStorage.removeItem('utms_user')
-      }
-    }
-    setLoading(false)
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   const login = useCallback(async (email, password) => {
