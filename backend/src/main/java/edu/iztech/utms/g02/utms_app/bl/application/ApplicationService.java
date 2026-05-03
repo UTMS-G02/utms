@@ -11,23 +11,13 @@ import edu.iztech.utms.g02.utms_app.api.application.dto.YdyoReviewRequest;
 
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
-import edu.iztech.utms.g02.utms_app.dal.application.entity.Document;
-
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
-import edu.iztech.utms.g02.utms_app.dal.application.repository.DocumentRepository;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;     //?
 
-import java.time.LocalDate;                                        //?
 import java.time.LocalDateTime;                                                                             
-
-
-
-public ApplicationResponse processYdyoReview(Long id, YdyoReviewRequest req) {
-    app.setStatus(req.isApproved() ? EVALUATION_QUEUE : YDYO_REJECTED);
-}
 
 
 @Service
@@ -35,14 +25,13 @@ public ApplicationResponse processYdyoReview(Long id, YdyoReviewRequest req) {
 public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
-    private final DocumentRepository documentRepository;
 //  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için??????????
 
     @Transactional
     public ApplicationResponse create(Long userId, ApplicationCreateRequest req) { 
 
         // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla başvuru yapamaz
-        boolean alreadyApplied = applicationRepository.checkIfApplicationExists(
+        boolean alreadyApplied = applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
                 req.getStudentId(), // String dönüyordur diye varsayıyoruz
                 req.getTargetDept(), 
                 req.getAcademicYear()
@@ -82,7 +71,8 @@ public class ApplicationService {
     public ApplicationResponse submit(Long applicationId, Long userId) {
         
         // 1. Başvuruyu bul
-        Application app = applicationRepository.findById(applicationId)
+        Integer appId = Math.toIntExact(applicationId);
+        Application app = applicationRepository.findById(appId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
         
         // 2. DRAFT değilse IllegalStateException fırlat
@@ -99,8 +89,8 @@ public class ApplicationService {
 
     @Transactional
     public ApplicationResponse processOidbReview(Long id, OidbReviewRequest req) {
-         
-        Application app = applicationRepository.findById(id)
+        Integer appId = Math.toIntExact(id);
+        Application app = applicationRepository.findById(appId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
 
         // OIDB Onayladıysa YDYO'ya gider, reddettiyse OIDB_REJECTED olur
@@ -121,8 +111,8 @@ public class ApplicationService {
     // Bu metot sınıfın dışında kalmıştı, içeri alındı
     @Transactional
     public ApplicationResponse processYdyoReview(Long id, YdyoReviewRequest req) {
-        
-        Application app = applicationRepository.findById(id)
+        Integer appId = Math.toIntExact(id);
+        Application app = applicationRepository.findById(appId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
 
         // YDYO Onayladıysa Kurul Değerlendirmesine (EVALUATION_QUEUE) gider, reddettiyse YDYO_REJECTED olur
@@ -143,7 +133,9 @@ public class ApplicationService {
     // Eğer Mapper kullanmıyorsanız bu metot Entity'yi Response DTO'ya çevirir.
     private ApplicationResponse toResponse(Application app) {
         ApplicationResponse response = new ApplicationResponse();
-        response.setId(app.getId());
+        if (app.getApplicationId() != null) {
+            response.setId(app.getApplicationId().longValue());
+        }
         response.setStudentId(app.getStudentId());
         response.setStatus(app.getStatus());
         response.setAcademicYear(app.getAcademicYear());
