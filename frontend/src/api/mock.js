@@ -1,6 +1,6 @@
 export const mockApplications = [
   {
-    applicationId: 42,
+    applicationId: 50,
     targetDepartment: 'Elektrik-Elektronik Mühendisliği',
     targetFaculty: 'Mühendislik Fakültesi',
     status: 'OIDB_REVIEW',
@@ -8,17 +8,25 @@ export const mockApplications = [
     submittedAt: '2026-04-16T09:15:00Z',
   },
   {
-    applicationId: 43,
+    applicationId: 38,
     targetDepartment: 'Bilgisayar Mühendisliği',
     targetFaculty: 'Mühendislik Fakültesi',
-    status: 'DRAFT',
-    createdAt: '2026-04-20T14:00:00Z',
-    submittedAt: null,
+    status: 'REJECTED',
+    createdAt: '2025-10-12T08:00:00Z',
+    submittedAt: '2025-10-15T14:30:00Z',
+  },
+  {
+    applicationId: 22,
+    targetDepartment: 'Makine Mühendisliği',
+    targetFaculty: 'Mühendislik Fakültesi',
+    status: 'ACCEPTED',
+    createdAt: '2024-09-05T11:20:00Z',
+    submittedAt: '2024-09-10T16:00:00Z',
   },
 ]
 
 export const mockApplicationDetail = {
-  applicationId: 42,
+  applicationId: 50,
   studentId: 1,
   studentName: 'Ali Veli',
   targetDepartment: 'Elektrik-Elektronik Mühendisliği',
@@ -38,6 +46,18 @@ export const mockApplicationDetail = {
       docType: 'ID_CARD',
       fileName: 'kimlik.pdf',
       uploadedAt: '2026-04-15T11:05:00Z',
+    },
+    {
+      documentId: 103,
+      docType: 'LANGUAGE_CERT',
+      fileName: 'yds_belgesi.pdf',
+      uploadedAt: '2026-04-15T11:10:00Z',
+    },
+    {
+      documentId: 104,
+      docType: 'OTHER',
+      fileName: 'sgk_belgesi.pdf',
+      uploadedAt: '2026-04-15T11:15:00Z',
     },
   ],
   statusHistory: [
