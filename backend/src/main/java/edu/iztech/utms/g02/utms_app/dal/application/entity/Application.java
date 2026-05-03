@@ -1,13 +1,12 @@
 package edu.iztech.utms.g02.utms_app.dal.application.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import lombok.Builder;
+
+
 import java.util.List;
 import java.util.ArrayList;
 
@@ -17,18 +16,14 @@ import java.util.ArrayList;
 
 //    private Boolean ydyoApproved;
 
-
-
-
-
-
 @Entity
-@Builder
 @Table(name = "applications")
 @Getter
 @Setter
 @NoArgsConstructor
-public abstract class Application {
+@AllArgsConstructor
+@Builder
+public class Application { // abstract mı olacak ??
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -53,6 +48,25 @@ public abstract class Application {
 
     @Column(nullable = false)
     private String ydyoNotes;
+
+    @Column(nullable = false)
+    private Boolean ydyoApproved;
+
+    @Column(nullable = false)
+    private Boolean oidbApproved;
+
+    @Column(nullable = false)
+    private Long OidbReviewedBy;
+
+    @Column(nullable = false)
+    private LocalDateTime OidbReviewedDate;
+
+    
+    @Column(nullable = false)
+    private LocalDateTime YdyoReviewedDate;
+
+    @Column(nullable = false)
+    private Long YdyoReviewedBy;
 
     @Column(nullable = false)
     private String facultyNotes;

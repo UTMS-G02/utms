@@ -112,7 +112,6 @@ public class ApplicationService {
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
 
         app.setStatus(req.isApproved() ? ApplicationStatus.EVALUATION_QUEUE : ApplicationStatus.YDYO_REJECTED);
-        
         app.setYdyoApproved(req.isApproved());
         app.setYdyoNotes(req.getNotes());
         app.setYdyoReviewedBy(req.getReviewerId()); 
@@ -199,7 +198,7 @@ public class ApplicationService {
             // DİKKAT: Document sınıfında @Builder olduğunu ve aşağıdakine benzer alanları olduğunu varsaydım.
             // Eğer yoksa new Document() yapıp set... metotlarıyla doldurabilirsin.
             Document document = Document.builder()
-                     .application(app) // Eğer Document ile Application arasında @ManyToOne ilişkiniz varsa bunu açın
+                     //.application(app) // Eğer Document ile Application arasında @ManyToOne ilişkiniz varsa bunu açın
                      .filePath(filePath.toString())
                      .fileName(originalFileName)
                     .build();
