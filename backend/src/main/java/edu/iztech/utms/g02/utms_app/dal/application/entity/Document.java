@@ -12,7 +12,7 @@ import java.time.LocalDate;
 @Getter
 @Setter
 @NoArgsConstructor
-public abstract class Document {
+public class Document {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

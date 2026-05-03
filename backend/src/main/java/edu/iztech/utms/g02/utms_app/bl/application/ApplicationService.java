@@ -1,7 +1,3 @@
-
-
-
-
 package edu.iztech.utms.g02.utms_app.bl.application;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationCreateRequest;
@@ -11,24 +7,18 @@ import edu.iztech.utms.g02.utms_app.api.application.dto.YdyoReviewRequest;
 
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
-import edu.iztech.utms.g02.utms_app.dal.application.entity.Document;
 
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.DocumentRepository;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;     //?
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDate;                                        //?
-import java.time.LocalDateTime;                                                                             
-
-
-
-public ApplicationResponse processYdyoReview(Long id, YdyoReviewRequest req) {
-    app.setStatus(req.isApproved() ? EVALUATION_QUEUE : YDYO_REJECTED);
-}
-
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -36,120 +26,122 @@ public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
     private final DocumentRepository documentRepository;
-//  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için??????????
 
     @Transactional
-    public ApplicationResponse create(Long userId, ApplicationCreateRequest req) { 
+    public ApplicationResponse create(Long userId, ApplicationCreateRequest req) {
 
-        // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla başvuru yapamaz
-        boolean alreadyApplied = applicationRepository.checkIfApplicationExists(
-                req.getStudentId(), // String dönüyordur diye varsayıyoruz
-                req.getTargetDept(), 
+        // İş kuralı: aynı öğrenci, aynı bölüm, aynı dönem için ikinci başvuru yapamaz
+        boolean alreadyApplied = applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+                req.getStudentId(),
+                req.getTargetDept(),
                 req.getAcademicYear()
         );
 
-
-        // TODO: Exception isimleri değişecek:
-
-        if (alreadyApplied) {                               
+        if (alreadyApplied) {
             throw new IllegalArgumentException("Bir öğrenci aynı bölüme, aynı akademik dönemde birden fazla başvuru yapamaz.");
         }
 
-        // 2. Diğer geçerlilik kontrolleri
         if (!Boolean.TRUE.equals(req.getKvkkAccepted())) {
             throw new IllegalArgumentException("KVKK onayı zorunludur.");
         }
 
-
-        // 3. Application objesini oluşturma (Çift yazılmıştı, teke düşürüldü)
         Application app = Application.builder()
                 .studentId(req.getStudentId())
-                .status(ApplicationStatus.DRAFT) // İlk oluşumda durumu genelde DRAFT (Taslak) olur
+                .status(ApplicationStatus.DRAFT)
                 .academicYear(req.getAcademicYear())
                 .targetDept(req.getTargetDept())
                 .targetFaculty(req.getTargetFaculty())
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
                 .build();
-        
-        // 4. Veritabanına kaydet
-        app = applicationRepository.save(app);
 
-        // 5. Response olarak dön
+        app = applicationRepository.save(app);
         return toResponse(app);
     }
 
-
     @Transactional
     public ApplicationResponse submit(Long applicationId, Long userId) {
-        
-        // 1. Başvuruyu bul
+
         Application app = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
-        
-        // 2. DRAFT değilse IllegalStateException fırlat
+
         if (app.getStatus() != ApplicationStatus.DRAFT) {
             throw new IllegalStateException("Application is not in DRAFT state");
         }
-        
-        // 3. Durumu güncelle ve kaydet
-        app.setStatus(ApplicationStatus.SUBMITTED);
-        app = applicationRepository.save(app);
 
+        app.setStatus(ApplicationStatus.SUBMITTED);
+        app.setUpdatedAt(LocalDateTime.now());
+        app = applicationRepository.save(app);
+        return toResponse(app);
+    }
+
+    public List<ApplicationResponse> getAllApplications() {
+        return applicationRepository.findAll().stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public ApplicationResponse getApplicationById(Long id) {
+        Application app = applicationRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Application not found"));
         return toResponse(app);
     }
 
     @Transactional
     public ApplicationResponse processOidbReview(Long id, OidbReviewRequest req) {
-         
+
         Application app = applicationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
 
-        // OIDB Onayladıysa YDYO'ya gider, reddettiyse OIDB_REJECTED olur
         app.setStatus(req.isApproved() ? ApplicationStatus.YDYO_REVIEW : ApplicationStatus.OIDB_REJECTED);
-        
-        // İnceleme detaylarını kaydet
         app.setOidbApproved(req.isApproved());
         app.setOidbNotes(req.getNotes());
-        app.setOidbReviewedBy(req.getReviewerId()); // Req objende bu alanlar olduğunu varsayıyoruz
+        app.setOidbReviewedBy(req.getReviewerId());
         app.setOidbReviewedDate(LocalDateTime.now());
+        app.setUpdatedAt(LocalDateTime.now());
 
         app = applicationRepository.save(app);
-        
         return toResponse(app);
     }
 
-
-    // Bu metot sınıfın dışında kalmıştı, içeri alındı
     @Transactional
     public ApplicationResponse processYdyoReview(Long id, YdyoReviewRequest req) {
-        
+
         Application app = applicationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
 
-        // YDYO Onayladıysa Kurul Değerlendirmesine (EVALUATION_QUEUE) gider, reddettiyse YDYO_REJECTED olur
         app.setStatus(req.isApproved() ? ApplicationStatus.EVALUATION_QUEUE : ApplicationStatus.YDYO_REJECTED);
-        
-        // İnceleme detaylarını kaydet
         app.setYdyoApproved(req.isApproved());
         app.setYdyoNotes(req.getNotes());
-        app.setYdyoReviewedBy(req.getReviewerId()); 
+        app.setYdyoReviewedBy(req.getReviewerId());
         app.setYdyoReviewedDate(LocalDateTime.now());
+        app.setUpdatedAt(LocalDateTime.now());
 
         app = applicationRepository.save(app);
-        
         return toResponse(app);
     }
 
-    // --- HELPER METHOD ---
-    // Eğer Mapper kullanmıyorsanız bu metot Entity'yi Response DTO'ya çevirir.
-    private ApplicationResponse toResponse(Application app) {
-        ApplicationResponse response = new ApplicationResponse();
-        response.setId(app.getId());
-        response.setStudentId(app.getStudentId());
-        response.setStatus(app.getStatus());
-        response.setAcademicYear(app.getAcademicYear());
-        response.setTargetDept(app.getTargetDept());
-        // ... diğer alanlarınızı (get/set) ihtiyaca göre buraya ekleyebilirsiniz.
-        return response;
+    public void uploadDocument(Long applicationId, MultipartFile file) {
+        // TODO: Belge yükleme mantığı DocumentService'e taşınacak
+        throw new UnsupportedOperationException("Belge yükleme henüz implemente edilmedi.");
     }
 
+    private ApplicationResponse toResponse(Application app) {
+        return ApplicationResponse.builder()
+                .id(app.getId())
+                .studentId(app.getStudentId())
+                .status(app.getStatus())
+                .academicYear(app.getAcademicYear())
+                .targetDept(app.getTargetDept())
+                .targetFaculty(app.getTargetFaculty())
+                .oidbApproved(app.getOidbApproved())
+                .oidbNotes(app.getOidbNotes())
+                .oidbReviewedBy(app.getOidbReviewedBy())
+                .oidbReviewedDate(app.getOidbReviewedDate())
+                .ydyoApproved(app.getYdyoApproved())
+                .ydyoNotes(app.getYdyoNotes())
+                .ydyoReviewedBy(app.getYdyoReviewedBy())
+                .ydyoReviewedDate(app.getYdyoReviewedDate())
+                .build();
+    }
 }

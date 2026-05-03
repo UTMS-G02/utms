@@ -1,41 +1,25 @@
 package edu.iztech.utms.g02.utms_app.dal.application.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.LocalDate;
-
-
-
-// bunlar eklenecek mi??????????????
-
-//    @ManyToOne @JoinColumn(name = "student_id", nullable = false) private Student student;
-
-//    private Boolean ydyoApproved;
-
-//    @OneToMany(mappedBy = "application", cascade = CascadeType.ALL)
-//    private List<Document> documents = new ArrayList<>();
-
-
-
-
-
-
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "applications")
 @Getter
 @Setter
 @NoArgsConstructor
-public abstract class Application {
+@AllArgsConstructor
+@Builder
+public class Application {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer applicationId;
+    private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String studentId;
 
     @Column(nullable = false)
@@ -46,38 +30,37 @@ public abstract class Application {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private ApplicationStatus status = ApplicationStatus.DRAFT;
 
-    @Column(nullable = false)
+    // ÖİDB inceleme alanları
+    private Boolean oidbApproved;
     private String oidbNotes;
+    private Long oidbReviewedBy;
+    private LocalDateTime oidbReviewedDate;
 
-    @Column(nullable = false)
+    // YDYO inceleme alanları
+    private Boolean ydyoApproved;
     private String ydyoNotes;
+    private Long ydyoReviewedBy;
+    private LocalDateTime ydyoReviewedDate;
 
-    @Column(nullable = false)
+    // Diğer notlar
     private String facultyNotes;
-
-    @Column(nullable = false)
     private String deanOfficeNotes;
 
-    @Column(nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 
-    @Column(nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
-
-    @Column(nullable = false)
     private LocalDate submissionDate;
-
-    @Column(nullable = false)
     private LocalDate acceptedDate;
 
     @Column(nullable = false)
     private String academicYear;
 
-    @Column(nullable = false)
     private String semester;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean active = true;
 }
