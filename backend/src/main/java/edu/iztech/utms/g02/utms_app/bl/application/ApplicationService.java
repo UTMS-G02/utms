@@ -1,34 +1,32 @@
-
-
-
-
 package edu.iztech.utms.g02.utms_app.bl.application;
 
-import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationCreateRequest;
-import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
-import edu.iztech.utms.g02.utms_app.api.application.dto.OidbReviewRequest;
-import edu.iztech.utms.g02.utms_app.api.application.dto.YdyoReviewRequest;
+import edu.iztech.utms.g02.utms_app.api.application.dto.*;
 
-import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
-import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
-import edu.iztech.utms.g02.utms_app.dal.application.entity.Document;
+import edu.iztech.utms.g02.utms_app.dal.application.entity.*;
 
-import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
-import edu.iztech.utms.g02.utms_app.dal.application.repository.DocumentRepository;
+import edu.iztech.utms.g02.utms_app.dal.application.repository.*;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;     //?
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;                                        //?
-import java.time.LocalDateTime;                                                                             
+// --- EKLENEN YENİ İMPORTLAR ---
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.multipart.MultipartFile;
+import jakarta.persistence.EntityNotFoundException;
 
-
-
-public ApplicationResponse processYdyoReview(Long id, YdyoReviewRequest req) {
-    app.setStatus(req.isApproved() ? EVALUATION_QUEUE : YDYO_REJECTED);
-}
-
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+// ------------------------------
 
 @Service
 @RequiredArgsConstructor
@@ -36,10 +34,10 @@ public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
     private final DocumentRepository documentRepository;
-//  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için??????????
+//  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için
 
     @Transactional
-    public ApplicationResponse create(Long userId, ApplicationCreateRequest req) { 
+    public ApplicationResponse create(Integer userId, ApplicationCreateRequest req) { 
 
         // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla başvuru yapamaz
         boolean alreadyApplied = applicationRepository.checkIfApplicationExists(
@@ -47,9 +45,6 @@ public class ApplicationService {
                 req.getTargetDept(), 
                 req.getAcademicYear()
         );
-
-
-        // TODO: Exception isimleri değişecek:
 
         if (alreadyApplied) {                               
             throw new IllegalArgumentException("Bir öğrenci aynı bölüme, aynı akademik dönemde birden fazla başvuru yapamaz.");
@@ -60,8 +55,7 @@ public class ApplicationService {
             throw new IllegalArgumentException("KVKK onayı zorunludur.");
         }
 
-
-        // 3. Application objesini oluşturma (Çift yazılmıştı, teke düşürüldü)
+        // 3. Application objesini oluşturma
         Application app = Application.builder()
                 .studentId(req.getStudentId())
                 .status(ApplicationStatus.DRAFT) // İlk oluşumda durumu genelde DRAFT (Taslak) olur
@@ -77,20 +71,16 @@ public class ApplicationService {
         return toResponse(app);
     }
 
-
     @Transactional
-    public ApplicationResponse submit(Long applicationId, Long userId) {
+    public ApplicationResponse submit(Integer applicationId, Integer userId) {
         
-        // 1. Başvuruyu bul
         Application app = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
         
-        // 2. DRAFT değilse IllegalStateException fırlat
         if (app.getStatus() != ApplicationStatus.DRAFT) {
             throw new IllegalStateException("Application is not in DRAFT state");
         }
         
-        // 3. Durumu güncelle ve kaydet
         app.setStatus(ApplicationStatus.SUBMITTED);
         app = applicationRepository.save(app);
 
@@ -98,18 +88,16 @@ public class ApplicationService {
     }
 
     @Transactional
-    public ApplicationResponse processOidbReview(Long id, OidbReviewRequest req) {
+    public ApplicationResponse processOidbReview(Integer applicationId, OidbReviewRequest req) {
          
-        Application app = applicationRepository.findById(id)
+        Application app = applicationRepository.findByApplicationId(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
 
-        // OIDB Onayladıysa YDYO'ya gider, reddettiyse OIDB_REJECTED olur
         app.setStatus(req.isApproved() ? ApplicationStatus.YDYO_REVIEW : ApplicationStatus.OIDB_REJECTED);
         
-        // İnceleme detaylarını kaydet
         app.setOidbApproved(req.isApproved());
         app.setOidbNotes(req.getNotes());
-        app.setOidbReviewedBy(req.getReviewerId()); // Req objende bu alanlar olduğunu varsayıyoruz
+        app.setOidbReviewedBy(req.getReviewerId()); 
         app.setOidbReviewedDate(LocalDateTime.now());
 
         app = applicationRepository.save(app);
@@ -117,18 +105,13 @@ public class ApplicationService {
         return toResponse(app);
     }
 
-
-    // Bu metot sınıfın dışında kalmıştı, içeri alındı
     @Transactional
-    public ApplicationResponse processYdyoReview(Long id, YdyoReviewRequest req) {
+    public ApplicationResponse processYdyoReview(Integer applicationId, YdyoReviewRequest req) {
         
-        Application app = applicationRepository.findById(id)
+        Application app = applicationRepository.findByApplicationId(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
 
-        // YDYO Onayladıysa Kurul Değerlendirmesine (EVALUATION_QUEUE) gider, reddettiyse YDYO_REJECTED olur
         app.setStatus(req.isApproved() ? ApplicationStatus.EVALUATION_QUEUE : ApplicationStatus.YDYO_REJECTED);
-        
-        // İnceleme detaylarını kaydet
         app.setYdyoApproved(req.isApproved());
         app.setYdyoNotes(req.getNotes());
         app.setYdyoReviewedBy(req.getReviewerId()); 
@@ -139,11 +122,99 @@ public class ApplicationService {
         return toResponse(app);
     }
 
+    // ==========================================
+    // YENİ EKLENEN 3 METOT (GET ALL, GET BY ID, UPLOAD)
+    // ==========================================
+
+    public List<ApplicationResponse> getAllApplications() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String currentUsername = authentication.getName(); // Genelde öğrenci numarası/ID'si buraya düşer
+
+        boolean isStudent = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_STUDENT") || a.getAuthority().equals("STUDENT"));
+
+        List<Application> applications;
+
+        if (isStudent) {
+            // DİKKAT: ApplicationRepository içine "List<Application> findByStudentId(String studentId);" metodunu eklemelisin.
+            applications = applicationRepository.findByStudentId(currentUsername); 
+        } else {
+            // Öğrenci değilse (OIDB, YDYO, FACULTY, DEAN vs.) herkesi görebilir
+            applications = applicationRepository.findAll(); 
+        }
+
+        return applications.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public ApplicationResponse getApplicationById(Integer id) {
+        Application app = applicationRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + id));
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String currentUsername = authentication.getName();
+        
+        boolean isStudent = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_STUDENT") || a.getAuthority().equals("STUDENT"));
+
+        // Güvenlik: Öğrenci sadece kendi başvurusunu görebilir. String.valueOf() ile tip uyuşmazlığını önlüyoruz.
+        if (isStudent && !String.valueOf(app.getStudentId()).equals(currentUsername)) {
+            throw new AccessDeniedException("Bu başvuruyu görüntüleme yetkiniz bulunmuyor.");
+        }
+
+        return toResponse(app);
+    }
+
+    @Transactional
+    public void uploadDocument(Integer id, MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Yüklenecek dosya boş olamaz.");
+        }
+
+        Application app = applicationRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + id));
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String currentUsername = authentication.getName();
+
+        if (!String.valueOf(app.getStudentId()).equals(currentUsername)) {
+            throw new AccessDeniedException("Sadece kendi başvurunuza belge yükleyebilirsiniz.");
+        }
+
+        try {
+            Path uploadPath = Paths.get("uploads");
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
+
+            String originalFileName = file.getOriginalFilename();
+            String uniqueFileName = id + "_" + System.currentTimeMillis() + "_" + originalFileName;
+            Path filePath = uploadPath.resolve(uniqueFileName);
+
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+            // Document Entity'sini oluşturup veritabanına kaydediyoruz
+            // DİKKAT: Document sınıfında @Builder olduğunu ve aşağıdakine benzer alanları olduğunu varsaydım.
+            // Eğer yoksa new Document() yapıp set... metotlarıyla doldurabilirsin.
+            Document document = Document.builder()
+                     //.application(app) // Eğer Document ile Application arasında @ManyToOne ilişkiniz varsa bunu açın
+                     .filePath(filePath.toString())
+                     .fileName(originalFileName)
+                    .build();
+            
+            documentRepository.save(document);
+
+        } catch (IOException e) {
+            throw new RuntimeException("Dosya sisteme kaydedilirken bir hata oluştu: " + e.getMessage());
+        }
+    }
+
+
     // --- HELPER METHOD ---
-    // Eğer Mapper kullanmıyorsanız bu metot Entity'yi Response DTO'ya çevirir.
     private ApplicationResponse toResponse(Application app) {
         ApplicationResponse response = new ApplicationResponse();
-        response.setId(app.getId());
+        response.setId(app.getApplicationId());
         response.setStudentId(app.getStudentId());
         response.setStatus(app.getStatus());
         response.setAcademicYear(app.getAcademicYear());
@@ -151,5 +222,4 @@ public class ApplicationService {
         // ... diğer alanlarınızı (get/set) ihtiyaca göre buraya ekleyebilirsiniz.
         return response;
     }
-
 }

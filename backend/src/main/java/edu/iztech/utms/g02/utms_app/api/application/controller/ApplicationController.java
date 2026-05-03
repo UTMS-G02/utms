@@ -1,22 +1,22 @@
 package edu.iztech.utms.g02.utms_app.api.application.controller; 
 
-import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationRequest;
+import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationCreateRequest;
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
 import edu.iztech.utms.g02.utms_app.api.application.dto.OidbReviewRequest;
 import edu.iztech.utms.g02.utms_app.api.application.dto.YdyoReviewRequest;
 
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
 
-import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.security.access.prepost.PreAuthorize;      //??????????
 import org.springframework.web.multipart.MultipartFile;                //??????????
 
-import java.util.Map;
+
+import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
@@ -34,7 +34,7 @@ public class ApplicationController {
     @PostMapping
     public ResponseEntity<ApplicationResponse> createApplication(@RequestBody ApplicationCreateRequest req) {
         // Not: Gerçek projede userId'yi SecurityContext'ten (token'dan) alırsın
-        Long currentUserId = 1L; // Şimdilik temsili
+        Integer currentUserId = 1; // Şimdilik temsili // ******************************
         ApplicationResponse response = applicationService.create(currentUserId, req);
         return ResponseEntity.ok(response);
     }
@@ -46,9 +46,9 @@ public class ApplicationController {
 
     @PreAuthorize("hasRole('STUDENT')") 
     @PatchMapping("/{id}/submit")
-    public ResponseEntity<String> submitApplication(@PathVariable Long id) {
+    public ResponseEntity<String> submitApplication(@PathVariable Integer id) {
         // Öğrencinin sadece kendi başvurusunu gönderebilmesi kontrolü Service katmanında yapılır
-        applicationService.submitApplication(id);
+        applicationService.submit(id, null);
         return ResponseEntity.ok("Başvuru başarıyla gönderildi.");
     }
 
@@ -68,7 +68,7 @@ public class ApplicationController {
 
     @PreAuthorize("hasAnyRole('STUDENT', 'OIDB', 'YDYO', 'FACULTY', 'DEAN')") 
     @GetMapping("/{id}")
-    public ResponseEntity<ApplicationResponse> getApplicationById(@PathVariable Long id) {
+    public ResponseEntity<ApplicationResponse> getApplicationById(@PathVariable Integer id) {
         ApplicationResponse response = applicationService.getApplicationById(id);
         return ResponseEntity.ok(response);
     }
@@ -77,8 +77,8 @@ public class ApplicationController {
 
     @PreAuthorize("hasRole('OIDB')")
     @PatchMapping("/{id}/oidb-review")
-    public ResponseEntity<String> reviewByOidb(@PathVariable Long id, @RequestBody ReviewRequest req) {
-        applicationService.reviewByOidb(id, req);
+    public ResponseEntity<String> reviewByOidb(@PathVariable Integer id, @RequestBody OidbReviewRequest req) {
+        applicationService.processOidbReview(id, req);
         return ResponseEntity.ok("OIDB incelemesi kaydedildi.");
     }
 
@@ -86,8 +86,8 @@ public class ApplicationController {
 
     @PreAuthorize("hasRole('YDYO')")
     @PatchMapping("/{id}/ydyo-review")
-    public ResponseEntity<String> reviewByYdyo(@PathVariable Long id, @RequestBody ReviewRequest req) {
-        applicationService.reviewByYdyo(id, req);
+    public ResponseEntity<String> reviewByYdyo(@PathVariable Integer id, @RequestBody YdyoReviewRequest req) {
+        applicationService.processYdyoReview(id, req);
         return ResponseEntity.ok("YDYO incelemesi kaydedildi.");
     }
 
@@ -95,7 +95,7 @@ public class ApplicationController {
     @PreAuthorize("hasRole('STUDENT')")
     @PostMapping(value = "/{id}/documents", consumes = "multipart/form-data")       // consumes ??
     public ResponseEntity<String> uploadDocument(
-            @PathVariable Long id, 
+            @PathVariable Integer id, 
             @RequestParam("file") MultipartFile file) {
         
         applicationService.uploadDocument(id, file);

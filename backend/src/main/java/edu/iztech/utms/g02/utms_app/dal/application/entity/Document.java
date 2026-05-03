@@ -1,18 +1,18 @@
 package edu.iztech.utms.g02.utms_app.dal.application.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-
+import lombok.*;
 import java.time.LocalDate;
 
+
 @Entity
+@Builder
 @Table(name = "documents")
 @Getter
 @Setter
 @NoArgsConstructor
-public abstract class Document {
+@AllArgsConstructor
+public class Document { // abstract mı olacak 
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,5 +37,6 @@ public abstract class Document {
     private LocalDate documentUploadDate;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean active = true;
 }

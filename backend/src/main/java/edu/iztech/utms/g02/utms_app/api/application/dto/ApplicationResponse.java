@@ -7,14 +7,18 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import lombok.Getter;
+import lombok.Setter;
 
 @Data
 @Builder
+@Setter
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
 public class ApplicationResponse {
 
-    private Long id;
+    private Integer id;
     private String studentId;
     private ApplicationStatus status;
     private String academicYear;
@@ -24,13 +28,13 @@ public class ApplicationResponse {
     // ÖİDB İnceleme Detayları
     private Boolean oidbApproved;
     private String oidbNotes;
-    private Long oidbReviewedBy;
+    private Integer oidbReviewedBy;
     private LocalDateTime oidbReviewedDate;
 
     // YDYO İnceleme Detayları
     private Boolean ydyoApproved;
     private String ydyoNotes;
-    private Long ydyoReviewedBy;
+    private Integer ydyoReviewedBy;
     private LocalDateTime ydyoReviewedDate;
     
     // Fakülte/Dekanlık kısımlarını da buraya ekleyebilirsiniz...

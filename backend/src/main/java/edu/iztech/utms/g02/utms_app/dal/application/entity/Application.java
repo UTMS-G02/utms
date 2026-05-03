@@ -1,13 +1,14 @@
 package edu.iztech.utms.g02.utms_app.dal.application.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 
+import java.util.List;
+import java.util.ArrayList;
 
 // bunlar eklenecek mi??????????????
 
@@ -15,21 +16,14 @@ import java.time.LocalDate;
 
 //    private Boolean ydyoApproved;
 
-//    @OneToMany(mappedBy = "application", cascade = CascadeType.ALL)
-//    private List<Document> documents = new ArrayList<>();
-
-
-
-
-
-
-
 @Entity
 @Table(name = "applications")
 @Getter
 @Setter
 @NoArgsConstructor
-public abstract class Application {
+@AllArgsConstructor
+@Builder
+public class Application { // abstract mı olacak ??
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,6 +40,7 @@ public abstract class Application {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private ApplicationStatus status = ApplicationStatus.DRAFT;
 
     @Column(nullable = false)
@@ -53,6 +48,25 @@ public abstract class Application {
 
     @Column(nullable = false)
     private String ydyoNotes;
+
+    @Column(nullable = false)
+    private Boolean ydyoApproved;
+
+    @Column(nullable = false)
+    private Boolean oidbApproved;
+
+    @Column(nullable = false)
+    private Long OidbReviewedBy;
+
+    @Column(nullable = false)
+    private LocalDateTime OidbReviewedDate;
+
+    
+    @Column(nullable = false)
+    private LocalDateTime YdyoReviewedDate;
+
+    @Column(nullable = false)
+    private Long YdyoReviewedBy;
 
     @Column(nullable = false)
     private String facultyNotes;
@@ -80,4 +94,9 @@ public abstract class Application {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    @OneToMany(mappedBy = "application", cascade = CascadeType.ALL)
+    @Builder.Default
+    private List<Document> documents = new ArrayList<>();
+
 }
