@@ -6,8 +6,10 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
-
-
+import java.time.LocalDateTime;
+import lombok.Builder;
+import java.util.List;
+import java.util.ArrayList;
 
 // bunlar eklenecek mi??????????????
 
@@ -15,16 +17,13 @@ import java.time.LocalDate;
 
 //    private Boolean ydyoApproved;
 
-//    @OneToMany(mappedBy = "application", cascade = CascadeType.ALL)
-//    private List<Document> documents = new ArrayList<>();
-
-
 
 
 
 
 
 @Entity
+@Builder
 @Table(name = "applications")
 @Getter
 @Setter
@@ -46,6 +45,7 @@ public abstract class Application {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private ApplicationStatus status = ApplicationStatus.DRAFT;
 
     @Column(nullable = false)
@@ -80,4 +80,9 @@ public abstract class Application {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    @OneToMany(mappedBy = "application", cascade = CascadeType.ALL)
+    @Builder.Default
+    private List<Document> documents = new ArrayList<>();
+
 }

@@ -6,8 +6,10 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import lombok.Builder;
 
 @Entity
+@Builder
 @Table(name = "documents")
 @Getter
 @Setter
@@ -37,5 +39,6 @@ public abstract class Document {
     private LocalDate documentUploadDate;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean active = true;
 }
