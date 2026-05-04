@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Form, Input, Button, Typography, Row, Col, Select,
-  InputNumber, DatePicker, Checkbox, Alert, Space, App,
+  InputNumber, DatePicker, Checkbox, Space, App, Upload,
 } from 'antd'
+import { InboxOutlined } from '@ant-design/icons'
 import { useAuth } from '../../contexts/AuthContext'
 import { applicationsApi } from '../../api/applications'
 
@@ -96,15 +97,63 @@ export default function ApplicationForm() {
   const initialFirstName = user?.firstName || nameParts[0] || ''
   const initialLastName = user?.lastName || nameParts.slice(1).join(' ') || ''
 
+  const beforeUpload = (file) => {
+    if (file.type !== 'application/pdf') {
+      message.error('Sadece PDF yüklenebilir.')
+      return Upload.LIST_IGNORE
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      message.error("Dosya 10MB'dan büyük olamaz.")
+      return Upload.LIST_IGNORE
+    }
+    return false
+  }
+
   const handleSubmit = async (values) => {
     setSubmitting(true)
+    const {
+      studentCertificate,
+      transcript,
+      yksResult,
+      courseContents,
+      languageCert,
+      additionalDocs,
+      kvkk,
+      ...formInfo
+    } = values
+
     try {
-      const created = await applicationsApi.createApplication(values)
-      await applicationsApi.submitApplication(created.applicationId)
-      message.success('Başvurunuz başarıyla oluşturuldu.')
-      navigate(`/student/applications/${result.applicationId}`)
+      message.loading('Başvuru oluşturuluyor...', 0)
+      const created = await applicationsApi.createApplication(formInfo)
+      message.destroy()
+      const applicationId = created.applicationId
+
+      const allFiles = [
+        { type: 'STUDENT_CERTIFICATE', file: studentCertificate?.[0]?.originFileObj },
+        { type: 'TRANSCRIPT', file: transcript?.[0]?.originFileObj },
+        { type: 'OTHER', file: yksResult?.[0]?.originFileObj },
+        { type: 'OTHER', file: courseContents?.[0]?.originFileObj },
+        { type: 'LANGUAGE_CERT', file: languageCert?.[0]?.originFileObj },
+        ...(additionalDocs ?? []).map((f) => ({ type: 'OTHER', file: f.originFileObj })),
+      ].filter((f) => f.file)
+
+      let uploadedCount = 0
+      for (const item of allFiles) {
+        message.loading(`Belge yükleniyor ${uploadedCount + 1}/${allFiles.length}...`, 0)
+        const fd = new FormData()
+        fd.append('file', item.file)
+        fd.append('docType', item.type)
+        await applicationsApi.uploadDocument(applicationId, fd)
+        uploadedCount++
+      }
+
+      message.destroy()
+      await applicationsApi.submitApplication(applicationId)
+      message.success('Başvurunuz başarıyla oluşturuldu ve gönderildi.')
+      navigate(`/student/applications/${applicationId}`)
     } catch {
-      message.error('Başvuru oluşturulurken bir hata oluştu.')
+      message.destroy()
+      message.error('İşlem sırasında bir hata oluştu. Lütfen tekrar deneyin.')
     } finally {
       setSubmitting(false)
     }
@@ -342,14 +391,94 @@ export default function ApplicationForm() {
               </Row>
             </div>
 
-            {/* Belge Yüklemeleri — Parça 2 placeholder */}
+            {/* Belge Yüklemeleri */}
             <div style={styles.card}>
-              <Title level={5} style={{ marginTop: 0, marginBottom: 16 }}>Belge Yüklemeleri</Title>
-              <Alert
-                type="info"
-                showIcon
-                message="Bu bölüm Parça 2'de eklenecek. Belge yüklemesi yapılmadan şimdilik mock olarak başvuru oluşturulabilir."
-              />
+              <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Belge Yüklemeleri</Title>
+              <Text type="secondary" style={styles.cardSubtitle}>
+                Gerekli belgeleri yükleyin
+              </Text>
+
+              <Form.Item
+                label="Öğrenci Belgesi"
+                name="studentCertificate"
+                valuePropName="fileList"
+                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+                rules={[{ required: true, message: 'Öğrenci belgesi zorunludur.' }]}
+              >
+                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
+                </Upload.Dragger>
+              </Form.Item>
+
+              <Form.Item
+                label="Transkript"
+                name="transcript"
+                valuePropName="fileList"
+                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+                rules={[{ required: true, message: 'Transkript zorunludur.' }]}
+              >
+                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
+                </Upload.Dragger>
+              </Form.Item>
+
+              <Form.Item
+                label="YKS Sonuç Belgesi"
+                name="yksResult"
+                valuePropName="fileList"
+                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+                rules={[{ required: true, message: 'YKS sonuç belgesi zorunludur.' }]}
+              >
+                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
+                </Upload.Dragger>
+              </Form.Item>
+
+              <Form.Item
+                label="Almış Olduğunuz Derslerin İçerikleri"
+                name="courseContents"
+                valuePropName="fileList"
+                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+                rules={[{ required: true, message: 'Ders içerikleri belgesi zorunludur.' }]}
+              >
+                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
+                </Upload.Dragger>
+              </Form.Item>
+
+              <Form.Item
+                label="İngilizce Yeterlilik Belgesi"
+                name="languageCert"
+                valuePropName="fileList"
+                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+              >
+                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB (opsiyonel)</p>
+                </Upload.Dragger>
+              </Form.Item>
+
+              <Form.Item
+                label="Ek Belgeler"
+                name="additionalDocs"
+                valuePropName="fileList"
+                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+              >
+                <Upload.Dragger accept=".pdf" maxCount={5} beforeUpload={beforeUpload} multiple>
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB, en fazla 5 dosya (opsiyonel)</p>
+                </Upload.Dragger>
+              </Form.Item>
             </div>
 
             {/* Footer */}
