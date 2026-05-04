@@ -2,6 +2,7 @@ package edu.iztech.utms.g02.utms_app.bl.auth;
 
 import edu.iztech.utms.g02.utms_app.api.auth.dto.LoginRequest;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.LoginResponse;
+import edu.iztech.utms.g02.utms_app.api.auth.dto.MeResponse;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.RegisterRequest;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.User;
@@ -73,6 +74,25 @@ public class AuthService {
                 user.getRole(),
                 token
         );
+    }
+
+    /**
+     * Returns profile info for the currently authenticated user.
+     * Used by the frontend on page refresh to re-hydrate session state.
+     *
+     * @param email the authenticated user's email (extracted from JWT by the filter)
+     * @throws AuthException if the user no longer exists or is inactive
+     */
+    public MeResponse getMe(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AuthException("Kullanıcı bulunamadı."));
+
+        if (!user.isActive()) {
+            throw new AuthException("Hesap aktif değil.");
+        }
+
+        String fullName = user.getFirstName() + " " + user.getLastName();
+        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName);
     }
 
     /**
