@@ -20,18 +20,18 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     /**
-     * Handles business logic errors thrown by the auth layer
-     * (e.g. duplicate email, wrong password, KVKK not accepted).
-     * Returns HTTP 400 Bad Request.
+     * Handles business logic errors thrown by the auth layer.
+     * The HTTP status is determined by the exception itself:
+     * 401 for invalid credentials, 409 for duplicates, 400 for bad input.
      */
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<Map<String, Object>> handleAuthException(AuthException ex) {
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", LocalDateTime.now().toString());
-        body.put("status", HttpStatus.BAD_REQUEST.value());
-        body.put("error", "Authentication Error");
+        body.put("status", ex.getStatus().value());
+        body.put("error", ex.getStatus().getReasonPhrase());
         body.put("message", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+        return ResponseEntity.status(ex.getStatus()).body(body);
     }
 
     /**

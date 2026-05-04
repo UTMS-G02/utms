@@ -10,6 +10,7 @@ import edu.iztech.utms.g02.utms_app.dal.user.entity.UserRole;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -52,14 +53,14 @@ public class AuthService {
      */
     public LoginResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new AuthException("E-posta veya şifre hatalı."));
+                .orElseThrow(() -> new AuthException("E-posta veya şifre hatalı.", HttpStatus.UNAUTHORIZED));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new AuthException("E-posta veya şifre hatalı.");
+            throw new AuthException("E-posta veya şifre hatalı.", HttpStatus.UNAUTHORIZED);
         }
 
         if (!user.isActive()) {
-            throw new AuthException("Hesap aktif değil.");
+            throw new AuthException("Hesap aktif değil.", HttpStatus.UNAUTHORIZED);
         }
 
         user.setLastLoginDate(LocalDate.now());
@@ -85,10 +86,10 @@ public class AuthService {
      */
     public MeResponse getMe(String email) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new AuthException("Kullanıcı bulunamadı."));
+                .orElseThrow(() -> new AuthException("Kullanıcı bulunamadı.", HttpStatus.UNAUTHORIZED));
 
         if (!user.isActive()) {
-            throw new AuthException("Hesap aktif değil.");
+            throw new AuthException("Hesap aktif değil.", HttpStatus.UNAUTHORIZED);
         }
 
         String fullName = user.getFirstName() + " " + user.getLastName();
@@ -102,13 +103,13 @@ public class AuthService {
      */
     private void validateRegistration(RegisterRequest request) {
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            throw new AuthException("Bu e-posta zaten kayıtlı.");
+            throw new AuthException("Bu e-posta zaten kayıtlı.", HttpStatus.CONFLICT);
         }
         if (studentRepository.findByTckn(request.getTckn()).isPresent()) {
-            throw new AuthException("Bu TCKN zaten kayıtlı.");
+            throw new AuthException("Bu TCKN zaten kayıtlı.", HttpStatus.CONFLICT);
         }
         if (!Boolean.TRUE.equals(request.getKvkkAccepted())) {
-            throw new AuthException("KVKK onayı zorunludur.");
+            throw new AuthException("KVKK onayı zorunludur.", HttpStatus.BAD_REQUEST);
         }
     }
 
