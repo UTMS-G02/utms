@@ -1,11 +1,12 @@
 ﻿import { useState, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { Form, Input, Button, Typography, App, Modal, Checkbox, DatePicker, Row, Col } from 'antd'
 import { MailOutlined, LockOutlined } from '@ant-design/icons'
 import { useAuth, ROLE_HOME } from '../../contexts/AuthContext'
 import { authApi } from '../../api/auth' // Gerçek API bağlantımız
 import { tcknRule, phoneRule, dobRule } from '../../utils/validators' // Doğrulama kurallarımız
 import iyteLogo from '../../assets/iyte_logo.png'
+import PasswordStrengthIndicator from '../../components/PasswordStrengthIndicator'
 
 const { Title, Text } = Typography
 
@@ -73,19 +74,33 @@ export default function LoginPage({ initialModal }) {
   const [form] = Form.useForm()
   const [registerForm] = Form.useForm()
   const [forgotForm] = Form.useForm()
+  const [resetForm] = Form.useForm()
+  const passwordValue = Form.useWatch('password', registerForm)
+  const resetPasswordValue = Form.useWatch('newPassword', resetForm)
   const [loading, setLoading] = useState(false)
   const [registerLoading, setRegisterLoading] = useState(false) // Kayıt için ayrı loading state'i
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
   const [modalType, setModalType] = useState(initialModal || '')
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const { message } = App.useApp()
+  const [searchParams] = useSearchParams()
+  const resetToken = searchParams.get('token')
 
   useEffect(() => {
     if (initialModal) {
       setModalType(initialModal)
     }
   }, [initialModal])
+
+  useEffect(() => {
+    if (initialModal === 'reset' && !resetToken) {
+      message.error('Geçersiz şifre sıfırlama bağlantısı.')
+      navigate('/login', { replace: true })
+    }
+  }, [initialModal, resetToken])
 
   const from = location.state?.from?.pathname ?? null
 
@@ -125,10 +140,41 @@ export default function LoginPage({ initialModal }) {
   }
 
   const handleForgotPassword = async ({ email }) => {
-    await new Promise((r) => setTimeout(r, 1000))
-    message.success('Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.')
-    forgotForm.resetFields()
-    closeModal()
+    setForgotLoading(true)
+    try {
+      await authApi.forgotPassword(email)
+      message.success('Eğer bu e-posta sistemde kayıtlıysa, şifre sıfırlama bağlantısı gönderilmiştir.')
+      forgotForm.resetFields()
+      closeModal()
+    } catch (error) {
+      message.error(error.response?.data?.message || 'İşlem sırasında bir hata oluştu.')
+    } finally {
+      setForgotLoading(false)
+    }
+  }
+
+  const handleResetPassword = async ({ newPassword }) => {
+    if (!resetToken) {
+      message.error('Geçersiz şifre sıfırlama bağlantısı.')
+      return
+    }
+    setResetLoading(true)
+    try {
+      await authApi.resetPassword(resetToken, newPassword)
+      message.success('Şifreniz başarıyla güncellendi. Şimdi giriş yapabilirsiniz.')
+      resetForm.resetFields()
+      navigate('/login', { replace: true })
+      setModalType('')
+    } catch (error) {
+      const status = error.response?.status
+      if (status === 400 || status === 401) {
+        message.error('Şifre sıfırlama bağlantısı geçersiz veya süresi dolmuş.')
+      } else {
+        message.error('Şifre güncellenemedi. Lütfen tekrar deneyin.')
+      }
+    } finally {
+      setResetLoading(false)
+    }
   }
 
   const handleSubmit = async ({ email, password }) => {
@@ -316,12 +362,25 @@ export default function LoginPage({ initialModal }) {
                   name="password"
                   rules={[
                     { required: true, message: 'Şifre zorunludur.' },
-                    { min: 8, message: 'En az 8 karakter olmalıdır.' },
+                    {
+                      validator: (_, value) => {
+                        if (!value) return Promise.resolve()
+                        const checks = [
+                          value.length >= 8,
+                          /[A-Z]/.test(value),
+                          /[a-z]/.test(value),
+                          /[0-9]/.test(value),
+                        ]
+                        if (checks.every(Boolean)) return Promise.resolve()
+                        return Promise.reject(new Error('Şifre kurallarını sağlamıyor.'))
+                      },
+                    },
                   ]}
                   hasFeedback
                 >
                   <Input.Password placeholder="Şifre oluşturun" autoComplete="new-password" />
                 </Form.Item>
+                <PasswordStrengthIndicator value={passwordValue} />
               </Col>
               <Col span={12}>
                 <Form.Item
@@ -412,8 +471,107 @@ export default function LoginPage({ initialModal }) {
               <Button onClick={closeModal} style={{ minWidth: 60 }}>
                 İptal
               </Button>
-              <Button type="primary" htmlType="submit" style={{ minWidth: 60, background: '#8B1A2B', borderColor: '#8B1A2B' }}>
+              <Button type="primary" htmlType="submit" loading={forgotLoading} style={{ minWidth: 60, background: '#8B1A2B', borderColor: '#8B1A2B' }}>
                 Sıfırlama Bağlantısı Gönder
+              </Button>
+            </div>
+          </Form>
+        </div>
+      </Modal>
+
+      {/* --- ŞİFRE SIFIRLAMA MODALI --- */}
+      <Modal
+        open={modalType === 'reset'}
+        title="Yeni Şifre Belirle"
+        onCancel={() => {
+          setModalType('')
+          navigate('/login', { replace: true })
+        }}
+        footer={null}
+        centered
+        width={550}
+        maskClosable={false}
+      >
+        <div style={styles.modalContent}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+            Yeni şifrenizi belirleyin. Şifreniz güçlü olmalıdır.
+          </Text>
+          <Form
+            form={resetForm}
+            layout="vertical"
+            onFinish={handleResetPassword}
+            requiredMark={false}
+            size="large"
+          >
+            <Form.Item
+              label="Yeni Şifre *"
+              name="newPassword"
+              rules={[
+                { required: true, message: 'Yeni şifre zorunludur.' },
+                {
+                  validator: (_, value) => {
+                    if (!value) return Promise.resolve()
+                    const checks = [
+                      value.length >= 8,
+                      /[A-Z]/.test(value),
+                      /[a-z]/.test(value),
+                      /[0-9]/.test(value),
+                    ]
+                    if (checks.every(Boolean)) return Promise.resolve()
+                    return Promise.reject(new Error('Şifre kurallarını sağlamıyor.'))
+                  },
+                },
+              ]}
+              hasFeedback
+            >
+              <Input.Password
+                prefix={<LockOutlined style={{ color: '#9ca3af' }} />}
+                placeholder="Yeni şifrenizi girin"
+                autoComplete="new-password"
+              />
+            </Form.Item>
+            <PasswordStrengthIndicator value={resetPasswordValue} />
+            <Form.Item
+              label="Yeni Şifre (Tekrar) *"
+              name="confirmNewPassword"
+              dependencies={['newPassword']}
+              hasFeedback
+              rules={[
+                { required: true, message: 'Şifrenizi tekrar girin.' },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue('newPassword') === value) {
+                      return Promise.resolve()
+                    }
+                    return Promise.reject(new Error('Şifreler eşleşmiyor.'))
+                  },
+                }),
+              ]}
+              style={{ marginTop: 16 }}
+            >
+              <Input.Password
+                prefix={<LockOutlined style={{ color: '#9ca3af' }} />}
+                placeholder="Şifrenizi tekrar girin"
+                autoComplete="new-password"
+              />
+            </Form.Item>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+              <Button
+                onClick={() => {
+                  setModalType('')
+                  navigate('/login', { replace: true })
+                }}
+                style={{ minWidth: 60 }}
+              >
+                İptal
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={resetLoading}
+                style={{ minWidth: 60, background: '#8B1A2B', borderColor: '#8B1A2B' }}
+              >
+                Şifreyi Güncelle
               </Button>
             </div>
           </Form>
