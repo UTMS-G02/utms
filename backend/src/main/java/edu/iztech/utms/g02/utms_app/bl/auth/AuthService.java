@@ -1,15 +1,18 @@
 package edu.iztech.utms.g02.utms_app.bl.auth;
 
+import edu.iztech.utms.g02.utms_app.api.auth.dto.ForgotPasswordRequest;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.LoginRequest;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.LoginResponse;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.MeResponse;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.RegisterRequest;
+import edu.iztech.utms.g02.utms_app.api.auth.dto.ResetPasswordRequest;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.User;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.UserRole;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,7 @@ import java.time.LocalDateTime;
  * Business logic for user authentication and student registration.
  * Handles UC-1 (Sign up) and UC-12 (Login).
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -94,6 +98,38 @@ public class AuthService {
 
         String fullName = user.getFirstName() + " " + user.getLastName();
         return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName);
+    }
+
+    /**
+     * Initiates password reset by generating a short-lived reset token.
+     * In production this would send an email; here the link is logged instead.
+     * Always returns successfully to avoid leaking whether an email is registered.
+     */
+    public void forgotPassword(ForgotPasswordRequest request) {
+        userRepository.findByEmail(request.getEmail()).ifPresent(user -> {
+            String resetToken = jwtService.generateResetToken(user.getEmail());
+            log.info("Password reset link for {}: /reset-password?token={}", user.getEmail(), resetToken);
+        });
+    }
+
+    /**
+     * Resets the user's password after validating the reset token.
+     *
+     * @throws AuthException if the token is invalid or expired
+     */
+    public void resetPassword(ResetPasswordRequest request) {
+        String email;
+        try {
+            email = jwtService.extractEmailFromResetToken(request.getToken());
+        } catch (Exception e) {
+            throw new AuthException("Geçersiz veya süresi dolmuş şifre sıfırlama bağlantısı.", HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AuthException("Kullanıcı bulunamadı.", HttpStatus.BAD_REQUEST));
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
     }
 
     /**

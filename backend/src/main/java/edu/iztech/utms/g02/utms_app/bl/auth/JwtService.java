@@ -1,5 +1,6 @@
 package edu.iztech.utms.g02.utms_app.bl.auth;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
+import java.util.Map;
 
 /**
  * Service for generating and validating JWT tokens.
@@ -70,6 +72,40 @@ public class JwtService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * Generates a short-lived (15 min) password reset token.
+     * Carries a "type=RESET" claim so it cannot be used for authentication.
+     */
+    public String generateResetToken(String email) {
+        return Jwts.builder()
+                .subject(email)
+                .claims(Map.of("type", "RESET"))
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 15 * 60 * 1000))
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    /**
+     * Returns the email from a reset token after validating its signature,
+     * expiry, and type claim.
+     *
+     * @throws JwtException if the token is invalid, expired, or not a reset token
+     */
+    public String extractEmailFromResetToken(String token) throws JwtException {
+        Claims claims = Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        if (!"RESET".equals(claims.get("type", String.class))) {
+            throw new JwtException("Not a password reset token");
+        }
+
+        return claims.getSubject();
     }
 
     /**
