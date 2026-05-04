@@ -24,12 +24,8 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
 
     List<Application> findByYdyoApproved(boolean ydyoApproved);
 
-    List<Application> findByFacultyApproved(boolean facultyApproved);
-
-    List<Application> findByDeanOfficeApproved(boolean deanOfficeApproved);
-
-    Optional<Application> findByApplicationId(int applicationId); // bakılsın neden optional yaptık diye ?
+    Optional<Application> findByApplicationId(int applicationId);
 
     // Aynı öğrencinin, aynı döneme ve aynı bölüme kaydı var mı kontrolü
-    boolean checkIfApplicationExists(String studentId, String targetDept, String academicYear);
+    boolean existsByStudentIdAndTargetDeptAndAcademicYear(String studentId, String targetDept, String academicYear);
 }

@@ -40,7 +40,7 @@ public class ApplicationService {
     public ApplicationResponse create(Integer userId, ApplicationCreateRequest req) { 
 
         // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla başvuru yapamaz
-        boolean alreadyApplied = applicationRepository.checkIfApplicationExists(
+        boolean alreadyApplied = applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
                 req.getStudentId(), // String dönüyordur diye varsayıyoruz
                 req.getTargetDept(), 
                 req.getAcademicYear()
