@@ -19,6 +19,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Login initialModal="register" />} />
       <Route path="/forgot-password" element={<Login initialModal="forgot" />} />
+      <Route path="/reset-password" element={<Login initialModal="reset" />} />
 
       {/* Öğrenci Portalı */}
       <Route
