@@ -9,6 +9,6 @@ public interface DocumentRepository extends JpaRepository<Document, Integer> {
 
     List<Document> findByDocumentType(String documentType);
 
-    List<Document> findByApplicationId(Integer applicationId);
+    List<Document> findByApplicationApplicationId(Integer applicationId);
 }
 
