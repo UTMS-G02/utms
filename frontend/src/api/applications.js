@@ -1,48 +1,133 @@
+import apiClient from './client'
 import { mockApplications, mockApplicationDetail, mockResult, delay } from './mock'
 
 export const applicationsApi = {
-  // TODO: replace with real API call
   getMyApplications: async () => {
-    await delay(500)
-    return mockApplications
+    try {
+      const response = await apiClient.get('/applications')
+      return response.data
+    } catch (error) {
+      await delay(500)
+      return mockApplications
+    }
   },
 
-  // TODO: replace with real API call
+  getOidbApplications: async () => {
+    try {
+      const response = await apiClient.get('/oidb/applications')
+      return response.data
+    } catch (error) {
+      await delay(500)
+      return mockApplications
+    }
+  },
+
   getApplicationById: async (_id) => {
-    await delay(500)
-    return mockApplicationDetail
+    try {
+      const response = await apiClient.get(`/applications/${_id}`)
+      return response.data
+    } catch (error) {
+      await delay(500)
+      return mockApplicationDetail
+    }
   },
 
-  // TODO: replace with real API call
   createApplication: async (_payload) => {
-    await delay(500)
-    return {
-      applicationId: Date.now(),
-      status: 'DRAFT',
-      createdAt: new Date().toISOString(),
+    try {
+      const response = await apiClient.post('/applications', _payload)
+      return response.data
+    } catch (error) {
+      await delay(500)
+      return {
+        applicationId: Date.now(),
+        status: 'DRAFT',
+        createdAt: new Date().toISOString(),
+      }
     }
   },
 
-  // TODO: replace with real API call
   submitApplication: async (_id) => {
-    await delay(500)
-    return { ...mockApplicationDetail, status: 'SUBMITTED' }
-  },
-
-  // TODO: replace with real API call
-  uploadDocument: async (_id, _formData) => {
-    await delay(500)
-    return {
-      documentId: Date.now(),
-      docType: 'OTHER',
-      fileName: 'document.pdf',
-      uploadedAt: new Date().toISOString(),
+    try {
+      const response = await apiClient.post(`/applications/${_id}/submit`)
+      return response.data
+    } catch (error) {
+      await delay(500)
+      return { ...mockApplicationDetail, status: 'SUBMITTED' }
     }
   },
 
-  // TODO: replace with real API call
+  uploadDocument: async (_id, _formData) => {
+    try {
+      const response = await apiClient.post(`/applications/${_id}/documents`, _formData)
+      return response.data
+    } catch (error) {
+      await delay(500)
+      return {
+        documentId: Date.now(),
+        docType: 'OTHER',
+        fileName: 'document.pdf',
+        uploadedAt: new Date().toISOString(),
+      }
+    }
+  },
+
+  requestApplicationUpdate: async (applicationId) => {
+    try {
+      const response = await apiClient.post(`/oidb/applications/${applicationId}/request-update`)
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
+  sendToYdyo: async (applicationId) => {
+    try {
+      const response = await apiClient.post(`/oidb/applications/${applicationId}/send-to-ydyo`)
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
+  forwardToFaculty: async (applicationId) => {
+    try {
+      const response = await apiClient.post(`/oidb/applications/${applicationId}/forward-to-faculty`)
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
+  rejectApplication: async (applicationId) => {
+    try {
+      const response = await apiClient.post(`/oidb/applications/${applicationId}/reject`)
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
+  shareResults: async (applicationIds) => {
+    try {
+      const response = await apiClient.post('/oidb/share-results', { applicationIds })
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
   getMyResult: async () => {
-    await delay(500)
-    return mockResult
+    try {
+      const response = await apiClient.get('/applications/result')
+      return response.data
+    } catch (error) {
+      await delay(500)
+      return mockResult
+    }
   },
 }

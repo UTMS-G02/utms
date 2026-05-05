@@ -77,7 +77,11 @@ export function AuthProvider({ children }) {
         console.warn("Backend ulaşılamadı. Test (Mock) verisi ile giriş yapılıyor...");
         await new Promise((r) => setTimeout(r, 500));
         
-        const role = email.includes('admin') ? ROLES.DEAN : ROLES.STUDENT;
+        const role = email.includes('admin')
+  ? ROLES.DEAN
+  : email.includes('oidb')
+  ? ROLES.OIDB
+  : ROLES.STUDENT;
         const userData = { id: 1, name: email.split('@')[0].toUpperCase(), email, role };
         const jwt = 'mock-jwt-token-123';
         

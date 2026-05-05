@@ -6,6 +6,7 @@ import ApplicationList from './pages/student/ApplicationList';
 import ApplicationDetail from './pages/student/ApplicationDetail';
 import ApplicationForm from './pages/student/ApplicationForm';
 import Profile from './pages/student/Profile';
+import OidbDashboard from './pages/oidb/Dashboard';
 import AppLayout from './components/Layout/AppLayout'; 
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROLES } from './contexts/AuthContext';
@@ -35,6 +36,20 @@ export default function App() {
         <Route path="applications/new" element={<ApplicationForm />} />
         <Route path="applications/:id" element={<ApplicationDetail />} />
         <Route path="profile" element={<Profile />} />
+      </Route>
+
+      {/* OIDB Portalı */}
+      <Route
+        path="/oidb"
+        element={
+          <ProtectedRoute allowedRoles={[ROLES.OIDB]}>
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<OidbDashboard />} />
+        <Route path="dashboard" element={<OidbDashboard />} />
+        <Route path="pending" element={<OidbDashboard />} />
       </Route>
 
       {/* Dekanlık Portalı */}
