@@ -18,8 +18,9 @@ public class Document { // abstract mı olacak
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer documentId;
 
-    @Column(nullable = false, unique = true)
-    private Integer applicationId;
+    @ManyToOne
+    @JoinColumn(name = "application_id", nullable = false)
+    private Application application;
 
     @Column(nullable = false)
     private String documentType;
