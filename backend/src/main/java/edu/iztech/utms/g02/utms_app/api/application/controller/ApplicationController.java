@@ -98,7 +98,7 @@ public class ApplicationController {
             @PathVariable Integer id, 
             @RequestParam("file") MultipartFile file) {
         
-        applicationService.uploadDocument(id, file);
+        applicationService.uploadDocument(id, file); //!!!! bu method incelenecek ve endpoint incelenip düzeltilecek 
         return ResponseEntity.ok("Belge başarıyla yüklendi.");
     }
 
