@@ -28,6 +28,9 @@ public class ApplicationController {
 
     /*
     /    POST /api/applications
+    /
+    /       'BAŞVURU YAP' SAYFASI
+    /
     */
 
     @PreAuthorize("hasRole('STUDENT')") // Sadece STUDENT rolü girebilir
