@@ -1,23 +1,24 @@
 package edu.iztech.utms.g02.utms_app.bl.application;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.*;
-
 import edu.iztech.utms.g02.utms_app.dal.application.entity.*;
-
 import edu.iztech.utms.g02.utms_app.dal.application.repository.*;
+
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Student; // EKLENDİ
+import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository; // EKLENDİ
+
+import edu.iztech.utms.g02.utms_app.integration.yoksis.YoksisIntegrationService; // EKLENDİ
+import edu.iztech.utms.g02.utms_app.integration.yoksis.dto.YoksisStudentResponse; // EKLENDİ
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-// --- EKLENEN YENİ İMPORTLAR ---
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.persistence.EntityNotFoundException;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -26,7 +27,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-// ------------------------------
 
 @Service
 @RequiredArgsConstructor
@@ -34,14 +34,24 @@ public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
     private final DocumentRepository documentRepository;
-//  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için
+
+    private final StudentRepository studentRepository; // EKLENDİ
+    private final YoksisIntegrationService yoksisIntegrationService; // EKLENDİ
+
+    //  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için --> en aşağıda manuel olarak yapıyoruz, toResponse() metodu ile
 
     @Transactional
-    public ApplicationResponse create(Integer userId, ApplicationCreateRequest req) { 
+    public ApplicationResponse create(ApplicationCreateRequest req) { // Integer userId, silindi
+
+        // 1. Güvenlik: İsteği atan kullanıcıyı tespit et
+        String currentStudentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        // 2. Senin StudentRepository'ni kullanarak veritabanından öğrenciyi çek
+        Student currentStudent = studentRepository.findByEmail(currentStudentEmail)
+            .orElseThrow(() -> new EntityNotFoundException("Öğrenci bulunamadı."));
 
         // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla başvuru yapamaz
         boolean alreadyApplied = applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
-                req.getStudentId(), // String dönüyordur diye varsayıyoruz
+                currentStudent.getStudentId(), // Artık request'ten değil, güvenilir kaynaktan alıyoruz
                 req.getTargetDept(), 
                 req.getAcademicYear()
         );
@@ -50,18 +60,32 @@ public class ApplicationService {
             throw new IllegalArgumentException("Bir öğrenci aynı bölüme, aynı akademik dönemde birden fazla başvuru yapamaz.");
         }
 
-        // 2. Diğer geçerlilik kontrolleri
+        // 2. Diğer geçerlilik kontrolleri // gerekli miiii?
         if (!Boolean.TRUE.equals(req.getKvkkAccepted())) {
             throw new IllegalArgumentException("KVKK onayı zorunludur.");
         }
 
-        // 3. Application objesini oluşturma
+        // 3. Dış Sistem Entegrasyonu: YÖKSİS'ten akademik verileri çek
+        YoksisStudentResponse yoksisData = yoksisIntegrationService.fetchAcademicDataByTckn(currentStudent.getTckn());
+
+        // 4. Application objesini oluşturma (Kendi verilerimiz + YÖKSİS verileri + Request verileri harmanlanıyor)
         Application app = Application.builder()
-                .studentId(req.getStudentId())
+                .studentId(currentStudent.getStudentId())
                 .status(ApplicationStatus.DRAFT) // İlk oluşumda durumu genelde DRAFT (Taslak) olur
                 .academicYear(req.getAcademicYear())
                 .targetDept(req.getTargetDept())
                 .targetFaculty(req.getTargetFaculty())
+
+                // Front-end'den gelen YKS verileri
+                .sayYksScore(req.getSayYksScore())
+                .sayYksRank(req.getSayYksRank())
+
+                // YÖKSİS'ten otomatik gelen veriler
+                .currentUniversity(yoksisData.currentUniversity())
+                .currentFaculty(yoksisData.currentFaculty())
+                .currentDepartment(yoksisData.currentDepartment())
+                .gpa(yoksisData.gpa())
+
                 .build();
         
         // 4. Veritabanına kaydet
@@ -72,11 +96,14 @@ public class ApplicationService {
     }
 
     @Transactional
-    public ApplicationResponse submit(Integer applicationId, Integer userId) {
-        
+    public ApplicationResponse submit(Integer applicationId) { //, Integer userId silindi
+
+        // Sadece başvuru id'si yeterli, kullanıcının kendi başvurusu olup olmadığını kontrol edelim
         Application app = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
         
+        verifyOwnership(app); // Helper metot ile güvenlik kontrolü
+
         if (app.getStatus() != ApplicationStatus.DRAFT) {
             throw new IllegalStateException("Application is not in DRAFT state");
         }
@@ -128,24 +155,29 @@ public class ApplicationService {
 
     public List<ApplicationResponse> getAllApplications() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String currentUsername = authentication.getName(); // Genelde öğrenci numarası/ID'si buraya düşer
+
+        // JWT'den gelen getName() metodu kullanıcının E-POSTA adresini döner (Örn: busra@std.iztech.edu.tr)
+        String currentUserEmail = authentication.getName(); 
 
         boolean isStudent = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_STUDENT") || a.getAuthority().equals("STUDENT"));
 
-        List<Application> applications;
-
         if (isStudent) {
-            // DİKKAT: ApplicationRepository içine "List<Application> findByStudentId(String studentId);" metodunu eklemelisin.
-            applications = applicationRepository.findByStudentId(currentUsername); 
+            // E-postadan ID'yi buluyoruz
+            Student student = studentRepository.findByEmail(currentUserEmail)
+                    .orElseThrow(() -> new EntityNotFoundException("Kullanıcı bulunamadı."));
+            
+            return applicationRepository.findByStudentId(student.getUserId()).stream() // getstudentId() mi olacak yoksa getuserId() mu olacak ???
+                    .map(this::toResponse)
+                    .collect(Collectors.toList());
+
         } else {
             // Öğrenci değilse (OIDB, YDYO, FACULTY, DEAN vs.) herkesi görebilir
-            applications = applicationRepository.findAll(); 
+            return applicationRepository.findAll().stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList()); 
         }
 
-        return applications.stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
     }
 
     public ApplicationResponse getApplicationById(Integer id) {
@@ -153,14 +185,18 @@ public class ApplicationService {
                 .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + id));
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String currentUsername = authentication.getName();
+        //String currentUsername = authentication.getName();
         
         boolean isStudent = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_STUDENT") || a.getAuthority().equals("STUDENT"));
 
         // Güvenlik: Öğrenci sadece kendi başvurusunu görebilir. String.valueOf() ile tip uyuşmazlığını önlüyoruz.
-        if (isStudent && !String.valueOf(app.getStudentId()).equals(currentUsername)) {
-            throw new AccessDeniedException("Bu başvuruyu görüntüleme yetkiniz bulunmuyor.");
+        //if (isStudent && !String.valueOf(app.getStudentId()).equals(currentUsername)) {
+            //throw new AccessDeniedException("Bu başvuruyu görüntüleme yetkiniz bulunmuyor.");
+        //}
+
+        if (isStudent) {
+            verifyOwnership(app);
         }
 
         return toResponse(app);
@@ -175,12 +211,14 @@ public class ApplicationService {
         Application app = applicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + id));
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String currentUsername = authentication.getName();
+        verifyOwnership(app); // Güvenlik: Başkası belge yükleyemesin
 
-        if (!String.valueOf(app.getStudentId()).equals(currentUsername)) {
-            throw new AccessDeniedException("Sadece kendi başvurunuza belge yükleyebilirsiniz.");
-        }
+        //Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        //String currentUsername = authentication.getName();
+
+        //if (!String.valueOf(app.getStudentId()).equals(currentUsername)) {
+          //  throw new AccessDeniedException("Sadece kendi başvurunuza belge yükleyebilirsiniz.");
+        //}
 
         try {
             Path uploadPath = Paths.get("uploads");
@@ -199,6 +237,7 @@ public class ApplicationService {
             // Eğer yoksa new Document() yapıp set... metotlarıyla doldurabilirsin.
             Document document = Document.builder()
                      //.application(app) // Eğer Document ile Application arasında @ManyToOne ilişkiniz varsa bunu açın
+                     .application(app) // İlişkiyi mutlaka kurmalıyız ki hangi dosya kime ait bilelim
                      .filePath(filePath.toString())
                      .fileName(originalFileName)
                     .build();
@@ -210,8 +249,22 @@ public class ApplicationService {
         }
     }
 
+    // --- HELPER METHODS ---
 
-    // --- HELPER METHOD ---
+    // DRY (Don't Repeat Yourself) prensibi için sahiplik kontrolünü tek bir yere aldık
+    private void verifyOwnership(Application app) {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        // E-posta ile veritabanından kullanıcıyı bul
+        Student student = studentRepository.findByEmail(currentUserEmail)
+                .orElseThrow(() -> new EntityNotFoundException("Kullanıcı bulunamadı."));
+
+        // Veritabanındaki Student ID'si ile Başvuru üzerindeki Student ID eşleşiyor mu?
+        if (!app.getStudentId().equals(student.getUserId())) { // getStudentId() mu yoksa getUserId() mu olacak ???
+            throw new AccessDeniedException("Bu başvuru üzerinde işlem yapma yetkiniz bulunmuyor.");
+        }
+    }
+
     private ApplicationResponse toResponse(Application app) {
         ApplicationResponse response = new ApplicationResponse();
         response.setId(app.getApplicationId());
@@ -219,7 +272,10 @@ public class ApplicationService {
         response.setStatus(app.getStatus());
         response.setAcademicYear(app.getAcademicYear());
         response.setTargetDept(app.getTargetDept());
-        // ... diğer alanlarınızı (get/set) ihtiyaca göre buraya ekleyebilirsiniz.
+        response.setCurrentUniversity(app.getCurrentUniversity());
+        response.setCurrentFaculty(app.getCurrentFaculty());
+        response.setCurrentDepartment(app.getCurrentDepartment());
+        response.setGpa(app.getGpa());
         return response;
     }
 }
