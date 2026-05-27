@@ -1,37 +1,36 @@
 package edu.iztech.utms.g02.utms_app.dal.application.entity;
 
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-
-
 import java.util.List;
 import java.util.ArrayList;
 
-// bunlar eklenecek mi??????????????
-
-//    @ManyToOne @JoinColumn(name = "student_id", nullable = false) private Student student;
-
-//    private Boolean ydyoApproved;
-
 @Entity
-@Table(name = "applications")
+@Table(name = "applications", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"user_id", "academic_year", "semester"})
+})
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Application { // abstract mı olacak ??
+public class Application {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer applicationId;
 
-    @Column(nullable = false, unique = true)
-    private Integer studentId;
+    // Her başvuru bir öğrenciye ait — başvuru oluşturulurken zorunlu
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private Student student;
 
+    // Başvuru oluşturulurken zorunlu alanlar
     @Column(nullable = false)
     private String targetDept;
 
@@ -44,61 +43,16 @@ public class Application { // abstract mı olacak ??
     private ApplicationStatus status = ApplicationStatus.DRAFT;
 
     @Column(nullable = false)
-    private String oidbNotes;
-
-    @Column(nullable = false)
-    private String ydyoNotes;
-
-    @Column(nullable = false)
-    private Boolean ydyoApproved;
-
-    @Column(nullable = false)
-    private Boolean oidbApproved;
-
-    @Column(nullable = false)
-    private Long OidbReviewedBy;
-
-    @Column(nullable = false)
-    private LocalDateTime OidbReviewedDate;
-
-    @Column(nullable = false)
-    private LocalDateTime YdyoReviewedDate;
-
-    @Column(nullable = false)
-    private Long YdyoReviewedBy;
-
-    @Column(nullable = false)
-    private String facultyNotes;
-
-    @Column(nullable = false)
-    private String deanOfficeNotes;
-
-    @Column(nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    @Column(nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
-
-    @Column(nullable = false)
-    private LocalDate submissionDate;
-
-    @Column(nullable = false)
-    private LocalDate acceptedDate;
-
-    @Column(nullable = false)
     private String academicYear;
 
     @Column(nullable = false)
     private String semester;
 
     @Column(nullable = false)
-    private Double sayYksScore; // double mı olacak yoksa float mı olacak ?????????????????
+    private Double sayYksScore;
 
     @Column(nullable = false)
-    private Integer sayYksRank; 
-
-    @Column(nullable = false)
-    private boolean active = true;
+    private Integer sayYksRank;
 
     @Column(nullable = false)
     private String currentUniversity;
@@ -112,11 +66,60 @@ public class Application { // abstract mı olacak ??
     @Column(nullable = false)
     private Double gpa;
 
+    @Column(nullable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
 
+    // Süreç ilerledikçe dolacak alanlar — başlangıçta boş olabilir
+    private LocalDateTime updatedAt;
 
+    private LocalDate submissionDate;
+
+    private LocalDate acceptedDate;
+
+    // ÖİDB incelemesi — ancak ÖİDB incelediğinde dolar
+    private String oidbNotes;
+
+    private Boolean oidbApproved;
+
+    @ManyToOne
+    @JoinColumn(name = "oidb_reviewed_by")
+    private Staff oidbReviewedBy;
+
+    private LocalDateTime oidbReviewedDate;
+
+    // YDYO incelemesi — ancak YDYO incelediğinde dolar
+    private String ydyoNotes;
+
+    private Boolean ydyoApproved;
+
+    @ManyToOne
+    @JoinColumn(name = "ydyo_reviewed_by")
+    private Staff ydyoReviewedBy;
+
+    private LocalDateTime ydyoReviewedDate;
+
+    // YGK incelemesi — ancak YGK incelediğinde dolar
+    private String ygkNotes;
+
+    private Boolean ygkApproved;
+
+    @ManyToOne
+    @JoinColumn(name = "ygk_reviewed_by")
+    private Staff ygkReviewedBy;
+
+    private LocalDateTime ygkReviewedDate;
+
+    // 0.10 × GPA + 0.90 × YKS — YGK aşamasında hesaplanıp saklanır, read-only
+    private Double compositeScore;
+
+    // Dekanlık ve Fakülte Kurulu — sürecin sonlarında dolar
+    private String deanOfficeNotes;
+
+    private String facultyNotes;
+
+    private Boolean facultyBoardApproved;
 
     @OneToMany(mappedBy = "application", cascade = CascadeType.ALL)
     @Builder.Default
     private List<Document> documents = new ArrayList<>();
-
 }
