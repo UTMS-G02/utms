@@ -26,11 +26,4 @@ public class Student extends User {
 
     private LocalDateTime kvkkAcceptedAt;
 
-    private Float gpa;
-
-    private String currentUniversity;
-
-    private String currentDepartment;
-
-    private Integer studentId; // yeni eklendi
 }
