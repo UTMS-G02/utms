@@ -31,4 +31,6 @@ public class Student extends User {
     private String currentUniversity;
 
     private String currentDepartment;
+
+    private Integer studentId; // yeni eklendi
 }

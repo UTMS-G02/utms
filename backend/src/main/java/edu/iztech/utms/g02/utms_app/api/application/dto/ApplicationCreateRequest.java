@@ -2,20 +2,20 @@ package edu.iztech.utms.g02.utms_app.api.application.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
+import jakarta.validation.constraints.Positive;
+
+import lombok.*;
 
 @Data
 @Builder
-@Setter
-@Getter
+@Setter // olmalı mı
+@Getter // olmalı mı
 @NoArgsConstructor
 @AllArgsConstructor
 public class ApplicationCreateRequest {
+
+    // studentId'yi güvenlik için JWT/SecurityContext üzerinden almanı tavsiye ederim.
+    // Eğer zorunluysa burada kalabilir ama manipülasyona açıktır.
 
     @NotBlank(message = "Öğrenci numarası boş bırakılamaz.")
     private String studentId;
@@ -31,6 +31,14 @@ public class ApplicationCreateRequest {
 
     @NotNull(message = "KVKK onayı zorunludur.")
     private Boolean kvkkAccepted;
+    
+    @NotNull(message = "SAY YKS puanı boş bırakılamaz.")
+    @Positive(message = "Geçerli bir YKS puanı giriniz.")
+    private Double sayYksScore;
+
+    @NotNull(message = "SAY YKS sıralaması boş bırakılamaz.")
+    @Positive(message = "Geçerli bir sıralama giriniz.")
+    private Integer sayYksRank;
     
     // Not: Belge yükleme işlemi ayrı bir endpoint (POST /documents) olduğu için 
     // belgeler bu create request'in içinde yer almaz.

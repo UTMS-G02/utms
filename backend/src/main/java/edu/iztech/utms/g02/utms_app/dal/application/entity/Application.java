@@ -30,7 +30,7 @@ public class Application { // abstract mı olacak ??
     private Integer applicationId;
 
     @Column(nullable = false, unique = true)
-    private String studentId;
+    private Integer studentId;
 
     @Column(nullable = false)
     private String targetDept;
@@ -61,7 +61,6 @@ public class Application { // abstract mı olacak ??
     @Column(nullable = false)
     private LocalDateTime OidbReviewedDate;
 
-    
     @Column(nullable = false)
     private LocalDateTime YdyoReviewedDate;
 
@@ -93,7 +92,28 @@ public class Application { // abstract mı olacak ??
     private String semester;
 
     @Column(nullable = false)
+    private Double sayYksScore; // double mı olacak yoksa float mı olacak ?????????????????
+
+    @Column(nullable = false)
+    private Integer sayYksRank; 
+
+    @Column(nullable = false)
     private boolean active = true;
+
+    @Column(nullable = false)
+    private String currentUniversity;
+
+    @Column(nullable = false)
+    private String currentFaculty;
+
+    @Column(nullable = false)
+    private String currentDepartment;
+
+    @Column(nullable = false)
+    private Double gpa;
+
+
+
 
     @OneToMany(mappedBy = "application", cascade = CascadeType.ALL)
     @Builder.Default

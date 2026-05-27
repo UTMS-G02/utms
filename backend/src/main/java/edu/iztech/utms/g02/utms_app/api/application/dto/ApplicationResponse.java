@@ -1,14 +1,9 @@
 package edu.iztech.utms.g02.utms_app.api.application.dto;
 
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
+import lombok.*;
 import java.time.LocalDateTime;
-import lombok.Getter;
-import lombok.Setter;
+
 
 @Data
 @Builder
@@ -19,7 +14,7 @@ import lombok.Setter;
 public class ApplicationResponse {
 
     private Integer id;
-    private String studentId;
+    private Integer studentId;
     private ApplicationStatus status;
     private String academicYear;
     private String targetFaculty;
@@ -36,6 +31,12 @@ public class ApplicationResponse {
     private String ydyoNotes;
     private Integer ydyoReviewedBy;
     private LocalDateTime ydyoReviewedDate;
+
+    //EKLENDI: YÖKSİS ve YKS verileri
+    private String currentUniversity;
+    private String currentFaculty;
+    private String currentDepartment;
+    private Double gpa;
     
     // Fakülte/Dekanlık kısımlarını da buraya ekleyebilirsiniz...
 }
