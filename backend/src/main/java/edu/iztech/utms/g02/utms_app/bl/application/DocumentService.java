@@ -1,9 +1,12 @@
 package edu.iztech.utms.g02.utms_app.bl.application;
 
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
+import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Document;
-import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
-import edu.iztech.utms.g02.utms_app.dal.application.repository.DocumentRepository;
+import edu.iztech.utms.g02.utms_app.dal.application.repository.*;
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
+import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository;
+
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
@@ -21,8 +24,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.util.List;
-
-
 
 
 /*
@@ -45,6 +46,7 @@ public class DocumentService {
 
     private final DocumentRepository documentRepository;
     private final ApplicationRepository applicationRepository;
+private final StudentRepository studentRepository; // eklendi 28.05
 
     @Transactional
     public Document uploadDocument(Integer applicationId, MultipartFile file) {
@@ -61,6 +63,11 @@ public class DocumentService {
                 .orElseThrow(() -> new EntityNotFoundException("Basvuru bulunamadi. ID: " + applicationId));
 
         checkStudentCanManageApplication(application);
+
+        // GÜVENLİK: Başvuru incelemeye alınmışsa veya onaylanmışsa belge yüklenemez!
+        if (application.getStatus() != ApplicationStatus.DRAFT && application.getStatus() != ApplicationStatus.REVISION_REQUESTED) {
+             throw new AccessDeniedException("Başvuru inceleme aşamasında olduğu için belge ekleyemez veya değiştiremezsiniz.");
+        }
 
         String originalFileName = StringUtils.cleanPath(
                 file.getOriginalFilename() == null ? "document" : file.getOriginalFilename()
@@ -153,8 +160,14 @@ public class DocumentService {
             return;
         }
 
-        if (!String.valueOf(application.getStudentId()).equals(authentication.getName())) {
-            throw new AccessDeniedException("Sadece kendi basvurunuza belge yukleyebilir veya silebilirsiniz.");
+
+        // Doğru Kıyaslama Yöntemi:
+        String currentUserEmail = authentication.getName();
+        Student currentStudent = studentRepository.findByEmail(currentUserEmail)
+                .orElseThrow(() -> new EntityNotFoundException("Öğrenci bulunamadı."));
+
+        if (!application.getStudent().getUserId().equals(currentStudent.getUserId())) { 
+            throw new AccessDeniedException("Sadece kendi başvurunuza belge yükleyebilir veya silebilirsiniz.");
         }
     }
 
@@ -164,7 +177,12 @@ public class DocumentService {
             return;
         }
 
-        if (!String.valueOf(application.getStudentId()).equals(authentication.getName())) {
+        // Doğru Kıyaslama Yöntemi:
+        String currentUserEmail = authentication.getName();
+        Student currentStudent = studentRepository.findByEmail(currentUserEmail)
+                .orElseThrow(() -> new EntityNotFoundException("Öğrenci bulunamadı."));
+
+        if (!application.getStudent().getUserId().equals(currentStudent.getUserId())) { 
             throw new AccessDeniedException("Bu basvurunun belgelerini goruntuleme yetkiniz bulunmuyor.");
         }
     }

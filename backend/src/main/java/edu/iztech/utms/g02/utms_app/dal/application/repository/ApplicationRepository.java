@@ -14,6 +14,8 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
 
     List<Application> findByStudentId(Integer studentId); 
 
+    List<Application> findByStudentIdAndStatus(Integer studentId, ApplicationStatus status);
+
     List<Application> findByAcademicYear(String academicYear); 
 
     List<Application> findByTargetDept(String targetDept); 

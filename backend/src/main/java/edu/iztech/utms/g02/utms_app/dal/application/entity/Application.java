@@ -8,6 +8,10 @@ import lombok.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
 import java.util.ArrayList;
 
 @Entity
@@ -32,7 +36,7 @@ public class Application {
 
     // Başvuru oluşturulurken zorunlu alanlar
     @Column(nullable = false)
-    private String targetDept;
+    private String targetDepartment;
 
     @Column(nullable = false)
     private String targetFaculty;
@@ -70,6 +74,8 @@ public class Application {
     private LocalDateTime createdAt = LocalDateTime.now();
 
     // Süreç ilerledikçe dolacak alanlar — başlangıçta boş olabilir
+    @CreationTimestamp 
+    @UpdateTimestamp 
     private LocalDateTime updatedAt;
 
     private LocalDate submissionDate;
@@ -122,4 +128,9 @@ public class Application {
     @OneToMany(mappedBy = "application", cascade = CascadeType.ALL)
     @Builder.Default
     private List<Document> documents = new ArrayList<>();
+
+    // Öğrenciye daha önce düzeltme hakkı verilip verilmediğini tutar
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean revisionRequestedBefore = false;
 }

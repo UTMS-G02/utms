@@ -26,11 +26,11 @@ import java.time.LocalDateTime;
 public class ApplicationResponse {
 
     private Integer id;
-    private Integer studentId;
+    //private Integer studentId;
     private ApplicationStatus status;
     private String academicYear;
     private String targetFaculty;
-    private String targetDept;
+    private String targetDepartment;
 
     // ÖİDB İnceleme Detayları
     private Boolean oidbApproved;

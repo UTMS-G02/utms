@@ -31,13 +31,16 @@ import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/documents")
+@RequestMapping("/api")
 public class DocumentController {
 
     private final DocumentService documentService;
 
+    // POST /api/applications/{id}/documents
+
     @PreAuthorize("hasRole('STUDENT')")
-    @PostMapping(value = "/applications/{applicationId}", consumes = "multipart/form-data")
+    // consumes = "multipart/form-data" yazmak doğrudur ancak Spring'in kendi sabitini (MediaType) kullanmak daha profesyoneldir.
+    @PostMapping(value = "/applications/{applicationId}/documents", consumes = "multipart/form-data") //MediaType.MULTIPART_FORM_DATA_VALUE da kullanlabilirmiş ?!
     public ResponseEntity<Map<String, Object>> uploadDocument(
             @PathVariable Integer applicationId,
             @RequestParam("file") MultipartFile file,
@@ -48,14 +51,14 @@ public class DocumentController {
     }
 
     @PreAuthorize("hasAnyRole('STUDENT', 'OIDB', 'YDYO', 'FACULTY', 'DEAN')")
-    @GetMapping("/{documentId}")
+    @GetMapping("/documents/{documentId}")
     public ResponseEntity<Map<String, Object>> getDocumentById(@PathVariable Integer documentId) {
         Document document = documentService.getDocumentById(documentId);
         return ResponseEntity.ok(toResponse(document));
     }
 
     @PreAuthorize("hasAnyRole('STUDENT', 'OIDB', 'YDYO', 'FACULTY', 'DEAN')")
-    @GetMapping("/applications/{applicationId}")
+    @GetMapping("/applications/{applicationId}/documents")
     public ResponseEntity<List<Map<String, Object>>> getDocumentsByApplicationId(
             @PathVariable Integer applicationId) {
 
@@ -68,7 +71,7 @@ public class DocumentController {
     }
 
     @PreAuthorize("hasAnyRole('OIDB', 'YDYO', 'FACULTY', 'DEAN')")
-    @GetMapping
+    @GetMapping ("/documents")
     public ResponseEntity<List<Map<String, Object>>> getDocumentsByType(
             @RequestParam("documentType") String documentType) {
 
@@ -81,7 +84,7 @@ public class DocumentController {
     }
 
     @PreAuthorize("hasRole('YDYO')")
-    @PatchMapping("/{documentId}/ydyo-approval")
+    @PatchMapping("/documents/{documentId}/ydyo-approval")
     public ResponseEntity<Map<String, Object>> approveByYdyo(
             @PathVariable Integer documentId,
             @RequestParam boolean approved) {
@@ -91,7 +94,7 @@ public class DocumentController {
     }
 
     @PreAuthorize("hasRole('STUDENT')")
-    @DeleteMapping("/{documentId}")
+    @DeleteMapping("/documents/{documentId}")
     public ResponseEntity<String> deactivateDocument(@PathVariable Integer documentId) {
         documentService.deactivateDocument(documentId);
         return ResponseEntity.ok("Belge pasife alindi.");
