@@ -20,6 +20,7 @@ import jakarta.persistence.EntityNotFoundException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 
@@ -47,6 +48,7 @@ import java.io.IOException;
 public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
+    private final ApplicationPeriodRepository applicationPeriodRepository;
 
     private final StudentRepository studentRepository; // EKLENDİ
     private final YoksisIntegrationService yoksisIntegrationService; // EKLENDİ
@@ -74,9 +76,9 @@ public class ApplicationService {
         }
 
         // 2. Diğer geçerlilik kontrolleri // gerekli miiii?
-        if (!Boolean.TRUE.equals(req.getKvkkAccepted())) {
-            throw new IllegalArgumentException("KVKK onayı zorunludur.");
-        }
+        //if (!Boolean.TRUE.equals(req.getKvkkAccepted())) {
+            //throw new IllegalArgumentException("KVKK onayı zorunludur.");
+        //}
 
         // 3. Dış Sistem Entegrasyonu: YÖKSİS'ten akademik verileri çek
         YoksisStudentResponse yoksisData = yoksisIntegrationService.fetchAcademicDataByTckn(currentStudent.getTckn());
@@ -127,36 +129,73 @@ public class ApplicationService {
         return toResponse(app);
     }
 
+    // --- DIŞARIYA AÇIK TEK METOT (DISPATCHER) ---
     @Transactional
-    public ApplicationResponse processOidbReview(Integer applicationId, OidbReviewRequest req) {
-         
-        Application app = applicationRepository.findByApplicationId(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException("Application not found"));
+    public ApplicationResponse processDynamicOidbReview(Integer applicationId, OidbReviewRequest req) {
+        Application app = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException("Başvuru bulunamadı."));
 
-        app.setStatus(req.isApproved() ? ApplicationStatus.YDYO_REVIEW : ApplicationStatus.OIDB_REJECTED);
+        // Başvurunun o anki statüsüne göre doğru iş akışına yönlendir (Dynamic Routing)
+        switch (app.getStatus()) {
+            case SUBMITTED:
+            case REVISION_REQUESTED:
+                return processOidbReviewAfterSubmission(app, req);
 
+            case YDYO_ACCEPTED:
+            case YDYO_REJECTED:
+                // 2. aşamada req içindeki 'approved' alanı true ise Dekanlığa ilet, false ise Reddet
+                boolean forwardToDean = Boolean.TRUE.equals(req.isApproved());
+                return processOidbPostYdyoReview(app, forwardToDean, req);
+
+            default:
+                throw new IllegalStateException("Başvuru şu an OİDB'nin işlem yapabileceği bir statüde değil. Güncel Statü: " + app.getStatus());
+        }
+    }
+
+    // --------------------------------------------------------
+    // GİZLİ (PRIVATE) İŞ AKIŞI METOTLARI
+    // --------------------------------------------------------
+
+    // AŞAMA 1: İlk Evrak Kontrolü
+    private ApplicationResponse processOidbReviewAfterSubmission(Application app, OidbReviewRequest req) {
         if (req.isRequestRevision()) {
             if (app.isRevisionRequestedBefore()) {
-                throw new IllegalStateException("Öğrenciye zaten bir kez düzeltme hakkı tanınmış. Başvuruyu ya onaylamalı ya da reddetmelisiniz.");
+                throw new IllegalStateException("Öğrenciye zaten bir kez düzeltme hakkı tanınmış.");
             }
             app.setStatus(ApplicationStatus.REVISION_REQUESTED);
             app.setRevisionRequestedBefore(true);
         } else if (Boolean.TRUE.equals(req.isApproved())) {
-            // Eğer memur her şeyi onayladıysa YDYO'ya gider
-            app.setStatus(ApplicationStatus.YDYO_REVIEW);
+            app.setStatus(ApplicationStatus.YDYO_REVIEW); 
         } else {
-            // Tamamen reddedildiyse
-            app.setStatus(ApplicationStatus.OIDB_REJECTED);
+            app.setStatus(ApplicationStatus.OIDB_REJECTED); 
         }
-        
+
         app.setOidbApproved(req.isApproved());
         app.setOidbNotes(req.getNotes());
-        app.setOidbReviewedBy(req.getReviewer()); // bu kısım kontrol edilsin !!!
+        app.setOidbReviewedBy(req.getReviewer());
         app.setOidbReviewedDate(LocalDateTime.now());
 
-        app = applicationRepository.save(app);
-        return toResponse(app);
+        return toResponse(applicationRepository.save(app));
     }
+
+    // AŞAMA 2: YDYO Sonrası Karar
+    private ApplicationResponse processOidbPostYdyoReview(Application app, boolean forwardToDean, OidbReviewRequest req) {
+        if (forwardToDean && app.getStatus() == ApplicationStatus.YDYO_ACCEPTED) {
+            app.setStatus(ApplicationStatus.DEAN_OFFICE_REVIEW); 
+        } else {
+            app.setStatus(ApplicationStatus.REJECTED); 
+        }
+        
+        // Memur bu aşamada da not eklemek isteyebilir
+
+        app.setOidbApproved(req.isApproved());
+        app.setOidbNotes(req.getNotes());
+        app.setOidbReviewedBy(req.getReviewer());
+        app.setOidbReviewedDate(LocalDateTime.now());
+
+        return toResponse(applicationRepository.save(app));
+    }
+
 
     @Transactional
     public ApplicationResponse processYdyoReview(Integer applicationId, YdyoReviewRequest req) {
@@ -237,10 +276,6 @@ public class ApplicationService {
                 .anyMatch(a -> a.getAuthority().equals("ROLE_STUDENT") || a.getAuthority().equals("STUDENT"));
 
         // Güvenlik: Öğrenci sadece kendi başvurusunu görebilir. String.valueOf() ile tip uyuşmazlığını önlüyoruz.
-        //if (isStudent && !String.valueOf(app.getStudentId()).equals(currentUsername)) {
-            //throw new AccessDeniedException("Bu başvuruyu görüntüleme yetkiniz bulunmuyor.");
-        //}
-
         if (isStudent) {
             verifyOwnership(app);
         }
@@ -276,15 +311,20 @@ public class ApplicationService {
 
 
     // --- ZAMAN KONTROLÜ İÇİN YARDIMCI METOT ---
-    // entitye class eklenecek mi ? applicationPeriod diye ?
     private boolean isApplicationPeriodActive() {
-        // TODO: Projendeki takvim yapısına göre burayı güncellemelisin.
-        // Örnek Senaryo:
-        // AcademicCalendar calendar = calendarRepository.findActiveTerm();
-        // LocalDateTime now = LocalDateTime.now();
-        // return now.isAfter(calendar.getStartDate()) && now.isBefore(calendar.getEndDate());
-        
-        return true; // Şimdilik testlerin geçmesi için true dönüyoruz.
+        // Veritabanından "aktif" olarak işaretlenmiş başvuru dönemini çek
+        Optional<ApplicationPeriod> activePeriodOpt = applicationPeriodRepository.findByActiveTrue();
+
+        // Eğer veritabanında aktif bir dönem tanımlanmamışsa, kimse işlem yapamaz (false döner)
+        if (activePeriodOpt.isEmpty()) {
+            return false;
+        }
+
+        ApplicationPeriod currentPeriod = activePeriodOpt.get();
+        LocalDateTime now = LocalDateTime.now();
+
+        // Şu anki zaman, başlangıç tarihinden SONRA ve bitiş tarihinden ÖNCE ise true döner
+        return !now.isBefore(currentPeriod.getStartDate()) && !now.isAfter(currentPeriod.getEndDate());
     }
 
     // --- HELPER METHODS ---
@@ -306,7 +346,7 @@ public class ApplicationService {
     private ApplicationResponse toResponse(Application app) {
         ApplicationResponse response = new ApplicationResponse();
         response.setId(app.getApplicationId());
-        response.setStudentId(app.getStudent().getUserId()); //
+        //response.setStudentId(app.getStudent().getUserId()); //
         response.setStatus(app.getStatus());
         response.setAcademicYear(app.getAcademicYear());
         response.setTargetDepartment(app.getTargetDepartment());

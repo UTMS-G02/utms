@@ -96,7 +96,7 @@ public class ApplicationController {
     @PreAuthorize("hasRole('OIDB')")
     @PatchMapping("/{id}/oidb-review")
     public ResponseEntity<ApplicationResponse> reviewByOidb(@PathVariable Integer id, @RequestBody OidbReviewRequest req) {
-        ApplicationResponse response = applicationService.processOidbReview(id, req);
+        ApplicationResponse response = applicationService.processDynamicOidbReview(id, req);
         return ResponseEntity.ok(response);
     }
 

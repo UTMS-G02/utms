@@ -6,8 +6,6 @@ import jakarta.validation.constraints.Positive;
 
 import lombok.*;
 
-
-
 /*
 // ApplicationCreateRequest.java
 // Öğrenci başvuru oluştururken gönderdiği JSON paketinin şablonu.
@@ -18,11 +16,10 @@ import lombok.*;
 // - getter/setterlar olmayacak diye anladım ama emin değilim
 */
 
-
 @Data
 @Builder
-@Setter // olmalı mı
-@Getter // olmalı mı
+@Setter 
+@Getter 
 @NoArgsConstructor
 @AllArgsConstructor
 public class ApplicationCreateRequest {
@@ -30,8 +27,8 @@ public class ApplicationCreateRequest {
     // studentId'yi güvenlik için JWT/SecurityContext üzerinden almanı tavsiye ederim.
     // Eğer zorunluysa burada kalabilir ama manipülasyona açıktır.
 
-    @NotBlank(message = "Öğrenci numarası boş bırakılamaz.")
-    private String studentId;
+    //@NotBlank(message = "Öğrenci numarası boş bırakılamaz.")
+    //private String studentId;
 
     @NotBlank(message = "Akademik yıl boş bırakılamaz (Örn: 2026-2027).")
     private String academicYear;
@@ -42,8 +39,8 @@ public class ApplicationCreateRequest {
     @NotBlank(message = "Hedef bölüm boş bırakılamaz.")
     private String targetDepartment;
 
-    @NotNull(message = "KVKK onayı zorunludur.")
-    private Boolean kvkkAccepted;
+    //@NotNull(message = "KVKK onayı zorunludur.")
+    //private Boolean kvkkAccepted;
     
     @NotNull(message = "SAY YKS puanı boş bırakılamaz.")
     @Positive(message = "Geçerli bir YKS puanı giriniz.")
