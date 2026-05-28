@@ -6,6 +6,19 @@ import jakarta.validation.constraints.Positive;
 
 import lombok.*;
 
+
+
+/*
+// ApplicationCreateRequest.java
+// Öğrenci başvuru oluştururken gönderdiği JSON paketinin şablonu.
+
+// - Örn: targetDepartment, targetFaculty alanlarını taşır
+// - Controller bu nesneyi @RequestBody ile doğrudan JSON'dan oluşturur
+// - Sadece veri taşır — içinde kod yok, iş kuralı yok
+// - getter/setterlar olmayacak diye anladım ama emin değilim
+*/
+
+
 @Data
 @Builder
 @Setter // olmalı mı

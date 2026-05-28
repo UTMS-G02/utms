@@ -5,6 +5,18 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 
+
+/*
+// ApplicationResponse.java
+// Başvuru bilgisi dışarıya gönderilirken kullanılan paket.
+
+// - Application entity'sinin doğrudan dışarıya verilmesi güvenli değil (hassas alanlar olabilir)
+// - Bu DTO sadece frontend'in görmesi gereken alanları içerir
+// - Service, entity'yi bu nesneye dönüştürür
+// - 
+*/
+
+
 @Data
 @Builder
 @Setter

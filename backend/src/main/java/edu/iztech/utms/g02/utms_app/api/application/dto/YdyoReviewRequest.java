@@ -8,6 +8,20 @@ import lombok.NoArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
+
+
+
+/*
+// YdyoReviewRequest.java
+// YDYO personelinin dil sınavı kararını gönderdiği paket.
+
+// - isApproved: boolean — öğrenci dil şartını sağladı mı?
+// - True → EVALUATION_QUEUE (Pair 3'e devir)
+// - False → YDYO_REJECTED (süreç biter)
+// - 
+*/
+
+
 @Data
 @Builder
 @Setter

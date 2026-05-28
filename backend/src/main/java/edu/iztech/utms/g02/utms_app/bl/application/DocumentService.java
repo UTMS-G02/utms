@@ -22,6 +22,20 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.util.List;
 
+
+
+
+/*
+// DocumentService.java
+// Belge yükleme sürecini yönetir.
+
+// - Gelen dosyayı uploads/ klasörüne fiziksel olarak kaydeder
+// - Dosyanın adını ve yolunu Document entity'sine yazar
+// - Entity'yi DocumentRepository aracılığıyla veritabanına kaydeder
+// - Dosyanın kendisi DB'ye gitmez — sadece yolu (file path) gider
+*/
+
+
 @Service
 @RequiredArgsConstructor
 public class DocumentService {

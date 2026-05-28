@@ -28,6 +28,21 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 
+
+
+
+/*
+// ApplicationService.java
+// Tüm iş kurallarının yaşadığı yer. En kritik class.
+
+// - create(): Yeni başvuru oluşturur, durumu DRAFT yapar, veritabanına kaydeder
+// - submit(): DRAFT kontrolü yapar → SUBMITTED yapar (DRAFT değilse hata fırlatır)
+// - processOidbReview(): ÖİDB kararına göre → YDYO_REVIEW veya OIDB_REJECTED
+// - processYdyoReview(): YDYO kararına göre → EVALUATION_QUEUE veya YDYO_REJECTED
+// - Her metod: Repository'den veriyi çeker → iş kuralını uygular → kaydeder → Response döner
+*/
+
+
 @Service
 @RequiredArgsConstructor
 public class ApplicationService {

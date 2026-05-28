@@ -9,15 +9,26 @@ import org.springframework.http.HttpStatus; //eklendi
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;      //yetkilendirme
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;                
+import org.springframework.web.multipart.MultipartFile;  
+import java.util.List;
+
 /*
 // HTTP üzerinden dosya (PDF, JPG, PNG vb.) gönderilirken bu dosyalar bayt (byte) akışları halinde gelir. 
 // Spring Boot, bu karmaşık akışı senin için alıp kullanımı çok kolay olan MultipartFile nesnesine dönüştürür. 
 // file.getOriginalFilename(), file.getSize() gibi metotlarla dosyayı rahatça işlemeni sağlayan standart Spring arayüzüdür.
  */
 
+/*
+// ApplicationController.java
+// HTTP isteklerini karşılayan kapı.
 
-import java.util.List;
+// - Tarayıcıdan ya da frontend'den gelen HTTP isteğini yakalar
+// - URL'deki parametreleri (@PathVariable) ve JSON gövdesini (@RequestBody) okur
+// - Bunları ApplicationService'e iletir
+// - Servisten dönen sonucu HTTP yanıtına (200, 403, 400 vb.) dönüştürür
+// - Kendi başına hiçbir iş kuralı uygulamaz — sadece "paketçi" gibi çalışır
+*/
+
 
 @RestController
 @RequiredArgsConstructor
