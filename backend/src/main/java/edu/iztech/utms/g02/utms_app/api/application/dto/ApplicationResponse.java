@@ -30,7 +30,7 @@ public class ApplicationResponse {
     private ApplicationStatus status;
     private String academicYear;
     private String targetFaculty;
-    private String targetDept;
+    private String targetDepartment;
 
     // ÖİDB İnceleme Detayları
     private Boolean oidbApproved;

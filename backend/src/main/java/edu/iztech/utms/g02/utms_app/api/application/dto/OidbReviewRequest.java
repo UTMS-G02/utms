@@ -1,5 +1,6 @@
 package edu.iztech.utms.g02.utms_app.api.application.dto;
 
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,12 +31,16 @@ import lombok.Setter;
 public class OidbReviewRequest {
 
     @NotNull(message = "Onay durumu (true/false) belirtilmelidir.")
-    private boolean approved;
+    private boolean isApproved;
 
     private String notes; // Red veya onay sebebi (İsteğe bağlı veya reddedildiyse zorunlu yapılabilir)
-    
 
+    private boolean requestRevision; // YENİ: Eğer memur düzeltme istiyorsa burası true gelir
+    
     // TODO: Long kısımları kontrol edilecek.
 
     private Long reviewerId; // İnceleyen personelin ID'si (Eğer token üzerinden alacaksanız bu alana gerek kalmaz)
+
+    //Bu kalmalı mı ? 
+    private Staff reviewer; // İnceleyen personelin bilgileri (Eğer token üzerinden alacaksanız bu alana gerek kalmaz)
 }

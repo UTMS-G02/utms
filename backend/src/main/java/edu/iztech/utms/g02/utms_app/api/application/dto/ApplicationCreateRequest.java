@@ -40,7 +40,7 @@ public class ApplicationCreateRequest {
     private String targetFaculty;
 
     @NotBlank(message = "Hedef bölüm boş bırakılamaz.")
-    private String targetDept;
+    private String targetDepartment;
 
     @NotNull(message = "KVKK onayı zorunludur.")
     private Boolean kvkkAccepted;

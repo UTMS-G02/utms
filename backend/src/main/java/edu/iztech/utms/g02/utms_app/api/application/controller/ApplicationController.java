@@ -8,8 +8,7 @@ import org.springframework.http.HttpStatus; //eklendi
 //import org.springframework.http.MediaType; //eklendi
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;      //yetkilendirme
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;  
+import org.springframework.web.bind.annotation.*; 
 import java.util.List;
 
 /*
@@ -111,15 +110,15 @@ public class ApplicationController {
     }
 
 
-    @PreAuthorize("hasRole('STUDENT')")
-    // consumes = "multipart/form-data" yazmak doğrudur ancak Spring'in kendi sabitini (MediaType) kullanmak daha profesyoneldir.
-    @PostMapping(value = "/{id}/documents", consumes = "multipart/form-data")  //MediaType.MULTIPART_FORM_DATA_VALUE da kullanlabilirmiş ?!
-    public ResponseEntity<String> uploadDocument(
-            @PathVariable Integer id, 
-            @RequestParam("file") MultipartFile file) {
-        
-        applicationService.uploadDocument(id, file); //!!!! bu method incelenecek ve endpoint incelenip düzeltilecek 
-        return ResponseEntity.ok("Belge başarıyla yüklendi.");
+    /*
+    /   PATCH /api/applications/{id}/withdraw
+    */
+
+    @PreAuthorize("hasRole('STUDENT')") 
+    @PatchMapping("/{id}/withdraw")
+    public ResponseEntity<ApplicationResponse> withdrawApplication(@PathVariable Integer id) {
+        ApplicationResponse response = applicationService.withdrawApplication(id);
+        return ResponseEntity.ok(response);
     }
 
 }
