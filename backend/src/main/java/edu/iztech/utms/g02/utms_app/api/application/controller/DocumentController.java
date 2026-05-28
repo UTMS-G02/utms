@@ -19,6 +19,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+
+/*
+// DocumentController.java
+// Dosya yükleme isteklerini karşılar.
+
+// - Öğrencinin yüklediği PDF dosyasını (multipart/form-data) alır
+// - DocumentService'e iletir
+// - Başarı/hata durumunu HTTP yanıtına çevirir
+*/
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/documents")

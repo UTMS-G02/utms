@@ -8,6 +8,19 @@ import lombok.NoArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
+
+
+/*
+// OidbReviewRequest.java
+// ÖİDB personeli inceleme kararını gönderirken kullandığı paket.
+
+// - isApproved: boolean — onaylı mı, reddedildi mi?
+// - notes: String — ÖİDB'nin notu
+// - Rehberdeki processOidbReview() metodu bunu alır ve durumu değiştirir
+// - 
+*/
+
+
 @Data
 @Builder
 @Setter
