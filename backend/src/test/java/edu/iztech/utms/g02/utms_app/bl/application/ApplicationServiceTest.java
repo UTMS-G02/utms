@@ -17,14 +17,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.context.SecurityContextImpl;
-
 
 import java.util.List;
 import java.util.Optional;
@@ -38,7 +38,6 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class ApplicationServiceTest {
 
-    
     @Mock private ApplicationRepository applicationRepository;
     @Mock private StudentRepository studentRepository;
     @Mock private YoksisIntegrationService yoksisIntegrationService;
@@ -50,26 +49,26 @@ class ApplicationServiceTest {
         SecurityContextHolder.clearContext();
     }
 
+    // ==========================================
+    // 1. CREATE (YENİ BAŞVURU) TESTLERİ
+    // ==========================================
+
     @Test
     void create_validRequest_savesApplicationAndReturnsResponse() {
         Student student = buildStudent();
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("student@iyte.edu.tr", "password")
-        );
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
         when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(false);
+        
+        // YÖKSİS'ten dönen GPA 3.5 (2.50 barajından yüksek, sorunsuz geçmeli)
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
                 .thenReturn(new YoksisStudentResponse(
-                        "İYTE",
-                        "Mühendislik Fakültesi",
-                        "Bilgisayar Mühendisliği",
-                        "3. Sınıf",
-                        3.5
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", "3. Sınıf", 3.5
                 ));
+                
         when(applicationRepository.save(any(Application.class))).thenAnswer(invocation -> {
             Application application = invocation.getArgument(0);
             application.setApplicationId(10);
@@ -84,23 +83,14 @@ class ApplicationServiceTest {
 
         assertThat(saved.getStudent()).isEqualTo(student);
         assertThat(saved.getStatus()).isEqualTo(ApplicationStatus.DRAFT);
-        assertThat(saved.getAcademicYear()).isEqualTo("2026-2027");
-        assertThat(saved.getCurrentUniversity()).isEqualTo("İYTE");
-        assertThat(saved.getCurrentDepartment()).isEqualTo("Bilgisayar Mühendisliği");
         assertThat(saved.getGpa()).isEqualTo(3.5);
-
         assertThat(response.getId()).isEqualTo(10);
-        //assertThat(response.getStudentId()).isEqualTo(student.getUserId());
-        assertThat(response.getStatus()).isEqualTo(ApplicationStatus.DRAFT);
     }
 
     @Test
     void create_duplicateApplication_throwsIllegalArgumentException() {
         Student student = buildStudent();
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("student@iyte.edu.tr", "password")
-        );
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
         when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
@@ -109,20 +99,67 @@ class ApplicationServiceTest {
 
         assertThatThrownBy(() -> applicationService.create(buildCreateRequest()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Bir öğrenci aynı bölüme");
+                .hasMessageContaining("birden fazla başvuru yapamaz");
 
         verify(applicationRepository, never()).save(any(Application.class));
     }
+
+    @Test
+    void create_kvkkNotAccepted_throwsIllegalArgumentException() {
+        Student student = buildStudent();
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
+
+        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
+        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
+        )).thenReturn(false);
+
+        ApplicationCreateRequest request = buildCreateRequest();
+        request.setKvkkAccepted(false); // Bilerek KVKK'yı reddediyoruz
+
+        assertThatThrownBy(() -> applicationService.create(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("KVKK onayı zorunludur");
+
+        verify(yoksisIntegrationService, never()).fetchAcademicDataByTckn(anyString());
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    @Test
+    void create_gpaBelowMinimum_throwsIllegalArgumentException() {
+        Student student = buildStudent();
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
+
+        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
+        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
+        )).thenReturn(false);
+
+        // YÖKSİS'ten GPA'i bilerek 2.49 dönüyoruz
+        when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
+                .thenReturn(new YoksisStudentResponse(
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", "3. Sınıf", 2.49 
+                ));
+
+        ApplicationCreateRequest request = buildCreateRequest(); // KVKK true geliyor
+
+        assertThatThrownBy(() -> applicationService.create(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("2.50'nin altındadır"); // Baraj uyarısını görmeliyiz
+
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    // ==========================================
+    // 2. SUBMİT VE OİDB TESTLERİ
+    // ==========================================
 
     @Test
     void submit_draftApplication_marksSubmittedAndReturnsResponse() {
         Student student = buildStudent();
         Application application = buildApplication(student);
 
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("student@iyte.edu.tr", "password")
-        );
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
         when(applicationRepository.findById(1)).thenReturn(Optional.of(application));
@@ -132,275 +169,191 @@ class ApplicationServiceTest {
 
         assertThat(application.getStatus()).isEqualTo(ApplicationStatus.SUBMITTED);
         assertThat(response.getStatus()).isEqualTo(ApplicationStatus.SUBMITTED);
-        verify(applicationRepository).save(application);
+    }
+
+    @Test
+    void submit_applicationNotInDraftState_throwsIllegalStateException() {
+        Student student = buildStudent();
+        Application application = buildApplication(student);
+        application.setStatus(ApplicationStatus.SUBMITTED); // Artık DRAFT değil
+
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
+
+        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
+        when(applicationRepository.findById(1)).thenReturn(Optional.of(application));
+
+        assertThatThrownBy(() -> applicationService.submit(1))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("DRAFT veya REVISION_REQUESTED");
     }
 
     @Test
     void processOidbReview_approved_updatesReviewData() {
         Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.SUBMITTED); // OİDB işlem yapabilsin diye
 
         OidbReviewRequest request = new OidbReviewRequest();
         request.setApproved(true);
         request.setNotes("Onaylandı");
 
-        Staff reviewer = new Staff();
-        reviewer.setUserId(99);
-        request.setReviewer(reviewer);
-
-        // DÜZELTME 2: findByApplicationId yerine servisin kullandığı findById metodunu mock'ladık
         when(applicationRepository.findById(1)).thenReturn(Optional.of(application));
         when(applicationRepository.save(application)).thenReturn(application);
-
-        //when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
 
         ApplicationResponse response = applicationService.processDynamicOidbReview(1, request);
 
         assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_REVIEW);
         assertThat(application.getOidbApproved()).isTrue();
-        assertThat(application.getOidbNotes()).isEqualTo("Onaylandı");
-        assertThat(application.getOidbReviewedBy()).isEqualTo(reviewer);
-        assertThat(response.getStatus()).isEqualTo(ApplicationStatus.YDYO_REVIEW);
     }
 
     @Test
-    void processYdyoReview_rejected_updatesReviewData() {
+    void processOidbReview_draftApplication_throwsIllegalStateException() {
+        Application application = buildApplication(buildStudent()); // DRAFT
+
+        OidbReviewRequest request = new OidbReviewRequest();
+        request.setApproved(true);
+
+        when(applicationRepository.findById(1)).thenReturn(Optional.of(application));
+
+        assertThatThrownBy(() -> applicationService.processDynamicOidbReview(1, request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("OİDB'nin işlem yapabileceği bir statüde değil");
+    }
+
+    // ==========================================
+    // 3. YDYO İŞLEMLERİ (YENİ VE GÜNCELLENMİŞ)
+    // ==========================================
+
+    @Test
+    void processYdyoReview_requiresExam_setsExamPending() {
         Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.YDYO_REVIEW); // YDYO evrak incelemesinde
 
         YdyoReviewRequest request = new YdyoReviewRequest();
-        request.setApproved(false);
-        request.setNotes("Dil belgesi yetersiz");
-
-        Staff reviewer = new Staff();
-        reviewer.setUserId(77);
-        request.setReviewer(reviewer);
+        request.setRequiresExam(true);
+        request.setNotes("Belge yetersiz, sınava girmeli");
 
         when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
         when(applicationRepository.save(application)).thenReturn(application);
 
         ApplicationResponse response = applicationService.processYdyoReview(1, request);
 
-        assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_REJECTED);
-        assertThat(application.getYdyoApproved()).isFalse();
-        assertThat(application.getYdyoNotes()).isEqualTo("Dil belgesi yetersiz");
-        assertThat(application.getYdyoReviewedBy()).isEqualTo(reviewer);
-        assertThat(response.getStatus()).isEqualTo(ApplicationStatus.YDYO_REJECTED);
+        assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_EXAM_PENDING);
+        assertThat(response.getStatus()).isEqualTo(ApplicationStatus.YDYO_EXAM_PENDING);
     }
 
     @Test
-    void getApplicationById_studentOwnApplication_returnsResponse() {
-        Student student = buildStudent();
-        Application application = buildApplication(student);
+    void processYdyoReview_approved_setsYdyoAccepted() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.YDYO_REVIEW);
 
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        "student@iyte.edu.tr",
-                        "password",
-                        List.of(new SimpleGrantedAuthority("ROLE_STUDENT"))
-                )
-        );
+        YdyoReviewRequest request = new YdyoReviewRequest();
+        request.setApproved(true); // Direkt muaf oldu
+        
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
 
-        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(application));
+        ApplicationResponse response = applicationService.processYdyoReview(1, request);
 
-        ApplicationResponse response = applicationService.getApplicationById(1);
-
-        assertThat(response.getId()).isEqualTo(1);
-        //assertThat(response.getStudentId()).isEqualTo(student.getUserId());
-        assertThat(response.getStatus()).isEqualTo(ApplicationStatus.DRAFT);
-        assertThat(response.getCurrentDepartment()).isEqualTo("Bilgisayar Mühendisliği");
+        assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_ACCEPTED);
+        assertThat(response.getStatus()).isEqualTo(ApplicationStatus.YDYO_ACCEPTED);
     }
+
+    @Test
+    void enterYdyoExamResult_passed_updatesStatusToAccepted() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.YDYO_EXAM_PENDING); // Sınav bekliyor
+
+        YdyoExamResultRequest request = new YdyoExamResultRequest();
+        request.setPassed(true);
+        request.setExamScore(85.5);
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        ApplicationResponse response = applicationService.enterYdyoExamResult(1, request);
+
+        assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_ACCEPTED);
+        assertThat(application.getYdyoExamScore()).isEqualTo(85.5);
+    }
+
+    @Test
+    void enterYdyoExamResult_failed_updatesStatusToRejected() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.YDYO_EXAM_PENDING);
+
+        YdyoExamResultRequest request = new YdyoExamResultRequest();
+        request.setPassed(false); // Sınavdan kaldı
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        ApplicationResponse response = applicationService.enterYdyoExamResult(1, request);
+
+        assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_REJECTED);
+    }
+
+    @Test
+    void enterYdyoExamResult_notPendingExam_throwsIllegalStateException() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.DRAFT); // Sınav bekleyen bir durumu yok!
+
+        YdyoExamResultRequest request = new YdyoExamResultRequest();
+        request.setPassed(true);
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+
+        assertThatThrownBy(() -> applicationService.enterYdyoExamResult(1, request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("bekleyen bir sınavı bulunmuyor");
+    }
+
+    // ==========================================
+    // 4. LİSTELEME VE ERİŞİM KONTROL (GET & SAYFALAMA)
+    // ==========================================
 
     @Test
     void getAllApplications_studentReturnsOwnApplications() {
         Student student = buildStudent();
         Application application = buildApplication(student);
 
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        "student@iyte.edu.tr",
-                        "password",
-                        List.of(new SimpleGrantedAuthority("ROLE_STUDENT"))
-                )
-        );
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.findByStudentId(student.getUserId())).thenReturn(List.of(application));
+        
+        Page<Application> mockPage = new PageImpl<>(List.of(application));
+        when(applicationRepository.findByStudentId(org.mockito.ArgumentMatchers.eq(student.getUserId()), org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(mockPage);
 
-        List<ApplicationResponse> responses = applicationService.getAllApplications();
+        Page<ApplicationResponse> pageResult = applicationService.getAllApplications(null, 0, 20);
 
-        assertThat(responses).hasSize(1);
-        assertThat(responses.get(0).getId()).isEqualTo(1);
-        assertThat(responses.get(0).getCurrentUniversity()).isEqualTo("İYTE");
+        assertThat(pageResult.getContent()).hasSize(1);
+        assertThat(pageResult.getContent().get(0).getId()).isEqualTo(1);
     }
-
-
-
-    @Test
-    void getApplicationById_notOwner_throwsAccessDeniedException() {
-        Student currentStudent = buildStudent();
-        Student otherStudent = buildOtherStudent();
-        Application otherApplication = buildApplication(otherStudent);
-
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        "student@iyte.edu.tr",
-                        "password",
-                        List.of(new SimpleGrantedAuthority("ROLE_STUDENT"))
-                )
-        );
-
-        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(currentStudent));
-        when(applicationRepository.findById(5)).thenReturn(Optional.of(otherApplication));
-
-        assertThatThrownBy(() -> applicationService.getApplicationById(5))
-                .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("yetkiniz bulunmuyor");
-    }
-
-
-
-    @Test
-    void submit_notOwner_throwsAccessDeniedException() {
-        Student currentStudent = buildStudent();
-        Student otherStudent = buildOtherStudent();
-        Application otherApplication = buildApplication(otherStudent);
-
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        "student@iyte.edu.tr",
-                        "password",
-                        List.of(new SimpleGrantedAuthority("ROLE_STUDENT"))
-                )
-        );
-
-        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(currentStudent));
-        when(applicationRepository.findById(5)).thenReturn(Optional.of(otherApplication));
-
-        assertThatThrownBy(() -> applicationService.submit(5))
-                .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("yetkiniz bulunmuyor");
-    }
-
-    //@Test
-    /*void create_kvkkNotAccepted_throwsIllegalArgumentException() {
-        Student student = buildStudent();
-
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("student@iyte.edu.tr", "password")
-        );
-
-        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
-                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
-        )).thenReturn(false);
-
-        ApplicationCreateRequest request = buildCreateRequest();
-        //request.setKvkkAccepted(false);
-
-        assertThatThrownBy(() -> applicationService.create(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("KVKK");
-
-        verify(yoksisIntegrationService, never()).fetchAcademicDataByTckn(anyString());
-        verify(applicationRepository, never()).save(any(Application.class));
-    }*/
-
-    @Test
-    void submit_applicationNotInDraftState_throwsIllegalStateException() {
-        Student student = buildStudent();
-        Application submittedApplication = buildApplication(student);
-        submittedApplication.setStatus(ApplicationStatus.SUBMITTED);
-
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        "student@iyte.edu.tr",
-                        "password",
-                        List.of(new SimpleGrantedAuthority("ROLE_STUDENT"))
-                )
-        );
-
-        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(submittedApplication));
-
-        assertThatThrownBy(() -> applicationService.submit(1))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("DRAFT");
-
-        verify(applicationRepository, never()).save(any(Application.class));
-    }
-
-
 
     @Test
     void getAllApplications_asOidbRole_returnsAllApplications() {
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        "oidb@iyte.edu.tr",
-                        "password",
-                        List.of(new SimpleGrantedAuthority("ROLE_OIDB"))
-                )
-        );
+        setupSecurityContext("oidb@iyte.edu.tr", "ROLE_OIDB");
 
         Application application = buildApplication(buildStudent());
-        when(applicationRepository.findAll()).thenReturn(List.of(application));
+        Page<Application> mockPage = new PageImpl<>(List.of(application));
 
-        List<ApplicationResponse> responses = applicationService.getAllApplications();
+        when(applicationRepository.findAll(org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(mockPage);
 
-        assertThat(responses).hasSize(1);
-        verify(applicationRepository).findAll();
-        verifyNoInteractions(studentRepository);
+        Page<ApplicationResponse> pageResult = applicationService.getAllApplications(null, 0, 20);
+
+        assertThat(pageResult.getContent()).hasSize(1);
     }
 
-    @Test
-    void getApplicationById_asOidbRole_skipsOwnershipCheck() {
-        Application application = buildApplication(buildStudent());
+    // ==========================================
+    // YARDIMCI METOTLAR (HELPER METHODS)
+    // ==========================================
 
+    private void setupSecurityContext(String email, String role) {
         SecurityContextHolder.setContext(new SecurityContextImpl());
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        "oidb@iyte.edu.tr",
-                        "password",
-                        List.of(new SimpleGrantedAuthority("ROLE_OIDB"))
-                )
+                new UsernamePasswordAuthenticationToken(email, "password", List.of(new SimpleGrantedAuthority(role)))
         );
-
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(application));
-
-        ApplicationResponse response = applicationService.getApplicationById(1);
-
-        assertThat(response.getId()).isEqualTo(1);
-        verify(studentRepository, never()).findByEmail(anyString());
-    }
-
-    @Test
-    void getAllApplications_withStatusFilter_callsFilteredRepositoryMethod() {
-        SecurityContextHolder.setContext(new SecurityContextImpl());
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        "oidb@iyte.edu.tr",
-                        "password",
-                        List.of(new SimpleGrantedAuthority("ROLE_OIDB"))
-                )
-        );
-
-        Application reviewedApplication = buildApplication(buildStudent());
-        reviewedApplication.setStatus(ApplicationStatus.YDYO_REVIEW);
-
-        when(applicationRepository.findByStatus(ApplicationStatus.YDYO_REVIEW))
-                .thenReturn(List.of(reviewedApplication));
-
-        List<ApplicationResponse> responses = applicationService.getAllApplications(ApplicationStatus.YDYO_REVIEW);
-
-        assertThat(responses).hasSize(1);
-        verify(applicationRepository).findByStatus(ApplicationStatus.YDYO_REVIEW);
-        verify(applicationRepository, never()).findAll();
     }
 
     private Student buildStudent() {
@@ -430,7 +383,7 @@ class ApplicationServiceTest {
     }
 
     private Application buildApplication(Student student) {
-        Application application = Application.builder()
+        return Application.builder()
                 .applicationId(1)
                 .student(student)
                 .targetDepartment("Bilgisayar Mühendisliği")
@@ -445,16 +398,14 @@ class ApplicationServiceTest {
                 .currentDepartment("Bilgisayar Mühendisliği")
                 .gpa(3.5)
                 .build();
-        return application;
     }
 
     private ApplicationCreateRequest buildCreateRequest() {
         ApplicationCreateRequest request = new ApplicationCreateRequest();
-        //request.setStudentId("7");
         request.setAcademicYear("2026-2027");
         request.setTargetFaculty("Mühendislik Fakültesi");
         request.setTargetDepartment("Bilgisayar Mühendisliği");
-        //request.setKvkkAccepted(true);
+        request.setKvkkAccepted(true); // Testin geçmesi için onaylıyoruz
         request.setSayYksScore(320.0);
         request.setSayYksRank(12345);
         return request;

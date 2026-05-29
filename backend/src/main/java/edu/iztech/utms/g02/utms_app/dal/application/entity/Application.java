@@ -98,6 +98,10 @@ public class Application {
 
     private Boolean ydyoApproved;
 
+    // YDYO Sınav Notu (Opsiyonel, sadece sınava girenler için dolacak)
+    @Column(name = "ydyo_exam_score")
+    private Double ydyoExamScore;
+
     @ManyToOne
     @JoinColumn(name = "ydyo_reviewed_by")
     private Staff ydyoReviewedBy;
