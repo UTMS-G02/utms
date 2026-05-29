@@ -10,6 +10,7 @@ public enum ApplicationStatus {
     OIDB_REJECTED,           // ÖİDB reddetti
 
     YDYO_REVIEW,             // YDYO dil belgesi kontrolü yapıyor
+    YDYO_EXAM_PENDING,         // YENİ: Evrak yetersiz, sınava girecek
     YDYO_REJECTED,           // YDYO reddetti
     YDYO_ACCEPTED,           // YDYO onayladı, YGK değerlendirme sırasına alındı
 

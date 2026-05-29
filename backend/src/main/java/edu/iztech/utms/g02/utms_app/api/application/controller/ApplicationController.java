@@ -2,14 +2,15 @@ package edu.iztech.utms.g02.utms_app.api.application.controller;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.*;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
-
+import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus; //eklendi
 //import org.springframework.http.MediaType; //eklendi
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;      //yetkilendirme
 import org.springframework.web.bind.annotation.*; 
-import java.util.List;
+
+import org.springframework.data.domain.Page; //eklendi
 
 /*
 // HTTP üzerinden dosya (PDF, JPG, PNG vb.) gönderilirken bu dosyalar bayt (byte) akışları halinde gelir. 
@@ -77,10 +78,13 @@ public class ApplicationController {
 
     @PreAuthorize("hasAnyRole('STUDENT', 'OIDB', 'YDYO')") // 3 rolden biri yeterli
     @GetMapping
-    public ResponseEntity<List<ApplicationResponse>> getAllApplications() {
+    public ResponseEntity<Page<ApplicationResponse>> getAllApplications(
+            @RequestParam(required = false) ApplicationStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
         // Service katmanında, istek atan kişinin rolüne göre farklı listeler dönecek bir mantık kurulmalı
-        List<ApplicationResponse> list = applicationService.getAllApplications();
-        return ResponseEntity.ok(list);
+        Page<ApplicationResponse> pageResult = applicationService.getAllApplications(status, page, size);
+        return ResponseEntity.ok(pageResult);
     }
 
 
@@ -118,6 +122,33 @@ public class ApplicationController {
     @PatchMapping("/{id}/withdraw")
     public ResponseEntity<ApplicationResponse> withdrawApplication(@PathVariable Integer id) {
         ApplicationResponse response = applicationService.withdrawApplication(id);
+        return ResponseEntity.ok(response);
+    }
+
+
+    // --------------------------------------------------------
+    // YDYO İŞLEMLERİ
+    // --------------------------------------------------------
+
+    // YDYO 1. Aşama: İlk Evrak Kontrolü
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    @PatchMapping("/{id}/ydyo-initial-review")
+    public ResponseEntity<ApplicationResponse> reviewByYdyoInitial(
+            @PathVariable Integer id, 
+            @RequestBody YdyoReviewRequest req) {
+        
+        ApplicationResponse response = applicationService.processYdyoReview(id, req);
+        return ResponseEntity.ok(response);
+    }
+
+    // YDYO 2. Aşama: Sınav Sonucu ve Geçti/Kaldı Girişi
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    @PatchMapping("/{id}/ydyo-exam-result")
+    public ResponseEntity<ApplicationResponse> enterYdyoExamResult(
+            @PathVariable Integer id, 
+            @RequestBody YdyoExamResultRequest req) {
+        
+        ApplicationResponse response = applicationService.enterYdyoExamResult(id, req);
         return ResponseEntity.ok(response);
     }
 

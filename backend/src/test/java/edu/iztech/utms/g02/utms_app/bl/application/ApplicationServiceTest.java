@@ -17,6 +17,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Page;
 
 
 import org.springframework.security.access.AccessDeniedException;
@@ -146,6 +149,8 @@ class ApplicationServiceTest {
         Staff reviewer = new Staff();
         reviewer.setUserId(99);
         request.setReviewer(reviewer);
+        // OİDB'nin inceleyebilmesi için statüyü SUBMITTED'a çekiyoruz.
+        application.setStatus(ApplicationStatus.SUBMITTED);
 
         // DÜZELTME 2: findByApplicationId yerine servisin kullandığı findById metodunu mock'ladık
         when(applicationRepository.findById(1)).thenReturn(Optional.of(application));
@@ -160,6 +165,23 @@ class ApplicationServiceTest {
         assertThat(application.getOidbNotes()).isEqualTo("Onaylandı");
         assertThat(application.getOidbReviewedBy()).isEqualTo(reviewer);
         assertThat(response.getStatus()).isEqualTo(ApplicationStatus.YDYO_REVIEW);
+    }
+
+    @Test
+    void processOidbReview_draftApplication_throwsIllegalStateException() {
+        // 1. Arrange (Hazırlık - DRAFT statüsünde bırakıyoruz)
+        Application application = buildApplication(buildStudent()); 
+        // Bilerek SUBMITTED yapmıyoruz!
+
+        OidbReviewRequest request = new OidbReviewRequest();
+        request.setApproved(true);
+
+        when(applicationRepository.findById(1)).thenReturn(Optional.of(application));
+
+        // 2 & 3. Act & Assert (Hata fırlattığını doğrula)
+        assertThatThrownBy(() -> applicationService.processDynamicOidbReview(1, request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("OİDB'nin işlem yapabileceği bir statüde değil");
     }
 
     @Test
@@ -226,13 +248,19 @@ class ApplicationServiceTest {
         );
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.findByStudentId(student.getUserId())).thenReturn(List.of(application));
+        
+        // DÜZELTME 1: Sahte (Mock) bir Page objesini PageImpl ile oluşturuyoruz
+        org.springframework.data.domain.Page<Application> mockPage = new org.springframework.data.domain.PageImpl<>(List.of(application));
+        
+        // DÜZELTME 2: Mockito'ya "herhangi bir Pageable objesi gelirse bunu dön" diyoruz
+        when(applicationRepository.findByStudentId(org.mockito.ArgumentMatchers.eq(student.getUserId()), org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(mockPage);
 
-        List<ApplicationResponse> responses = applicationService.getAllApplications();
+        Page<ApplicationResponse> pageResult = applicationService.getAllApplications(null, 0, 20);
 
-        assertThat(responses).hasSize(1);
-        assertThat(responses.get(0).getId()).isEqualTo(1);
-        assertThat(responses.get(0).getCurrentUniversity()).isEqualTo("İYTE");
+        assertThat(pageResult.getContent()).hasSize(1);
+        assertThat(pageResult.getContent().get(0).getId()).isEqualTo(1);
+        assertThat(pageResult.getContent().get(0).getCurrentUniversity()).isEqualTo("İYTE");
     }
 
 
@@ -337,7 +365,7 @@ class ApplicationServiceTest {
 
 
 
-    @Test
+@Test
     void getAllApplications_asOidbRole_returnsAllApplications() {
         SecurityContextHolder.setContext(new SecurityContextImpl());
         SecurityContextHolder.getContext().setAuthentication(
@@ -349,12 +377,22 @@ class ApplicationServiceTest {
         );
 
         Application application = buildApplication(buildStudent());
-        when(applicationRepository.findAll()).thenReturn(List.of(application));
+        
+        // DÜZELTME 1: Sahte (Mock) bir Page objesini PageImpl ile oluşturuyoruz
+        org.springframework.data.domain.Page<Application> mockPage = new org.springframework.data.domain.PageImpl<>(List.of(application));
 
-        List<ApplicationResponse> responses = applicationService.getAllApplications();
+        // DÜZELTME 2: Mockito'ya findAll metodunun Pageable alan versiyonunu taklit etmesini söylüyoruz
+        when(applicationRepository.findAll(org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(mockPage);
 
-        assertThat(responses).hasSize(1);
-        verify(applicationRepository).findAll();
+        // DÜZELTME 3: Servis metodunu sayfa parametreleriyle (status = null, page = 0, size = 20) çağırıyoruz
+        org.springframework.data.domain.Page<ApplicationResponse> pageResult = applicationService.getAllApplications(null, 0, 20);
+
+        // DÜZELTME 4: Assertions kısmında listeyi getContent() ile alıyoruz
+        assertThat(pageResult.getContent()).hasSize(1);
+        
+        // DÜZELTME 5: Verify işlemini de Pageable ile kontrol ediyoruz
+        verify(applicationRepository).findAll(org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class));
         verifyNoInteractions(studentRepository);
     }
 
@@ -393,14 +431,27 @@ class ApplicationServiceTest {
         Application reviewedApplication = buildApplication(buildStudent());
         reviewedApplication.setStatus(ApplicationStatus.YDYO_REVIEW);
 
-        when(applicationRepository.findByStatus(ApplicationStatus.YDYO_REVIEW))
-                .thenReturn(List.of(reviewedApplication));
+        // DÜZELTME 1: Sahte (Mock) bir Page objesini PageImpl ile oluşturuyoruz
+        org.springframework.data.domain.Page<Application> mockPage = new org.springframework.data.domain.PageImpl<>(List.of(reviewedApplication));
 
-        List<ApplicationResponse> responses = applicationService.getAllApplications(ApplicationStatus.YDYO_REVIEW);
+        // DÜZELTME 2: Mockito'ya "status YDYO_REVIEW olan ve herhangi bir Pageable objesi gelen" durumu taklit etmesini söylüyoruz
+        when(applicationRepository.findByStatus(
+                org.mockito.ArgumentMatchers.eq(ApplicationStatus.YDYO_REVIEW),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+        )).thenReturn(mockPage);
 
-        assertThat(responses).hasSize(1);
-        verify(applicationRepository).findByStatus(ApplicationStatus.YDYO_REVIEW);
-        verify(applicationRepository, never()).findAll();
+        // DÜZELTME 3: Servis metodunu sayfa parametreleriyle (örneğin page 0, size 20) çağırıyoruz
+        org.springframework.data.domain.Page<ApplicationResponse> pageResult = applicationService.getAllApplications(ApplicationStatus.YDYO_REVIEW, 0, 20);
+
+        // DÜZELTME 4: Artık List değil, Page içindeki listeyi (getContent) kontrol ediyoruz
+        assertThat(pageResult.getContent()).hasSize(1);
+        
+        verify(applicationRepository).findByStatus(
+                org.mockito.ArgumentMatchers.eq(ApplicationStatus.YDYO_REVIEW),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+        );
+        // findAll metodunun da Pageable alan versiyonunun hiç çağrılmadığını doğruluyoruz
+        verify(applicationRepository, never()).findAll(org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class));
     }
 
     private Student buildStudent() {

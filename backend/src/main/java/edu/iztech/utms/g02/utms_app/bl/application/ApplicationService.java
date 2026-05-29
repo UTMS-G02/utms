@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import jakarta.persistence.EntityNotFoundException;
 
 import java.time.LocalDateTime;
@@ -75,13 +77,18 @@ public class ApplicationService {
             throw new IllegalArgumentException("Bir öğrenci aynı bölüme, aynı akademik dönemde birden fazla başvuru yapamaz.");
         }
 
-        // 2. Diğer geçerlilik kontrolleri // gerekli miiii?
-        //if (!Boolean.TRUE.equals(req.getKvkkAccepted())) {
-            //throw new IllegalArgumentException("KVKK onayı zorunludur.");
-        //}
+        //2. Diğer geçerlilik kontrolleri // gerekli miiii?
+        if (!Boolean.TRUE.equals(req.getKvkkAccepted())) {
+            throw new IllegalArgumentException("KVKK onayı zorunludur.");
+        }
 
         // 3. Dış Sistem Entegrasyonu: YÖKSİS'ten akademik verileri çek
         YoksisStudentResponse yoksisData = yoksisIntegrationService.fetchAcademicDataByTckn(currentStudent.getTckn());
+
+        // YENİ EKLENEN: Akademik Yeterlilik Barajı (Minimum 2.50 GPA)
+        if (yoksisData.gpa() < 2.50) {
+            throw new IllegalArgumentException("Başvurunuz reddedildi: Genel not ortalamanız (GPA) IZTECH yatay geçiş barajı olan 2.50'nin altındadır.");
+        }
 
         // 4. Application objesini oluşturma (Kendi verilerimiz + YÖKSİS verileri + Request verileri harmanlanıyor)
         Application app = Application.builder()
@@ -197,32 +204,95 @@ public class ApplicationService {
     }
 
 
+
+    
+    // --------------------------------------------------------
+    // YDYO 1. AŞAMA: EVRAK KONTROLÜ
+    // --------------------------------------------------------
+
     @Transactional
     public ApplicationResponse processYdyoReview(Integer applicationId, YdyoReviewRequest req) {
         
         Application app = applicationRepository.findByApplicationId(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
+        
+        
+        if (app.getStatus() != ApplicationStatus.YDYO_REVIEW) {
+            throw new IllegalStateException("Bu başvuru YDYO evrak inceleme aşamasında değil.");
+        }
 
-        app.setStatus(req.isApproved() ? ApplicationStatus.YDYO_ACCEPTED : ApplicationStatus.YDYO_REJECTED); //  EVALUATION_QUEUE yerine YDYO_ACCEPTED olmalı ??
+        // 1. Durum: Öğrencinin belgesi yetersiz, sınava girecek
+        if (Boolean.TRUE.equals(req.getRequiresExam())) {
+            app.setStatus(ApplicationStatus.YDYO_EXAM_PENDING);
+        } 
+        // 2. Durum: Belgesi yeterli (Muaf)
+        else if (Boolean.TRUE.equals(req.isApproved())) {
+            app.setStatus(ApplicationStatus.YDYO_ACCEPTED); //  EVALUATION_QUEUE yerine YDYO_ACCEPTED olmalı ??
+        } 
+        // 3. Durum: Belge geçersiz ve sınava girme hakkı yok (Direkt red) --> bu yok değil mi ? 
+
+        
         app.setYdyoApproved(req.isApproved());
         app.setYdyoNotes(req.getNotes());
         app.setYdyoReviewedBy(req.getReviewer()); 
         app.setYdyoReviewedDate(LocalDateTime.now());
 
         app = applicationRepository.save(app);
-        
         return toResponse(app);
+
+    }
+
+
+    // --------------------------------------------------------
+    // YDYO 2. AŞAMA: SINAV SONUCU GİRİŞİ
+    // --------------------------------------------------------
+    @Transactional
+    @PreAuthorize("hasRole('YDYO')")
+    public ApplicationResponse enterYdyoExamResult(Integer applicationId, YdyoExamResultRequest req) {
+        Application app = applicationRepository.findByApplicationId(applicationId) // find by Id mi find by applicationId mi ?
+                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı."));
+
+        if (app.getStatus() != ApplicationStatus.YDYO_EXAM_PENDING) {
+            throw new IllegalStateException("Bu öğrencinin bekleyen bir sınavı bulunmuyor.");
+        }
+
+        // Sınav notunu kaydet
+        app.setYdyoExamScore(req.getExamScore());
+        app.setYdyoNotes(req.getNotes());
+
+        app.setYdyoReviewedBy(req.getReviewer());
+        app.setYdyoReviewedDate(LocalDateTime.now());
+
+        // GEÇME NOTU KONTROLÜ (Örn: 60 ve üzeri geçer)
+        // BURAYA DİKKAT !!!!!
+        //double passingGrade = 60.0; // Bunu application.properties'den de çekebiliriz
+
+        /*if (req.getExamScore() >= passingGrade) {
+            app.setStatus(ApplicationStatus.YDYO_ACCEPTED); // Sınavı geçti, OİDB 2. aşamasına hazır
+        } else {
+            app.setStatus(ApplicationStatus.YDYO_REJECTED); // Sınavdan kaldı
+        }*/
+
+        // MANUEL KARAR: Memur "passed = true" yollarsa geçti, "false" yollarsa kaldı.
+        if (Boolean.TRUE.equals(req.getPassed())) {
+            app.setStatus(ApplicationStatus.YDYO_ACCEPTED); // Sınavı geçti
+        } else {
+            app.setStatus(ApplicationStatus.YDYO_REJECTED); // Sınavdan kaldı
+        }
+
+
+        return toResponse(applicationRepository.save(app));
     }
 
     // ==========================================
     // YENİ EKLENEN 3 METOT (GET ALL, GET BY ID, UPLOAD)
     // ==========================================
 
-    public List<ApplicationResponse> getAllApplications() {
-        return getAllApplications(null);
-    }
+    //public List<ApplicationResponse> getAllApplications() {
+        //return getAllApplications(null);
+    //}
 
-    public List<ApplicationResponse> getAllApplications(ApplicationStatus status) { // eklendi 28.05 : ApplicationStatus status, int page, int size
+    public Page<ApplicationResponse> getAllApplications(ApplicationStatus status, int page, int size) { // eklendi 29.05 : ApplicationStatus status, int page, int size
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         // JWT'den gelen getName() metodu kullanıcının E-POSTA adresini döner (Örn: busra@std.iztech.edu.tr)
@@ -231,9 +301,8 @@ public class ApplicationService {
         boolean isStudent = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_STUDENT") || a.getAuthority().equals("STUDENT"));
 
-        //eklendi 28.05
-        //Pageable pageable = PageRequest.of(page, size);
-        //Page<Application> applicationPage;
+        //eklendi 29.05
+        Pageable pageable = PageRequest.of(page, size);
 
         if (isStudent) {
             // E-postadan ID'yi buluyoruz
@@ -241,26 +310,17 @@ public class ApplicationService {
                     .orElseThrow(() -> new EntityNotFoundException("Kullanıcı bulunamadı."));
 
             if (status == null) {
-                return applicationRepository.findByStudentId(currentStudent.getUserId()).stream()
-                        .map(this::toResponse)
-                        .collect(Collectors.toList());
+                return applicationRepository.findByStudentId(currentStudent.getUserId(), pageable).map(this::toResponse);
             }
-
-            return applicationRepository.findByStudentIdAndStatus(currentStudent.getUserId(), status).stream()
-                    .map(this::toResponse)
-                    .collect(Collectors.toList());
+            return applicationRepository.findByStudentIdAndStatus(currentStudent.getUserId(), status, pageable).map(this::toResponse);
 
         } else {
             // Öğrenci değilse (OIDB, YDYO, FACULTY, DEAN vs.) herkesi görebilir
             if (status == null) {
-                return applicationRepository.findAll().stream()
-                        .map(this::toResponse)
-                        .collect(Collectors.toList());
+                return applicationRepository.findAll(pageable).map(this::toResponse);
             }
 
-            return applicationRepository.findByStatus(status).stream()
-                    .map(this::toResponse)
-                    .collect(Collectors.toList());
+            return applicationRepository.findByStatus(status, pageable).map(this::toResponse);
         }
 
     }
