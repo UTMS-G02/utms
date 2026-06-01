@@ -12,6 +12,6 @@ public interface DocumentRepository extends JpaRepository<Document, Integer> {
 
     List<Document> findByApplicationApplicationId(Integer applicationId);
 
-    Optional<Document> findByApplicationIdAndDocumentType(Integer applicationId, String documentType);
+    Optional<Document> findByApplication_ApplicationIdAndDocumentType(Integer applicationId, String documentType);
 }
 

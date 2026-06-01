@@ -92,7 +92,7 @@ public class DocumentService {
 
         // YENİ EKLENEN: DOSYA BAZLI KİLİT (Sadece Düzeltme Aşamasında Çalışır)
         if (application.getStatus() == ApplicationStatus.REVISION_REQUESTED) {
-            Optional<Document> existingDoc = documentRepository.findByApplicationIdAndDocumentType(application.getApplicationId(), normalizedType);
+            Optional<Document> existingDoc = documentRepository.findByApplication_ApplicationIdAndDocumentType(application.getApplicationId(), normalizedType);
             
             // Eğer öğrenci önceden yüklediği ve ÖİDB'nin "Onayladığı" bir dosyayı değiştirmeye çalışıyorsa engelle!
             if (existingDoc.isPresent() && Boolean.TRUE.equals(existingDoc.get().getOidbApproved())) {
@@ -233,7 +233,7 @@ public class DocumentService {
 
     // Yardımcı Metot: Üzerine yazma durumu için eski dosyayı temizleme
     private void deleteExistingDocumentIfAny(Integer applicationId, String documentType) {
-        Optional<Document> existingDoc = documentRepository.findByApplicationIdAndDocumentType(applicationId, documentType);
+        Optional<Document> existingDoc = documentRepository.findByApplication_ApplicationIdAndDocumentType(applicationId, documentType);
         if (existingDoc.isPresent()) {
             try {
                 Files.deleteIfExists(Paths.get(existingDoc.get().getFilePath()));
