@@ -40,7 +40,7 @@ public class ApplicationCreateRequest {
     private String targetDepartment;
 
     //@NotNull(message = "KVKK onayı zorunludur.")
-    //private Boolean kvkkAccepted;
+    private Boolean kvkkAccepted;
     
     @NotNull(message = "SAY YKS puanı boş bırakılamaz.")
     @Positive(message = "Geçerli bir YKS puanı giriniz.")
