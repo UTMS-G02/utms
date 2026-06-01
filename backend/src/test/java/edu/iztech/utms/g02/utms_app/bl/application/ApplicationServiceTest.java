@@ -59,7 +59,7 @@ class ApplicationServiceTest {
         setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(false);
         
@@ -93,7 +93,7 @@ class ApplicationServiceTest {
         setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(true);
 
@@ -267,8 +267,8 @@ class ApplicationServiceTest {
         request.setPassed(true);
         request.setExamScore(85.5);
 
-        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
+        when(applicationRepository.findByStudent_UserId(student.getUserId())).thenReturn(List.of(application));
 
         ApplicationResponse response = applicationService.enterYdyoExamResult(1, request);
 
@@ -307,9 +307,30 @@ class ApplicationServiceTest {
                 .hasMessageContaining("bekleyen bir sınavı bulunmuyor");
     }
 
-    // ==========================================
-    // 4. LİSTELEME VE ERİŞİM KONTROL (GET & SAYFALAMA)
-    // ==========================================
+    //@Test
+    /*void create_kvkkNotAccepted_throwsIllegalArgumentException() {
+        Student student = buildStudent();
+
+        SecurityContextHolder.setContext(new SecurityContextImpl());
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("student@iyte.edu.tr", "password")
+        );
+
+        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
+                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
+        )).thenReturn(false);
+
+        ApplicationCreateRequest request = buildCreateRequest();
+        //request.setKvkkAccepted(false);
+
+        assertThatThrownBy(() -> applicationService.create(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("KVKK");
+
+        verify(yoksisIntegrationService, never()).fetchAcademicDataByTckn(anyString());
+        verify(applicationRepository, never()).save(any(Application.class));
+    }*/
 
     @Test
     void getAllApplications_studentReturnsOwnApplications() {
