@@ -310,14 +310,10 @@ public class ApplicationService {
                     .orElseThrow(() -> new EntityNotFoundException("Kullanıcı bulunamadı."));
 
             if (status == null) {
-                return applicationRepository.findByStudent_UserId(currentStudent.getUserId()).stream()
-                        .map(this::toResponse)
-                        .collect(Collectors.toList());
+                return applicationRepository.findByStudent_UserId(currentStudent.getUserId(),pageable).map(this::toResponse);
             }
 
-            return applicationRepository.findByStudent_UserIdAndStatus(currentStudent.getUserId(), status).stream()
-                    .map(this::toResponse)
-                    .collect(Collectors.toList());
+            return applicationRepository.findByStudent_UserIdAndStatus(currentStudent.getUserId(), status, pageable).map(this::toResponse);
 
         } else {
             // Öğrenci değilse (OIDB, YDYO, FACULTY, DEAN vs.) herkesi görebilir
