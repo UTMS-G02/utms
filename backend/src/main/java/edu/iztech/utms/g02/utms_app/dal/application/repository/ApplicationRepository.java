@@ -4,13 +4,16 @@ import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 
 import java.util.List;
 import java.util.Optional;
 
 public interface ApplicationRepository extends JpaRepository<Application, Integer> {
 
-    List<Application> findByStatus(ApplicationStatus status); 
+    Page<Application> findByStatus(ApplicationStatus status, Pageable pageable);
 
     List<Application> findByStudent_UserId(Integer userId);
 

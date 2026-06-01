@@ -15,6 +15,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -111,5 +116,35 @@ public class DocumentController {
         response.put("documentUploadDate", document.getDocumentUploadDate());
         response.put("active", document.isActive());
         return response;
+    }
+
+
+    // 1. Tekil Dosya İndirme Endpoint'i
+    @PreAuthorize("hasAnyRole('STUDENT', 'OIDB', 'YDYO', 'FACULTY', 'DEAN')")
+    @GetMapping("/documents/{documentId}/download")
+    public ResponseEntity<org.springframework.core.io.Resource> downloadDocument(@PathVariable Integer documentId) {
+        
+        // Önce dosyanın adını öğrenmek için entity'yi çekiyoruz
+        Document document = documentService.getDocumentById(documentId);
+        org.springframework.core.io.Resource resource = documentService.downloadSingleDocument(documentId);
+
+        return ResponseEntity.ok()
+                // Tarayıcıya "Bu dosyayı indir ve şu isimle kaydet" diyoruz
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + document.getFileName() + "\"")
+                .body(resource);
+    }
+
+    // 2. ZIP Olarak Klasör İndirme Endpoint'i
+    @PreAuthorize("hasAnyRole('OIDB', 'YDYO', 'FACULTY', 'DEAN')")
+    @GetMapping(value = "/applications/{applicationId}/documents/download-zip", produces = "application/zip")
+    public ResponseEntity<byte[]> downloadAllDocumentsAsZip(@PathVariable Integer applicationId) {
+        
+        byte[] zipData = documentService.downloadAllDocumentsAsZip(applicationId);
+
+        return ResponseEntity.ok()
+                // İndirilen ZIP dosyasının adını başvuru numarasına göre dinamik yapıyoruz
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"basvuru_" + applicationId + "_belgeler.zip\"")
+                .contentType(MediaType.valueOf("application/zip"))
+                .body(zipData);
     }
 }

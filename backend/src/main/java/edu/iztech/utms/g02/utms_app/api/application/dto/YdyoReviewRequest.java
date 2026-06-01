@@ -32,6 +32,8 @@ public class YdyoReviewRequest {
     @NotNull(message = "Onay durumu (true/false) belirtilmelidir.")
     private boolean isApproved;
 
+    private Boolean requiresExam; // YENİ: Öğrenci sınava girmeli mi?
+
     private String notes; 
     
     private Long reviewerId; 

@@ -35,6 +35,9 @@ public class Document { // abstract mı olacak
     private boolean ydyoApproved;
 
     @Column(nullable = false)
+    private Boolean oidbApproved = false;
+
+    @Column(nullable = false)
     private LocalDate documentUploadDate;
 
     @Column(nullable = false)
