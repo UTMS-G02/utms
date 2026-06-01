@@ -102,11 +102,18 @@ export default function StudentDashboard() {
   }, [])
 
   const handleApplyClick = () => {
-    if (application) {
-      navigate(`/student/applications/${application.applicationId}/edit`)
-    } else {
+    if (!application) {
       navigate('/student/applications/new')
+      return
     }
+
+    if (application.status === 'DRAFT') {
+      // Taslak başvuru → tamamlamak için form'a dön
+      navigate('/student/applications/new')
+      return
+    }
+    // Diğer tüm durumlar → detay sayfasına git (görüntüleme)
+    navigate(`/student/applications/${application.applicationId}`)
   }
 
   if (loading) {
@@ -149,8 +156,11 @@ export default function StudentDashboard() {
 
             <div style={styles.cardBody}>
               <Text style={{ fontSize: 14, color: '#555', lineHeight: 1.6 }}>
-                Başvurunuzda değişiklik yapmak için güncelleme hakkınızı kullanabilirsiniz.
-                Bu hakkı sadece bir kez kullanabilirsiniz.
+                {!application
+                  ? 'Yatay geçiş başvurunuzu başlatmak için tıklayın.'
+                  : application.status === 'DRAFT'
+                    ? 'Taslak halindeki başvurunuzu tamamlayın ve gönderin.'
+                    : 'Başvurunuzun durumunu ve detaylarını görüntüleyebilirsiniz. Düzeltme gerekirse ÖİDB tarafından bildirilecektir.'}
               </Text>
             </div>
 
@@ -161,7 +171,11 @@ export default function StudentDashboard() {
                 style={{ background: '#8B1A2B', borderColor: '#8B1A2B', height: 40, fontWeight: 600 }}
                 onClick={handleApplyClick}
               >
-                {application ? 'Başvurumu Güncelle' : 'Yeni Başvuru Oluştur'}
+                {!application 
+                  ? 'Yeni Başvuru Oluştur' 
+                  : application.status === 'DRAFT'
+                    ? 'Başvurumu Tamamla'
+                    : 'Başvurumu Görüntüle'}
               </Button>
             </div>
           </div>

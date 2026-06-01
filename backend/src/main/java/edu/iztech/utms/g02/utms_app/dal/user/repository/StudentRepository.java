@@ -8,4 +8,7 @@ import java.util.Optional;
 public interface StudentRepository extends JpaRepository<Student, Integer> {
 
     Optional<Student> findByTckn(String tckn);
+
+    // JWT'den (SecurityContext) aldığımız e-posta ile öğrenciyi bulmak için
+    Optional<Student> findByEmail(String email);
 }

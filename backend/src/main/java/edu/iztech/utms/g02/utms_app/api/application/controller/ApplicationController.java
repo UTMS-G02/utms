@@ -1,22 +1,34 @@
 package edu.iztech.utms.g02.utms_app.api.application.controller; 
 
-import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationCreateRequest;
-import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
-import edu.iztech.utms.g02.utms_app.api.application.dto.OidbReviewRequest;
-import edu.iztech.utms.g02.utms_app.api.application.dto.YdyoReviewRequest;
-
+import edu.iztech.utms.g02.utms_app.api.application.dto.*;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
-
-
+import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus; //eklendi
+//import org.springframework.http.MediaType; //eklendi
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;      //yetkilendirme
+import org.springframework.web.bind.annotation.*; 
 
-import org.springframework.security.access.prepost.PreAuthorize;      //??????????
-import org.springframework.web.multipart.MultipartFile;                //??????????
+import org.springframework.data.domain.Page; //eklendi
 
+/*
+// HTTP üzerinden dosya (PDF, JPG, PNG vb.) gönderilirken bu dosyalar bayt (byte) akışları halinde gelir. 
+// Spring Boot, bu karmaşık akışı senin için alıp kullanımı çok kolay olan MultipartFile nesnesine dönüştürür. 
+// file.getOriginalFilename(), file.getSize() gibi metotlarla dosyayı rahatça işlemeni sağlayan standart Spring arayüzüdür.
+ */
 
-import java.util.List;
+/*
+// ApplicationController.java
+// HTTP isteklerini karşılayan kapı.
+
+// - Tarayıcıdan ya da frontend'den gelen HTTP isteğini yakalar
+// - URL'deki parametreleri (@PathVariable) ve JSON gövdesini (@RequestBody) okur
+// - Bunları ApplicationService'e iletir
+// - Servisten dönen sonucu HTTP yanıtına (200, 403, 400 vb.) dönüştürür
+// - Kendi başına hiçbir iş kuralı uygulamaz — sadece "paketçi" gibi çalışır
+*/
+
 
 @RestController
 @RequiredArgsConstructor
@@ -25,7 +37,6 @@ public class ApplicationController {
 
     private final ApplicationService applicationService;
 
-
     /*
     /    POST /api/applications
     */
@@ -33,10 +44,15 @@ public class ApplicationController {
     @PreAuthorize("hasRole('STUDENT')") // Sadece STUDENT rolü girebilir
     @PostMapping
     public ResponseEntity<ApplicationResponse> createApplication(@RequestBody ApplicationCreateRequest req) {
-        // Not: Gerçek projede userId'yi SecurityContext'ten (token'dan) alırsın
-        Integer currentUserId = 1; // Şimdilik temsili // ******************************
-        ApplicationResponse response = applicationService.create(currentUserId, req);
-        return ResponseEntity.ok(response);
+        // Not: Gerçek projede userId'yi SecurityContext'ten (token'dan) alırsın.
+        // ID artık token üzerinden Service katmanında alındığı için currentUserId parametresini kaldırdık.
+        //Integer currentUserId = 1; // Şimdilik temsili
+        ApplicationResponse response = applicationService.create(req);
+        //return ResponseEntity.ok(response);
+        
+        //EKLENDİ
+        // REST standartlarına göre yeni bir kaynak oluşturulduğunda HTTP 201 (Created) dönülür.
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
 
@@ -46,10 +62,13 @@ public class ApplicationController {
 
     @PreAuthorize("hasRole('STUDENT')") 
     @PatchMapping("/{id}/submit")
-    public ResponseEntity<String> submitApplication(@PathVariable Integer id) {
+    public ResponseEntity<ApplicationResponse> submitApplication(@PathVariable Integer id) {
         // Öğrencinin sadece kendi başvurusunu gönderebilmesi kontrolü Service katmanında yapılır
-        applicationService.submit(id, null);
-        return ResponseEntity.ok("Başvuru başarıyla gönderildi.");
+        // Ayrıca String dönmek yerine güncel ApplicationResponse'u dönüyoruz ki front-end sayfayı yenilemeden veriyi güncelleyebilsin.
+        ApplicationResponse response = applicationService.submit(id);
+        return ResponseEntity.ok(response);
+        //applicationService.submit(id);
+        //return ResponseEntity.ok("Başvuru başarıyla gönderildi.");
     }
 
 
@@ -59,10 +78,13 @@ public class ApplicationController {
 
     @PreAuthorize("hasAnyRole('STUDENT', 'OIDB', 'YDYO')") // 3 rolden biri yeterli
     @GetMapping
-    public ResponseEntity<List<ApplicationResponse>> getAllApplications() {
+    public ResponseEntity<Page<ApplicationResponse>> getAllApplications(
+            @RequestParam(required = false) ApplicationStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
         // Service katmanında, istek atan kişinin rolüne göre farklı listeler dönecek bir mantık kurulmalı
-        List<ApplicationResponse> list = applicationService.getAllApplications();
-        return ResponseEntity.ok(list);
+        Page<ApplicationResponse> pageResult = applicationService.getAllApplications(status, page, size);
+        return ResponseEntity.ok(pageResult);
     }
 
 
@@ -77,29 +99,73 @@ public class ApplicationController {
 
     @PreAuthorize("hasRole('OIDB')")
     @PatchMapping("/{id}/oidb-review")
-    public ResponseEntity<String> reviewByOidb(@PathVariable Integer id, @RequestBody OidbReviewRequest req) {
-        applicationService.processOidbReview(id, req);
-        return ResponseEntity.ok("OIDB incelemesi kaydedildi.");
+    public ResponseEntity<ApplicationResponse> reviewByOidb(@PathVariable Integer id, @RequestBody OidbReviewRequest req) {
+        ApplicationResponse response = applicationService.processDynamicOidbReview(id, req);
+        return ResponseEntity.ok(response);
     }
 
 
 
     @PreAuthorize("hasRole('YDYO')")
     @PatchMapping("/{id}/ydyo-review")
-    public ResponseEntity<String> reviewByYdyo(@PathVariable Integer id, @RequestBody YdyoReviewRequest req) {
-        applicationService.processYdyoReview(id, req);
-        return ResponseEntity.ok("YDYO incelemesi kaydedildi.");
+    public ResponseEntity<ApplicationResponse> reviewByYdyo(@PathVariable Integer id, @RequestBody YdyoReviewRequest req) {
+        ApplicationResponse response = applicationService.processYdyoReview(id, req);
+        return ResponseEntity.ok(response);
     }
 
 
-    @PreAuthorize("hasRole('STUDENT')")
-    @PostMapping(value = "/{id}/documents", consumes = "multipart/form-data")       // consumes ??
-    public ResponseEntity<String> uploadDocument(
+    /*
+    /   PATCH /api/applications/{id}/withdraw
+    */
+
+    @PreAuthorize("hasRole('STUDENT')") 
+    @PatchMapping("/{id}/withdraw")
+    public ResponseEntity<ApplicationResponse> withdrawApplication(@PathVariable Integer id) {
+        ApplicationResponse response = applicationService.withdrawApplication(id);
+        return ResponseEntity.ok(response);
+    }
+
+
+    // --------------------------------------------------------
+    // YDYO İŞLEMLERİ
+    // --------------------------------------------------------
+
+    // YDYO 1. Aşama: İlk Evrak Kontrolü
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    @PatchMapping("/{id}/ydyo-initial-review")
+    public ResponseEntity<ApplicationResponse> reviewByYdyoInitial(
             @PathVariable Integer id, 
-            @RequestParam("file") MultipartFile file) {
+            @RequestBody YdyoReviewRequest req) {
         
-        applicationService.uploadDocument(id, file);
-        return ResponseEntity.ok("Belge başarıyla yüklendi.");
+        ApplicationResponse response = applicationService.processYdyoReview(id, req);
+        return ResponseEntity.ok(response);
+    }
+
+    // YDYO 2. Aşama: Sınav Sonucu ve Geçti/Kaldı Girişi
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    @PatchMapping("/{id}/ydyo-exam-result")
+    public ResponseEntity<ApplicationResponse> enterYdyoExamResult(
+            @PathVariable Integer id, 
+            @RequestBody YdyoExamResultRequest req) {
+        
+        ApplicationResponse response = applicationService.enterYdyoExamResult(id, req);
+        return ResponseEntity.ok(response);
     }
 
 }
+
+/*
+// consumes:
+// Genelde REST API'ler JSON formatında konuşur (application/json). 
+// Ancak dosya yükleme (upload) işlemlerinde JSON kullanılamaz, veri paketleri parça parça gönderilir. 
+// consumes = MediaType.MULTIPART_FORM_DATA_VALUE diyerek Spring Boot'a şunu söylüyorsun: 
+// "Bu endpointe JSON bekleme, sana parçalı bir form verisi (dosya) gelecek, onu MultipartFile olarak yakala."
+ */
+
+
+//4. String yerine neden nesne dönmeye başladık?
+//Dikkat edersen submit, reviewByOidb gibi metotlarda daha önce "Başvuru başarıyla gönderildi." gibi düz String mesajlar dönüyordun. 
+//Bunları ApplicationResponse dönecek şekilde güncelledim. Çünkü QA ve yazılım testi süreçlerinde veya ön yüz (React/Vue) geliştirilirken, 
+//durumu (status) güncellenmiş nesneyi doğrudan geri dönmek, ön yüzün ekstra bir GET isteği atmasını engeller ve performansı artırır. 
+
+
