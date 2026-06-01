@@ -74,8 +74,7 @@ public class Application {
     private LocalDateTime createdAt = LocalDateTime.now();
 
     // Süreç ilerledikçe dolacak alanlar — başlangıçta boş olabilir
-    @CreationTimestamp 
-    @UpdateTimestamp 
+    @UpdateTimestamp
     private LocalDateTime updatedAt;
 
     private LocalDate submissionDate;

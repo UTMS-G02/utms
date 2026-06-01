@@ -65,7 +65,7 @@ public class ApplicationService {
             .orElseThrow(() -> new EntityNotFoundException("Öğrenci bulunamadı."));
 
         // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla başvuru yapamaz
-        boolean alreadyApplied = applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+        boolean alreadyApplied = applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
                 currentStudent.getUserId(), // Artık request'ten değil, güvenilir kaynaktan alıyoruz
                 req.getTargetDepartment(), 
                 req.getAcademicYear()
@@ -241,12 +241,12 @@ public class ApplicationService {
                     .orElseThrow(() -> new EntityNotFoundException("Kullanıcı bulunamadı."));
 
             if (status == null) {
-                return applicationRepository.findByStudentId(currentStudent.getUserId()).stream()
+                return applicationRepository.findByStudent_UserId(currentStudent.getUserId()).stream()
                         .map(this::toResponse)
                         .collect(Collectors.toList());
             }
 
-            return applicationRepository.findByStudentIdAndStatus(currentStudent.getUserId(), status).stream()
+            return applicationRepository.findByStudent_UserIdAndStatus(currentStudent.getUserId(), status).stream()
                     .map(this::toResponse)
                     .collect(Collectors.toList());
 

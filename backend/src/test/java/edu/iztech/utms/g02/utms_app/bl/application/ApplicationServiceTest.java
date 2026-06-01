@@ -59,7 +59,7 @@ class ApplicationServiceTest {
         );
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(false);
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
@@ -103,7 +103,7 @@ class ApplicationServiceTest {
         );
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(true);
 
@@ -226,7 +226,7 @@ class ApplicationServiceTest {
         );
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.findByStudentId(student.getUserId())).thenReturn(List.of(application));
+        when(applicationRepository.findByStudent_UserId(student.getUserId())).thenReturn(List.of(application));
 
         List<ApplicationResponse> responses = applicationService.getAllApplications();
 
@@ -295,7 +295,7 @@ class ApplicationServiceTest {
         );
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(false);
 

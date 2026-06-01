@@ -12,13 +12,13 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
 
     List<Application> findByStatus(ApplicationStatus status); 
 
-    List<Application> findByStudentId(Integer studentId); 
+    List<Application> findByStudent_UserId(Integer userId);
 
-    List<Application> findByStudentIdAndStatus(Integer studentId, ApplicationStatus status);
+    List<Application> findByStudent_UserIdAndStatus(Integer userId, ApplicationStatus status);
 
-    List<Application> findByAcademicYear(String academicYear); 
+    List<Application> findByAcademicYear(String academicYear);
 
-    List<Application> findByTargetDept(String targetDept); 
+    List<Application> findByTargetDepartment(String targetDepartment);
 
     List<Application> findByTargetFaculty(String targetFaculty); 
 
@@ -29,5 +29,5 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
     Optional<Application> findByApplicationId(Integer applicationId);
 
     // Aynı öğrencinin, aynı döneme ve aynı bölüme kaydı var mı kontrolü
-    boolean existsByStudentIdAndTargetDeptAndAcademicYear(Integer studentId, String targetDept, String academicYear);
+    boolean existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(Integer userId, String targetDept, String academicYear);
 }
