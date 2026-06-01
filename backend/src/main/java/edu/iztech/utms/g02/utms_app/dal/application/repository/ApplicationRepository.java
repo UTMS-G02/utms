@@ -15,9 +15,9 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
 
     Page<Application> findByStatus(ApplicationStatus status, Pageable pageable);
 
-    List<Application> findByStudent_UserId(Integer userId);
+    Page<Application> findByStudent_UserId(Integer userId, Pageable pageable);
 
-    List<Application> findByStudent_UserIdAndStatus(Integer userId, ApplicationStatus status);
+    Page<Application> findByStudent_UserIdAndStatus(Integer userId, ApplicationStatus status, Pageable pageable);
 
     List<Application> findByAcademicYear(String academicYear);
 
