@@ -114,7 +114,7 @@ public class DocumentServiceTest {
         Document existingDoc = new Document();
         existingDoc.setOidbApproved(true); 
 
-        when(documentRepository.findByApplicationIdAndDocumentType(1, "OTHER"))
+        when(documentRepository.findByApplication_ApplicationIdAndDocumentType(1, "OTHER"))
                 .thenReturn(Optional.of(existingDoc));
 
         assertThatThrownBy(() -> documentService.uploadDocument(1, "OTHER", file))
@@ -141,7 +141,7 @@ public class DocumentServiceTest {
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
         when(applicationRepository.findById(1)).thenReturn(Optional.of(application));
         // Mevcut dosya yok diye simüle edelim
-        when(documentRepository.findByApplicationIdAndDocumentType(1, "OTHER")).thenReturn(Optional.empty());
+        when(documentRepository.findByApplication_ApplicationIdAndDocumentType(1, "OTHER")).thenReturn(Optional.empty());
 
         documentService.uploadDocument(1, file);
 

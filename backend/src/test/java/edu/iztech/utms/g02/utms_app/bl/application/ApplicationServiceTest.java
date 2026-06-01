@@ -110,7 +110,7 @@ class ApplicationServiceTest {
         setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(false);
 
@@ -131,7 +131,7 @@ class ApplicationServiceTest {
         setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(false);
 
@@ -267,8 +267,8 @@ class ApplicationServiceTest {
         request.setPassed(true);
         request.setExamScore(85.5);
 
-        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.findByStudent_UserId(student.getUserId())).thenReturn(List.of(application));
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
 
         ApplicationResponse response = applicationService.enterYdyoExamResult(1, request);
 
@@ -342,7 +342,7 @@ class ApplicationServiceTest {
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
         
         Page<Application> mockPage = new PageImpl<>(List.of(application));
-        when(applicationRepository.findByStudentId(org.mockito.ArgumentMatchers.eq(student.getUserId()), org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
+        when(applicationRepository.findByStudent_UserId(org.mockito.ArgumentMatchers.eq(student.getUserId()), org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
                 .thenReturn(mockPage);
 
         Page<ApplicationResponse> pageResult = applicationService.getAllApplications(null, 0, 20);

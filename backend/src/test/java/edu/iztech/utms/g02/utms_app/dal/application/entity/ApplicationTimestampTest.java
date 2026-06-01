@@ -16,7 +16,9 @@ class ApplicationTimestampTest {
         Field updatedAtField = Application.class.getDeclaredField("updatedAt");
 
         assertThat(updatedAtField.getType()).isEqualTo(LocalDateTime.class);
-        assertThat(updatedAtField.isAnnotationPresent(CreationTimestamp.class)).isTrue();
+        // updatedAt yalnızca @UpdateTimestamp taşımalı; @CreationTimestamp ile birlikte
+        // kullanılması Hibernate'de AnnotationException'a yol açar (backend boot olmaz).
+        assertThat(updatedAtField.isAnnotationPresent(CreationTimestamp.class)).isFalse();
         assertThat(updatedAtField.isAnnotationPresent(UpdateTimestamp.class)).isTrue();
     }
 }
