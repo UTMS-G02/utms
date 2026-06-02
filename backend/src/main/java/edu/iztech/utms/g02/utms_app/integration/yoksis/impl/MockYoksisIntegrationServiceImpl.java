@@ -17,7 +17,7 @@ public class MockYoksisIntegrationServiceImpl implements YoksisIntegrationServic
             "Ege Üniversitesi",
             "Mühendislik Fakültesi",
             "Bilgisayar Mühendisliği",
-            "3",
+            2, // 2. Yarıyıl (Semester)
             3.65
         );
     }

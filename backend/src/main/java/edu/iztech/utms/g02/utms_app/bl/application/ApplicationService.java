@@ -95,6 +95,15 @@ public class ApplicationService {
             throw new IllegalArgumentException("Başvurunuz reddedildi: Genel not ortalamanız (GPA) IZTECH yatay geçiş barajı olan 2.50'nin altındadır.");
         }
 
+        // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü
+        // (Not: Yoksis'ten gelen field ismine göre yoksisData.semester(), grade() veya year() gibi kendi record'ındaki ismi kullanmalısın)
+        // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü (Integer Tipi ile)
+        Integer currentSemester = yoksisData.semester(); 
+        
+        if (currentSemester == null || (currentSemester != 2 && currentSemester != 4)) {
+            throw new IllegalArgumentException("Başvurunuz reddedildi: Yatay geçiş başvuruları yalnızca 3. veya 5. yarıyıllara yapılabilir. Başvuru yapabilmek için şu an 2. veya 4. yarıyılı tamamlıyor olmalısınız.");
+        }
+
         // 4. Application objesini oluşturma (Kendi verilerimiz + YÖKSİS verileri + Request verileri harmanlanıyor)
         Application app = Application.builder()
                 .student(currentStudent) // İlişkiyi kuruyoruz ?????

@@ -63,10 +63,10 @@ class ApplicationServiceTest {
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(false);
         
-        // YÖKSİS'ten dönen GPA 3.5 (2.50 barajından yüksek, sorunsuz geçmeli)
+        // ÖĞRENCİ 2. YARIYILDA VE ORTALAMASI 3.5 (Başvurusu KABUL EDİLMELİ)
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
                 .thenReturn(new YoksisStudentResponse(
-                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", "3. Sınıf", 3.5
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 3.5
                 ));
                 
         when(applicationRepository.save(any(Application.class))).thenAnswer(invocation -> {
@@ -138,7 +138,7 @@ class ApplicationServiceTest {
         // YÖKSİS'ten GPA'i bilerek 2.49 dönüyoruz
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
                 .thenReturn(new YoksisStudentResponse(
-                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", "3. Sınıf", 2.49 
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 2.49 
                 ));
 
         ApplicationCreateRequest request = buildCreateRequest(); // KVKK true geliyor
@@ -146,6 +146,32 @@ class ApplicationServiceTest {
         assertThatThrownBy(() -> applicationService.create(request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("2.50'nin altındadır"); // Baraj uyarısını görmeliyiz
+
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    @Test
+    void create_invalidSemester_throwsIllegalArgumentException() {
+        Student student = buildStudent();
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
+
+        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
+                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
+        )).thenReturn(false);
+
+        // ÖĞRENCİ 3. YARIYILDA (Yani başvurduğunda 4. yarıyıla geçecek, ki bu kurala aykırı!) Ortalaması 3.5 olsa bile REDDEDİLMELİ.
+        when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
+                .thenReturn(new YoksisStudentResponse(
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 3, 3.5 
+                ));
+
+        ApplicationCreateRequest request = buildCreateRequest(); // KVKK true geliyor
+
+        // Eylem ve Doğrulama
+        assertThatThrownBy(() -> applicationService.create(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("şu an 2. veya 4. yarıyılı tamamlıyor olmalısınız"); 
 
         verify(applicationRepository, never()).save(any(Application.class));
     }
