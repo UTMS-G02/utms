@@ -259,6 +259,12 @@ public class ApplicationService {
             throw new IllegalArgumentException("Yüklenen CSV dosyası boş olamaz.");
         }
 
+        // YENİ EKLENEN: Sadece .csv uzantılı dosyalara izin ver
+        String filename = file.getOriginalFilename();
+        if (filename == null || !filename.toLowerCase().endsWith(".csv")) {
+            throw new IllegalArgumentException("Geçersiz dosya formatı. Lütfen sadece .csv uzantılı dosya yükleyin.");
+        }
+
         int processedCount = 0; // Kaç öğrencinin güncellendiğini tutmak için
 
         try (java.io.BufferedReader br = new java.io.BufferedReader(
