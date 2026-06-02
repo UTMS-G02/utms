@@ -24,12 +24,6 @@ import lombok.*;
 @AllArgsConstructor
 public class ApplicationCreateRequest {
 
-    // studentId'yi güvenlik için JWT/SecurityContext üzerinden almanı tavsiye ederim.
-    // Eğer zorunluysa burada kalabilir ama manipülasyona açıktır.
-
-    //@NotBlank(message = "Öğrenci numarası boş bırakılamaz.")
-    //private String studentId;
-
     @NotBlank(message = "Akademik yıl boş bırakılamaz (Örn: 2026-2027).")
     private String academicYear;
 

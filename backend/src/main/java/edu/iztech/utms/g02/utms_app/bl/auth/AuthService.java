@@ -104,7 +104,21 @@ public class AuthService {
         }
 
         String fullName = user.getFirstName() + " " + user.getLastName();
-        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName);
+
+        // Öğrenciye özel bilgileri başlangıçta null olarak tanımlıyoruz (Personel giriş yaparsa null dönecek)
+        String tckn = null;
+        LocalDate dateOfBirth = null; 
+        String phoneNumber = null;
+
+        // EĞER bu user objesi arka planda aslında bir Student ise:
+        if (user instanceof Student) {
+            Student student = (Student) user; // User'ı Student'a cast ediyoruz
+            tckn = student.getTckn();
+            dateOfBirth = student.getDateOfBirth();
+            phoneNumber = student.getPhoneNumber();
+        }
+
+        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, tckn, dateOfBirth, phoneNumber);
     }
 
     /**

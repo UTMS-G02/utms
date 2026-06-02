@@ -31,6 +31,9 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
 
     Optional<Application> findByApplicationId(Integer applicationId);
 
+    //eklendi 02.06
+    List<Application> findByStudent_EmailAndStatus(String email, ApplicationStatus status);
+
     // Aynı öğrencinin, aynı döneme ve aynı bölüme kaydı var mı kontrolü
     boolean existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(Integer userId, String targetDept, String academicYear);
 }

@@ -13,6 +13,7 @@ import edu.iztech.utms.g02.utms_app.integration.yoksis.dto.YoksisStudentResponse
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.AccessDeniedException;
@@ -24,6 +25,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+
 
 
 // EKLENDİ 28.05
@@ -243,45 +248,80 @@ public class ApplicationService {
     }
 
 
+
     // --------------------------------------------------------
-    // YDYO 2. AŞAMA: SINAV SONUCU GİRİŞİ
+    // YDYO 2. AŞAMA: TOPLU CSV İLE SINAV SONUCU YÜKLEME
     // --------------------------------------------------------
     @Transactional
-    @PreAuthorize("hasRole('YDYO')")
-    public ApplicationResponse enterYdyoExamResult(Integer applicationId, YdyoExamResultRequest req) {
-        Application app = applicationRepository.findByApplicationId(applicationId) // find by Id mi find by applicationId mi ?
-                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı."));
-
-        if (app.getStatus() != ApplicationStatus.YDYO_EXAM_PENDING) {
-            throw new IllegalStateException("Bu öğrencinin bekleyen bir sınavı bulunmuyor.");
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    public int uploadYdyoExamResultsCsv(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Yüklenen CSV dosyası boş olamaz.");
         }
 
-        // Sınav notunu kaydet
-        app.setYdyoExamScore(req.getExamScore());
-        app.setYdyoNotes(req.getNotes());
-
-        app.setYdyoReviewedBy(req.getReviewer());
-        app.setYdyoReviewedDate(LocalDateTime.now());
-
-        // GEÇME NOTU KONTROLÜ (Örn: 60 ve üzeri geçer)
-        // BURAYA DİKKAT !!!!!
-        //double passingGrade = 60.0; // Bunu application.properties'den de çekebiliriz
-
-        /*if (req.getExamScore() >= passingGrade) {
-            app.setStatus(ApplicationStatus.YDYO_ACCEPTED); // Sınavı geçti, OİDB 2. aşamasına hazır
-        } else {
-            app.setStatus(ApplicationStatus.YDYO_REJECTED); // Sınavdan kaldı
-        }*/
-
-        // MANUEL KARAR: Memur "passed = true" yollarsa geçti, "false" yollarsa kaldı.
-        if (Boolean.TRUE.equals(req.getPassed())) {
-            app.setStatus(ApplicationStatus.YDYO_ACCEPTED); // Sınavı geçti
-        } else {
-            app.setStatus(ApplicationStatus.YDYO_REJECTED); // Sınavdan kaldı
+        // YENİ EKLENEN: Sadece .csv uzantılı dosyalara izin ver
+        String filename = file.getOriginalFilename();
+        if (filename == null || !filename.toLowerCase().endsWith(".csv")) {
+            throw new IllegalArgumentException("Geçersiz dosya formatı. Lütfen sadece .csv uzantılı dosya yükleyin.");
         }
 
+        int processedCount = 0; // Kaç öğrencinin güncellendiğini tutmak için
 
-        return toResponse(applicationRepository.save(app));
+        try (java.io.BufferedReader br = new java.io.BufferedReader(
+                new java.io.InputStreamReader(file.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+            
+            String line;
+            boolean isFirstLine = true; // Başlık (Header) satırını atlamak için
+
+            while ((line = br.readLine()) != null) {
+                // Türkiye bölgesel ayarlarında Excel CSV'leri noktalı virgül (;) ile, 
+                // İngilizce sistemler virgül (,) ile böler. İkisine de hazırlıklıyız.
+                String[] columns = line.split("[,;]"); 
+
+                if (isFirstLine) {
+                    isFirstLine = false;
+                    continue; // "Ad Soyad, E-posta, Sınav Sonucu" yazan ilk satırı atla
+                }
+
+                // Beklenen format: [0] Ad Soyad, [1] E-posta, [2] Sınav Sonucu
+                if (columns.length < 3) continue; // Eksik veri olan satırları atla
+
+                String email = columns[1].trim();
+                String scoreStr = columns[2].trim();
+
+                try {
+                    Double score = Double.parseDouble(scoreStr);
+                    
+                    // Öğrencinin "YDYO_EXAM_PENDING" (Sınav Bekliyor) statüsündeki başvurusunu bul
+                    List<Application> pendingApps = applicationRepository.findByStudent_EmailAndStatus(email, ApplicationStatus.YDYO_EXAM_PENDING);
+                    
+                    if (!pendingApps.isEmpty()) {
+                        Application app = pendingApps.get(0); // Öğrencinin o dönemki aktif başvurusunu al
+                        
+                        app.setYdyoExamScore(score);
+                        app.setYdyoReviewedDate(LocalDateTime.now());
+                        
+                        // İŞ KURALI: 60 ve üzeri Muaf (Kabul), altı ise Red
+                        if (score >= 60.0) {
+                            app.setStatus(ApplicationStatus.YDYO_ACCEPTED);
+                        } else {
+                            app.setStatus(ApplicationStatus.YDYO_REJECTED);
+                        }
+                        
+                        applicationRepository.save(app);
+                        processedCount++;
+                    }
+
+                } catch (NumberFormatException e) {
+                    // Not kısmı sayı değilse (örn: "Girmedi" yazıyorsa) bu satırı güvenle atla
+                    System.err.println("Geçersiz not formatı atlandı: " + scoreStr + " (Email: " + email + ")");
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("CSV dosyası işlenirken sistemsel bir hata oluştu: " + e.getMessage());
+        }
+
+        return processedCount; // Başarıyla güncellenen öğrenci sayısını döndürüyoruz
     }
 
     // ==========================================
