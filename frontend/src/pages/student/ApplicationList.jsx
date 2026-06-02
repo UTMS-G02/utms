@@ -74,8 +74,8 @@ export default function ApplicationList() {
   const columns = [
     {
       title: 'Başvuru No',
-      dataIndex: 'applicationId',
-      key: 'applicationId',
+      dataIndex: 'id',
+      key: 'id',
       render: (id) => <Text style={{ fontWeight: 500 }}>#YG-{id}</Text>,
     },
     {
@@ -104,7 +104,7 @@ export default function ApplicationList() {
       title: 'İşlemler',
       key: 'actions',
       render: (_, record) => (
-        <Button onClick={() => navigate(`/student/applications/${record.applicationId}`)}>
+        <Button onClick={() => navigate(`/student/applications/${record.id}`)}>
           Detayları Görüntüle
         </Button>
       ),
@@ -151,7 +151,7 @@ export default function ApplicationList() {
           <Table
             columns={columns}
             dataSource={applications}
-            rowKey="applicationId"
+            rowKey="id"
             pagination={false}
             size="middle"
             bordered={false}
