@@ -59,6 +59,16 @@ public class AuthController {
     }
 
     /**
+     * Activates a student account using the token sent via email.
+     * GET /api/auth/activate?token=...
+     */
+    @GetMapping("/activate")
+    public ResponseEntity<Void> activate(@RequestParam String token) {
+        authService.activateAccount(token);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
      * Initiates a password reset request.
      * In production an email would be sent; the reset link is logged for now.
      * POST /api/auth/forgot-password

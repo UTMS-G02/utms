@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { Form, Input, Button, Typography, App, Modal, Checkbox, DatePicker, Row, Col } from 'antd'
 import { MailOutlined, LockOutlined } from '@ant-design/icons'
@@ -9,6 +9,14 @@ import iyteLogo from '../../assets/iyte_logo.png'
 import PasswordStrengthIndicator from '../../components/PasswordStrengthIndicator'
 
 const { Title, Text } = Typography
+
+// Zorunlu alanlarda etiketin sağında kırmızı * göster
+const requiredMark = (label, { required }) => (
+  <>
+    {label}
+    {required && <span style={{ color: '#ff4d4f', marginLeft: 2 }}>*</span>}
+  </>
+)
 
 const styles = {
   page: {
@@ -102,6 +110,16 @@ export default function LoginPage({ initialModal }) {
     }
   }, [initialModal, resetToken])
 
+  useEffect(() => {
+    if (searchParams.get('activated') === 'true') {
+      message.success('Hesabınız başarıyla aktive edildi. Giriş yapabilirsiniz.')
+      navigate('/login', { replace: true })
+    } else if (searchParams.get('activationError') === 'true') {
+      message.error('Aktivasyon bağlantısı geçersiz veya süresi dolmuş.')
+      navigate('/login', { replace: true })
+    }
+  }, [])
+
   const from = location.state?.from?.pathname ?? null
 
   const closeModal = () => {
@@ -128,7 +146,7 @@ export default function LoginPage({ initialModal }) {
       };
 
       await authApi.register(payload)
-      message.success('Kayıt başarılı. Şimdi giriş yapabilirsiniz.')
+      message.success('Kayıt başarılı. Hesabınızı aktive etmek için e-postanızı kontrol edin.')
       registerForm.resetFields()
       closeModal()
     } catch (error) {
@@ -186,7 +204,10 @@ export default function LoginPage({ initialModal }) {
       navigate(destination, { replace: true })
     } catch (err) {
       const status = err.response?.status
-      if (status === 401) {
+      const serverMessage = err.response?.data?.message
+      if (status === 401 && serverMessage?.includes('aktive')) {
+        message.warning('Hesabınız henüz aktive edilmemiş. E-postanızı kontrol edin.')
+      } else if (status === 401) {
         message.error('E-posta veya şifre hatalı.')
       } else if (status === 403) {
         message.warning('Hesabınız henüz doğrulanmamış.')
@@ -218,7 +239,7 @@ export default function LoginPage({ initialModal }) {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          requiredMark={false}
+          requiredMark={requiredMark}
           size="large"
         >
           <Form.Item
@@ -296,13 +317,13 @@ export default function LoginPage({ initialModal }) {
             form={registerForm}
             layout="vertical"
             onFinish={handleRegister}
-            requiredMark={false}
+            requiredMark={requiredMark}
             size="large"
           >
             {/* Ad ve İkinci Ad */}
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item label="Ad *" name="firstName" rules={[{ required: true, message: 'Ad zorunludur.' }]}>
+                <Form.Item label="Ad" name="firstName" rules={[{ required: true, message: 'Ad zorunludur.' }]}>
                   <Input placeholder="Örn: Ahmet" />
                 </Form.Item>
               </Col>
@@ -316,12 +337,12 @@ export default function LoginPage({ initialModal }) {
             {/* Soyad ve TCKN */}
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item label="Soyad *" name="lastName" rules={[{ required: true, message: 'Soyad zorunludur.' }]}>
+                <Form.Item label="Soyad" name="lastName" rules={[{ required: true, message: 'Soyad zorunludur.' }]}>
                   <Input placeholder="Örn: Yılmaz" />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item label="TC Kimlik No *" name="tckn" rules={[tcknRule()]}>
+                <Form.Item label="TC Kimlik No" name="tckn" required rules={[tcknRule()]}>
                   <Input placeholder="11 haneli TCKN" maxLength={11} />
                 </Form.Item>
               </Col>
@@ -330,12 +351,12 @@ export default function LoginPage({ initialModal }) {
             {/* Telefon ve Doğum Tarihi */}
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item label="Telefon *" name="phoneNumber" rules={[phoneRule()]}>
-                  <Input placeholder="Örn: 05xxxxxxxxx" />
+                <Form.Item label="Telefon" name="phoneNumber" required rules={[phoneRule()]}>
+                  <Input placeholder="Örn: 5xxxxxxxxx" />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item label="Doğum Tarihi *" name="dateOfBirth" rules={[dobRule()]}>
+                <Form.Item label="Doğum Tarihi" name="dateOfBirth" required rules={[dobRule()]}>
                   <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="Seçiniz" />
                 </Form.Item>
               </Col>
@@ -343,7 +364,7 @@ export default function LoginPage({ initialModal }) {
 
             {/* E-posta */}
             <Form.Item
-              label="E-posta Adresi *"
+              label="E-posta Adresi"
               name="email"
               rules={[
                 { required: true, message: 'E-posta adresi zorunludur.' },
@@ -358,7 +379,7 @@ export default function LoginPage({ initialModal }) {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label="Şifre *"
+                  label="Şifre"
                   name="password"
                   rules={[
                     { required: true, message: 'Şifre zorunludur.' },
@@ -384,7 +405,7 @@ export default function LoginPage({ initialModal }) {
               </Col>
               <Col span={12}>
                 <Form.Item
-                  label="Şifre Tekrar *"
+                  label="Şifre Tekrar"
                   name="confirm"
                   dependencies={["password"]}
                   hasFeedback
@@ -448,12 +469,12 @@ export default function LoginPage({ initialModal }) {
             form={forgotForm}
             layout="vertical"
             onFinish={handleForgotPassword}
-            requiredMark={false}
+            requiredMark={requiredMark}
             size="large"
             style={{ marginTop: 16 }}
           >
             <Form.Item
-              label="E-posta Adresi *"
+              label="E-posta Adresi"
               name="email"
               rules={[
                 { required: true, message: 'E-posta adresi zorunludur.' },
@@ -500,11 +521,11 @@ export default function LoginPage({ initialModal }) {
             form={resetForm}
             layout="vertical"
             onFinish={handleResetPassword}
-            requiredMark={false}
+            requiredMark={requiredMark}
             size="large"
           >
             <Form.Item
-              label="Yeni Şifre *"
+              label="Yeni Şifre"
               name="newPassword"
               rules={[
                 { required: true, message: 'Yeni şifre zorunludur.' },
@@ -532,7 +553,7 @@ export default function LoginPage({ initialModal }) {
             </Form.Item>
             <PasswordStrengthIndicator value={resetPasswordValue} />
             <Form.Item
-              label="Yeni Şifre (Tekrar) *"
+              label="Yeni Şifre (Tekrar)"
               name="confirmNewPassword"
               dependencies={['newPassword']}
               hasFeedback
