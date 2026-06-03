@@ -35,7 +35,9 @@ public class YoksisService {
                 data.currentDepartment(),
                 data.semester(),
                 currentClass,
-                data.gpa()
+                data.gpa(),
+                data.yksScore(),
+                data.yksRank()
         );
     }
 }

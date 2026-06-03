@@ -139,13 +139,15 @@ export default function ApplicationDetail() {
     status,
     submissionDate,               // DTO alanı 'submissionDate' (eski 'submittedAt' yanlıştı)
     studentName,
+    email,                        // gerçek öğrenci e-postası (backend ApplicationResponse)
     targetDepartment,
+    currentUniversity,            // YÖKSİS'ten (mock) — başvuru anında kaydedildi
+    currentDepartment,
+    gpa,
     oidbNotes,                    // ← düzeltme gerekçesi BURADA (notes/revisionNotes yok)
     ydyoNotes,
     documents = [],
-    statusHistory = [],
   } = application
-  const lastHistory = statusHistory[statusHistory.length - 1]
   const alertText = ALERT_MAP[status] ?? 'Başvurunuzun durumu güncellenmektedir.'
   const stepCurrent = getStepCurrent(status)
   const statusMeta = getStatusMeta(status)
@@ -183,14 +185,6 @@ export default function ApplicationDetail() {
     }
   }
 
-  // TODO: backend'e bu alanlar eklenince güncellenecek
-  const HARDCODED_CURRENT_DEPT = 'Fen Bilimleri'
-  const HARDCODED_STUDENT_NO = 'STU-2024-12345'
-  const HARDCODED_GPA = '3.85'
-  const HARDCODED_EMAIL = 'ahmet.yilmaz@ogrenci.iyte.edu.tr'
-  const HARDCODED_UNIVERSITY = 'İzmir Yüksek Teknoloji Enstitüsü'
-  const HARDCODED_GRADE = '2. Sınıf'
-
   const descriptionItems = [
     {
       key: 'applicationId',
@@ -200,12 +194,12 @@ export default function ApplicationDetail() {
     {
       key: 'currentDept',
       label: 'Mevcut Bölüm',
-      children: <Tag>{HARDCODED_CURRENT_DEPT}</Tag>,
+      children: currentDepartment ? <Tag>{currentDepartment}</Tag> : '—',
     },
     {
-      key: 'studentNo',
-      label: 'Öğrenci Numarası',
-      children: HARDCODED_STUDENT_NO,
+      key: 'studentName',
+      label: 'Ad Soyad',
+      children: studentName ?? '—',
     },
     {
       key: 'targetDept',
@@ -217,39 +211,24 @@ export default function ApplicationDetail() {
       ),
     },
     {
-      key: 'studentName',
-      label: 'Ad Soyad',
-      children: studentName,
-    },
-    {
       key: 'gpa',
       label: 'Genel Not Ortalaması',
-      children: HARDCODED_GPA,
+      children: gpa != null ? Number(gpa).toFixed(2) : '—',
     },
     {
       key: 'email',
       label: 'E-posta',
-      children: HARDCODED_EMAIL,
+      children: email ?? '—',
+    },
+    {
+      key: 'university',
+      label: 'Üniversite',
+      children: currentUniversity ?? '—',
     },
     {
       key: 'submittedAt',
       label: 'Başvuru Tarihi',
       children: `📅 ${formatDate(submissionDate)}`,
-    },
-    {
-      key: 'university',
-      label: 'Üniversite',
-      children: HARDCODED_UNIVERSITY,
-    },
-    {
-      key: 'lastUpdate',
-      label: 'Son Güncelleme',
-      children: `📅 ${formatDate(lastHistory?.changedAt)}`,
-    },
-    {
-      key: 'grade',
-      label: 'Sınıf',
-      children: HARDCODED_GRADE,
     },
   ]
 

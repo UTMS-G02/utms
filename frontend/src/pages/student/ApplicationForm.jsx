@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Form, Input, Button, Typography, Row, Col, Select,
-  InputNumber, DatePicker, Checkbox, Space, App, Upload,
+  InputNumber, DatePicker, Checkbox, Space, App, Upload, Alert,
 } from 'antd'
-import { InboxOutlined } from '@ant-design/icons'
+import { InboxOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useAuth } from '../../contexts/AuthContext'
 import { applicationsApi } from '../../api/applications'
@@ -12,20 +12,34 @@ import { applicationsApi } from '../../api/applications'
 const { Title, Text } = Typography
 const { Option } = Select
 
-const TARGET_DEPT_OPTIONS = [
-  'Bilgisayar Mühendisliği',
-  'Elektrik-Elektronik Mühendisliği',
-  'Makine Mühendisliği',
-  'Endüstri Mühendisliği',
-  'Kimya Mühendisliği',
-  'Mimarlık',
-]
+// Fakülte → o fakülteye ait bölümler. Fakülte seçilince bölüm listesi buna göre filtrelenir.
+const FACULTY_DEPARTMENTS = {
+  'Mühendislik Fakültesi': [
+    'Bilgisayar Mühendisliği',
+    'Elektrik-Elektronik Mühendisliği',
+    'Makine Mühendisliği',
+    'Endüstri Mühendisliği',
+    'Kimya Mühendisliği',
+    'İnşaat Mühendisliği',
+    'Gıda Mühendisliği',
+    'Malzeme Bilimi ve Mühendisliği',
+    'Biyomühendislik',
+  ],
+  'Mimarlık Fakültesi': [
+    'Mimarlık',
+    'Şehir ve Bölge Planlama',
+    'Endüstriyel Tasarım',
+  ],
+  'Fen Fakültesi': [
+    'Matematik',
+    'Fizik',
+    'Kimya',
+    'Moleküler Biyoloji ve Genetik',
+    'Fotonik',
+  ],
+}
 
-const TARGET_FACULTY_OPTIONS = [
-  'Mühendislik Fakültesi',
-  'Mimarlık Fakültesi',
-  'Fen Fakültesi',
-]
+const TARGET_FACULTY_OPTIONS = Object.keys(FACULTY_DEPARTMENTS)
 
 const ACADEMIC_YEAR_OPTIONS = ['2025-2026', '2026-2027', '2027-2028']
 
@@ -97,6 +111,10 @@ export default function ApplicationForm() {
   const { user } = useAuth()
   const { message } = App.useApp()
 
+  // Seçili fakülteye göre bölüm listesini filtrelemek için izliyoruz.
+  const selectedFaculty = Form.useWatch('targetFaculty', form)
+  const departmentOptions = FACULTY_DEPARTMENTS[selectedFaculty] ?? []
+
   // Kişisel bilgiler kayıt sırasında verilen değerlerle (auth /me) otomatik
   // doldurulur ve salt-okunur gösterilir; öğrenci başvuru formunda değiştiremez.
   useEffect(() => {
@@ -126,6 +144,9 @@ export default function ApplicationForm() {
           currentDept: data.currentDepartment,
           currentYear: data.currentClass != null ? `${data.currentClass}. Sınıf` : '',
           gpa: data.gpa,
+          // YKS verileri de ÖSYM'den (mock) otomatik gelir; salt-okunur gösterilir.
+          yksScore: data.yksScore,
+          yksRanking: data.yksRank,
         })
       })
       .catch(() => {
@@ -151,12 +172,20 @@ export default function ApplicationForm() {
     return false
   }
 
+  // Form doğrulaması başarısız olunca SESSİZCE kalmasın: kullanıcıya net mesaj göster
+  // ve ilk hatalı alana kaydır (aksi halde "butona bastım hiçbir şey olmadı" hissi oluşuyor).
+  const onFinishFailed = ({ errorFields }) => {
+    const first = errorFields?.[0]?.errors?.[0]
+    message.error(
+      first
+        ? `Eksik/hatalı alan: ${first}`
+        : 'Lütfen zorunlu alanları doldurun.'
+    )
+  }
+
   const handleSubmit = async (values) => {
     setSubmitting(true)
     const {
-      studentCertificate,
-      transcript,
-      yksResult,
       courseContents,
       languageCert,
       additionalDocs,
@@ -185,15 +214,12 @@ export default function ApplicationForm() {
       message.destroy()
       const applicationId = created.id
 
+      // NOT: Öğrenci belgesi, transkript ve YKS sonuç belgesi e-Devlet/ÖSYM'den
+      // backend tarafından OTOMATİK üretilip iliştirilir; burada yüklenmez.
       // ÖNEMLİ: Her belge için BENZERSİZ documentType gönderilmeli. Backend
       // (DocumentService.deleteExistingDocumentIfAny) aynı tipte yeni belge
       // gelince eskisini siler; iki belge de 'OTHER' olursa biri kaybolur.
-      // Bu yüzden YKS sonucu / ders içerikleri ayrı tip, ek belgeler de
-      // OTHER_1, OTHER_2... şeklinde numaralanır.
       const allFiles = [
-        { type: 'STUDENT_CERTIFICATE', file: studentCertificate?.[0]?.originFileObj },
-        { type: 'TRANSCRIPT', file: transcript?.[0]?.originFileObj },
-        { type: 'YKS_RESULT', file: yksResult?.[0]?.originFileObj },
         { type: 'COURSE_CONTENTS', file: courseContents?.[0]?.originFileObj },
         { type: 'LANGUAGE_CERT', file: languageCert?.[0]?.originFileObj },
         ...(additionalDocs ?? []).map((f, i) => ({ type: `OTHER_${i + 1}`, file: f.originFileObj })),
@@ -238,13 +264,13 @@ export default function ApplicationForm() {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        onFinishFailed={onFinishFailed}
+        scrollToFirstError
         requiredMark={requiredMark}
         size="large"
         initialValues={{
-          yksScore: user?.yksScore ?? undefined,
-          yksRanking: user?.yksRanking ?? undefined,
           // Kişisel bilgiler (ad/soyad/e-posta/TC/doğum tarihi/telefon) useEffect
-          // ile auth /me'den doldurulur; currentUniversity / gpa vb. YÖKSİS'ten.
+          // ile auth /me'den; currentUniversity / gpa / YKS verileri YÖKSİS/ÖSYM'den.
         }}
       >
         {/* Kişisel Bilgiler */}
@@ -409,7 +435,10 @@ export default function ApplicationForm() {
                 name="targetFaculty"
                 rules={[{ required: true, message: 'Hedef fakülte zorunludur.' }]}
               >
-                <Select placeholder="Seçiniz">
+                <Select
+                  placeholder="Seçiniz"
+                  onChange={() => form.setFieldsValue({ targetDepartment: undefined })}
+                >
                   {TARGET_FACULTY_OPTIONS.map((f) => (
                     <Option key={f} value={f}>{f}</Option>
                   ))}
@@ -422,8 +451,11 @@ export default function ApplicationForm() {
                 name="targetDepartment"
                 rules={[{ required: true, message: 'Hedef bölüm zorunludur.' }]}
               >
-                <Select placeholder="Seçiniz">
-                  {TARGET_DEPT_OPTIONS.map((d) => (
+                <Select
+                  placeholder={selectedFaculty ? 'Seçiniz' : 'Önce fakülte seçiniz'}
+                  disabled={!selectedFaculty}
+                >
+                  {departmentOptions.map((d) => (
                     <Option key={d} value={d}>{d}</Option>
                   ))}
                 </Select>
@@ -433,14 +465,14 @@ export default function ApplicationForm() {
               <Form.Item
                 label="SAY YKS Puanı"
                 name="yksScore"
-                rules={[{ required: true, message: 'YKS puanı zorunludur.' }]}
+                extra="ÖSYM'den otomatik alınmıştır ve düzenlenemez."
               >
                 <InputNumber
-                  style={{ width: '100%' }}
-                  min={0}
-                  max={500}
-                  step={0.001}
-                  placeholder="0.000"
+                  style={{ width: '100%', ...styles.readonlyInput }}
+                  readOnly
+                  disabled={yoksisLoading}
+                  precision={3}
+                  placeholder={yoksisLoading ? 'ÖSYM\'den alınıyor...' : '0.000'}
                 />
               </Form.Item>
             </Col>
@@ -448,12 +480,13 @@ export default function ApplicationForm() {
               <Form.Item
                 label="SAY YKS Sıralaması"
                 name="yksRanking"
-                rules={[{ required: true, message: 'YKS sıralaması zorunludur.' }]}
+                extra="ÖSYM'den otomatik alınmıştır ve düzenlenemez."
               >
                 <InputNumber
-                  style={{ width: '100%' }}
-                  min={1}
-                  placeholder="Sıralamanız"
+                  style={{ width: '100%', ...styles.readonlyInput }}
+                  readOnly
+                  disabled={yoksisLoading}
+                  placeholder={yoksisLoading ? 'ÖSYM\'den alınıyor...' : 'Sıralamanız'}
                 />
               </Form.Item>
             </Col>
@@ -467,47 +500,21 @@ export default function ApplicationForm() {
             Gerekli belgeleri yükleyin
           </Text>
 
-          <Form.Item
-            label="Öğrenci Belgesi"
-            name="studentCertificate"
-            valuePropName="fileList"
-            getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
-            rules={[{ required: true, message: 'Öğrenci belgesi zorunludur.' }]}
-          >
-            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-              <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
-            </Upload.Dragger>
-          </Form.Item>
-
-          <Form.Item
-            label="Transkript"
-            name="transcript"
-            valuePropName="fileList"
-            getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
-            rules={[{ required: true, message: 'Transkript zorunludur.' }]}
-          >
-            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-              <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
-            </Upload.Dragger>
-          </Form.Item>
-
-          <Form.Item
-            label="YKS Sonuç Belgesi"
-            name="yksResult"
-            valuePropName="fileList"
-            getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
-            rules={[{ required: true, message: 'YKS sonuç belgesi zorunludur.' }]}
-          >
-            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-              <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
-            </Upload.Dragger>
-          </Form.Item>
+          {/* e-Devlet/ÖSYM'den otomatik alınan belgeler — öğrenci yüklemez */}
+          <Alert
+            type="success"
+            showIcon
+            icon={<CheckCircleOutlined />}
+            style={{ marginBottom: 20 }}
+            message="e-Devlet / ÖSYM'den otomatik alınan belgeler"
+            description={
+              <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                <li>Öğrenci Belgesi — e-Devlet</li>
+                <li>Transkript (Not Dökümü) — e-Devlet</li>
+                <li>YKS Sonuç Belgesi — ÖSYM</li>
+              </ul>
+            }
+          />
 
           <Form.Item
             label="Almış Olduğunuz Derslerin İçerikleri"
@@ -557,7 +564,10 @@ export default function ApplicationForm() {
           </Title>
           <Text style={{ lineHeight: 1.6, display: 'block', marginBottom: 16 }}>
             Yatay geçiş başvurunuz kapsamında kişisel verilerinizin işlenmesine
-            ilişkin Aydınlatma Metni'ni okudum, anladım ve onaylıyorum.
+            ilişkin{' '}
+            <a href="/kvkk" target="_blank" rel="noopener noreferrer" style={{ color: '#8B1A2B' }}>
+              Aydınlatma Metni
+            </a>'ni okudum, anladım ve onaylıyorum.
           </Text>
           <Form.Item
             name="kvkk"
