@@ -107,11 +107,21 @@ public class ApplicationService {
             throw new IllegalArgumentException("Başvurunuz reddedildi: Yatay geçiş başvuruları yalnızca 3. veya 5. yarıyıllara yapılabilir. Başvuru yapabilmek için şu an 2. veya 4. yarıyılı tamamlıyor olmalısınız.");
         }
 
+        // YENİ: Öğrencinin seçtiği hedef yarıyıl (3/5), YÖKSİS'teki mevcut yarıyıl ile tutarlı olmalı.
+        // 2. yarıyılı tamamlayan -> yalnızca 3., 4. yarıyılı tamamlayan -> yalnızca 5. yarıyıla başvurabilir.
+        Integer targetSemester = req.getSemester();
+        if (targetSemester == null || targetSemester != currentSemester + 1) {
+            throw new IllegalArgumentException("Başvurulan yarıyıl seçimi mevcut durumunuzla tutarlı değil: "
+                    + currentSemester + ". yarıyılı tamamlayan öğrenciler yalnızca " + (currentSemester + 1)
+                    + ". yarıyıla başvurabilir.");
+        }
+
         // 4. Application objesini oluşturma (Kendi verilerimiz + YÖKSİS verileri + Request verileri harmanlanıyor)
         Application app = Application.builder()
                 .student(currentStudent) // İlişkiyi kuruyoruz ?????
                 .status(ApplicationStatus.DRAFT) // İlk oluşumda durumu genelde DRAFT (Taslak) olur
                 .academicYear(req.getAcademicYear())
+                .semester(String.valueOf(req.getSemester())) // hedef yarıyıl (3/5); NOT NULL + unique key parçası
                 .targetDepartment(req.getTargetDepartment())
                 .targetFaculty(req.getTargetFaculty())
 

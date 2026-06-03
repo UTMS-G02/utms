@@ -33,6 +33,11 @@ public class ApplicationCreateRequest {
     @NotBlank(message = "Hedef bölüm boş bırakılamaz.")
     private String targetDepartment;
 
+    // Öğrencinin başvurduğu hedef yarıyıl (3 veya 5). YÖKSİS'teki mevcut yarıyıl
+    // ile tutarlılığı ApplicationService.create içinde doğrulanır.
+    @NotNull(message = "Başvurulan yarıyıl boş bırakılamaz (3 veya 5).")
+    private Integer semester;
+
     //@NotNull(message = "KVKK onayı zorunludur.")
     private Boolean kvkkAccepted;
     

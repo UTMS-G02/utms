@@ -11,6 +11,11 @@ const studentApi = {
   getApplicationById: (id) =>
     apiClient.get(`/applications/${id}`).then((res) => res.data),
 
+  // Akademik bilgiler YÖKSİS'ten gelir (read-only). Formda görünen = kaydedilen;
+  // backend create de aynı kaynaktan türetir.
+  getMyYoksisData: () =>
+    apiClient.get('/yoksis/me').then((res) => res.data),
+
   createApplication: (payload) =>
     apiClient.post('/applications', payload).then((res) => res.data),
 
