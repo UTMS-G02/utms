@@ -215,7 +215,8 @@ public class ApplicationService {
     // AŞAMA 2: YDYO Sonrası Karar
     private ApplicationResponse processOidbPostYdyoReview(Application app, boolean forwardToDean, OidbReviewRequest req) {
         if (forwardToDean && app.getStatus() == ApplicationStatus.YDYO_ACCEPTED) {
-            app.setStatus(ApplicationStatus.DEAN_OFFICE_REVIEW); 
+            // Pair 3 devir noktası: değerlendirme kuyruğuna alınır (frontend + spec ile uyumlu).
+            app.setStatus(ApplicationStatus.EVALUATION_QUEUE);
         } else {
             app.setStatus(ApplicationStatus.REJECTED); 
         }
