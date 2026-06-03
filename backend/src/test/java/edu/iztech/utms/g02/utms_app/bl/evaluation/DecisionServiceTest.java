@@ -21,15 +21,11 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * DecisionService — komisyon karar zinciri (Dekanlık → Fakülte Kurulu → Nihai Dekanlık).
- * PDF §6 geçiş tablosunu ve committee_decisions ekle-only davranışını doğrular.
- * İstek gövdesi Pair 2 ile tutarlı: approved (boolean) + notes.
- */
 @ExtendWith(MockitoExtension.class)
 class DecisionServiceTest {
 
@@ -40,134 +36,210 @@ class DecisionServiceTest {
     @InjectMocks private DecisionService decisionService;
 
     // ==========================================
-    // DEKANLIK
+    // DEKAN KARARI — recordDeanDecision()
     // ==========================================
 
     @Test
-    void deanApprove_fromYgkScored_movesToFacultyBoardReview_andAppendsDecision() {
+    void deanApproves_ygkScored_statusBecomesFactultyBoardReview() {
         Application app = buildApp(1, ApplicationStatus.YGK_SCORED);
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
-        when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
+        stubFind(1, app);
 
-        decisionService.recordDeanDecision(1, new DecisionRequest(true, "uygun"));
+        decisionService.recordDeanDecision(1, approve("İyi değerlendirme."));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REVIEW);
-
         ArgumentCaptor<CommitteeDecision> captor = ArgumentCaptor.forClass(CommitteeDecision.class);
         verify(committeeDecisionRepository).save(captor.capture());
-        CommitteeDecision saved = captor.getValue();
-        assertThat(saved.getDecisionBy()).isEqualTo("DEAN");
-        assertThat(saved.getDecision()).isEqualTo("APPROVED");
-        assertThat(saved.getNotes()).isEqualTo("uygun");
+        assertThat(captor.getValue().getDecisionBy()).isEqualTo("DEAN");
+        assertThat(captor.getValue().getDecision()).isEqualTo("APPROVED");
     }
 
     @Test
-    void deanReject_movesToDeanRejected() {
-        Application app = buildApp(1, ApplicationStatus.YGK_SCORED);
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
-        when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
+    void deanRejects_ygkScored_statusBecomesDeanRejected() {
+        Application app = buildApp(2, ApplicationStatus.YGK_SCORED);
+        stubFind(2, app);
 
-        decisionService.recordDeanDecision(1, new DecisionRequest(false, null));
+        decisionService.recordDeanDecision(2, reject("Eksik belge."));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.DEAN_REJECTED);
     }
 
+    @Test
+    void deanApproves_deanReviewStatus_alsoAllowed() {
+        Application app = buildApp(3, ApplicationStatus.DEAN_REVIEW);
+        stubFind(3, app);
+
+        decisionService.recordDeanDecision(3, approve(null));
+
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REVIEW);
+    }
+
+    @Test
+    void deanDecision_wrongStatus_throwsIllegalStateException_andSavesNothing() {
+        Application app = buildApp(4, ApplicationStatus.SUBMITTED);
+        stubFindOnly(4, app);
+
+        assertThatThrownBy(() -> decisionService.recordDeanDecision(4, approve(null)))
+                .isInstanceOf(IllegalStateException.class);
+        verify(committeeDecisionRepository, never()).save(any());
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void deanDecision_notesAreSaved() {
+        Application app = buildApp(5, ApplicationStatus.YGK_SCORED);
+        stubFind(5, app);
+
+        decisionService.recordDeanDecision(5, approve("Harika başvuru."));
+
+        ArgumentCaptor<CommitteeDecision> captor = ArgumentCaptor.forClass(CommitteeDecision.class);
+        verify(committeeDecisionRepository).save(captor.capture());
+        assertThat(captor.getValue().getNotes()).isEqualTo("Harika başvuru.");
+    }
+
     // ==========================================
-    // FAKÜLTE KURULU
+    // FAKÜLTE KURULU KARARI — recordFacultyBoardDecision()
     // ==========================================
 
     @Test
-    void facultyApprove_fromFacultyBoardReview_movesToFinalDeanReview() {
-        Application app = buildApp(1, ApplicationStatus.FACULTY_BOARD_REVIEW);
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
-        when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
+    void facultyBoardApproves_statusBecomesFinalDeanReview() {
+        Application app = buildApp(6, ApplicationStatus.FACULTY_BOARD_REVIEW);
+        stubFind(6, app);
 
-        decisionService.recordFacultyBoardDecision(1, new DecisionRequest(true, null));
+        decisionService.recordFacultyBoardDecision(6, approve(null));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FINAL_DEAN_REVIEW);
-
         ArgumentCaptor<CommitteeDecision> captor = ArgumentCaptor.forClass(CommitteeDecision.class);
         verify(committeeDecisionRepository).save(captor.capture());
         assertThat(captor.getValue().getDecisionBy()).isEqualTo("FACULTY_BOARD");
     }
 
     @Test
-    void facultyReject_movesToFacultyBoardRejected() {
-        Application app = buildApp(1, ApplicationStatus.FACULTY_BOARD_REVIEW);
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
-        when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
+    void facultyBoardRejects_statusBecomesFacultyBoardRejected() {
+        Application app = buildApp(7, ApplicationStatus.FACULTY_BOARD_REVIEW);
+        stubFind(7, app);
 
-        decisionService.recordFacultyBoardDecision(1, new DecisionRequest(false, null));
+        decisionService.recordFacultyBoardDecision(7, reject("%80 denklik sağlanamadı."));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REJECTED);
     }
 
+    @Test
+    void facultyBoardDecision_wrongStatus_throwsIllegalStateException_andSavesNothing() {
+        Application app = buildApp(8, ApplicationStatus.YGK_SCORED);
+        stubFindOnly(8, app);
+
+        assertThatThrownBy(() -> decisionService.recordFacultyBoardDecision(8, approve(null)))
+                .isInstanceOf(IllegalStateException.class);
+        verify(committeeDecisionRepository, never()).save(any());
+    }
+
     // ==========================================
-    // NİHAİ DEKANLIK
+    // NİHAİ DEKAN KARARI — recordFinalDeanDecision()
     // ==========================================
 
     @Test
-    void finalDeanApprove_fromFinalDeanReview_movesToResultPublished_andStoresFinalDeanRole() {
-        Application app = buildApp(1, ApplicationStatus.FINAL_DEAN_REVIEW);
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
-        when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
+    void finalDeanApproves_statusBecomesResultPublished() {
+        Application app = buildApp(9, ApplicationStatus.FINAL_DEAN_REVIEW);
+        stubFind(9, app);
 
-        decisionService.recordFinalDeanDecision(1, new DecisionRequest(true, null));
+        decisionService.recordFinalDeanDecision(9, approve(null));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.RESULT_PUBLISHED);
-
         ArgumentCaptor<CommitteeDecision> captor = ArgumentCaptor.forClass(CommitteeDecision.class);
         verify(committeeDecisionRepository).save(captor.capture());
         assertThat(captor.getValue().getDecisionBy()).isEqualTo("FINAL_DEAN");
     }
 
     @Test
-    void finalDeanReject_movesToRejected() {
-        Application app = buildApp(1, ApplicationStatus.FINAL_DEAN_REVIEW);
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
-        when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
+    void finalDeanRejects_statusBecomesRejected() {
+        Application app = buildApp(10, ApplicationStatus.FINAL_DEAN_REVIEW);
+        stubFind(10, app);
 
-        decisionService.recordFinalDeanDecision(1, new DecisionRequest(false, null));
+        decisionService.recordFinalDeanDecision(10, reject("Nihai red."));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.REJECTED);
     }
 
-    // ==========================================
-    // KORUMALAR (GUARDS)
-    // ==========================================
-
     @Test
-    void deanReview_wrongStatus_throwsIllegalState_andSavesNothing() {
-        Application app = buildApp(1, ApplicationStatus.SUBMITTED); // dekanlık aşamasında değil
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
+    void finalDeanDecision_wrongStatus_throwsIllegalStateException_andSavesNothing() {
+        Application app = buildApp(11, ApplicationStatus.FACULTY_BOARD_REVIEW);
+        stubFindOnly(11, app);
 
-        assertThatThrownBy(() -> decisionService.recordDeanDecision(1, new DecisionRequest(true, null)))
+        assertThatThrownBy(() -> decisionService.recordFinalDeanDecision(11, approve(null)))
                 .isInstanceOf(IllegalStateException.class);
-
         verify(committeeDecisionRepository, never()).save(any());
-        verify(applicationRepository, never()).save(any());
     }
 
-    @Test
-    void nullApproved_throwsIllegalArgument_andSavesNothing() {
-        Application app = buildApp(1, ApplicationStatus.YGK_SCORED);
-        when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
+    // ==========================================
+    // GİRİŞ DOĞRULAMA
+    // ==========================================
 
-        assertThatThrownBy(() -> decisionService.recordDeanDecision(1, new DecisionRequest(null, null)))
+    @Test
+    void nullApproved_throwsIllegalArgumentException_andSavesNothing() {
+        Application app = buildApp(12, ApplicationStatus.YGK_SCORED);
+        stubFindOnly(12, app);
+
+        assertThatThrownBy(() -> decisionService.recordDeanDecision(12, new DecisionRequest(null, null)))
                 .isInstanceOf(IllegalArgumentException.class);
-
         verify(committeeDecisionRepository, never()).save(any());
     }
 
-    @Test
-    void applicationNotFound_throwsEntityNotFound() {
-        when(applicationRepository.findById(99)).thenReturn(Optional.empty());
+    // ==========================================
+    // BAŞVURU BULUNAMADI
+    // ==========================================
 
-        assertThatThrownBy(() -> decisionService.recordDeanDecision(99, new DecisionRequest(true, null)))
+    @Test
+    void applicationNotFound_throwsEntityNotFoundException() {
+        when(applicationRepository.findById(anyInt())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> decisionService.recordDeanDecision(99, approve(null)))
                 .isInstanceOf(EntityNotFoundException.class);
     }
 
+    // ==========================================
+    // EKLE-ONLY — her karar yeni satır
+    // ==========================================
+
+    @Test
+    void appendOnly_eachDecisionSavesNewCommitteeRow() {
+        Application app = buildApp(15, ApplicationStatus.YGK_SCORED);
+        stubFind(15, app);
+
+        decisionService.recordDeanDecision(15, approve("İlk karar."));
+
+        verify(committeeDecisionRepository).save(any(CommitteeDecision.class));
+        verify(applicationRepository).save(app);
+    }
+
+    // ==========================================
+    // YARDIMCI METOTLAR
+    // ==========================================
+
     private Application buildApp(Integer id, ApplicationStatus status) {
-        return Application.builder().applicationId(id).status(status).build();
+        return Application.builder()
+                .applicationId(id)
+                .status(status)
+                .gpa(3.0)
+                .sayYksScore(400.0)
+                .build();
+    }
+
+    private DecisionRequest approve(String notes) {
+        return new DecisionRequest(true, notes);
+    }
+
+    private DecisionRequest reject(String notes) {
+        return new DecisionRequest(false, notes);
+    }
+
+    private void stubFindOnly(Integer id, Application app) {
+        when(applicationRepository.findById(id)).thenReturn(Optional.of(app));
+    }
+
+    private void stubFind(Integer id, Application app) {
+        when(applicationRepository.findById(id)).thenReturn(Optional.of(app));
+        when(applicationRepository.save(any())).thenReturn(app);
+        when(committeeDecisionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(applicationService.getApplicationById(id)).thenReturn(ApplicationResponse.builder().id(id).build());
     }
 }
