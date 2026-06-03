@@ -27,15 +27,5 @@ public enum ApplicationStatus {
 
     OIDB_FINAL_REVIEW,        // Fakülte Kurulu onayından sonra ÖİDB son bir inceleme yapıyor
     APPROVED,                 // Başvuru kabul edildi
-    REJECTED,                 // Başvuru reddedildi
-
-    // --- Pair 3 (Değerlendirme & Sonuç) — additive olarak eklendi ---
-    // FACULTY_BOARD_REVIEW / FACULTY_BOARD_REJECTED yukarıda zaten mevcut, tekrar eklenmedi.
-    EVALUATION_QUEUE,         // Pair 2'den devir noktası: YGK skorlamasına hazır
-    YGK_SCORED,               // YGK compositeScore hesapladı ve sıraladı
-    DEAN_REVIEW,              // Dekanlık inceliyor
-    DEAN_REJECTED,            // Dekanlık reddetti
-    FINAL_DEAN_REVIEW,        // Nihai Dekanlık onayı bekleniyor
-    RESULT_PUBLISHED,         // ÖİDB sonucu yayınladı (öğrenciye görünür hâle geldi)
-    ACCEPTED                  // Başvuru nihai olarak kabul edildi
+    REJECTED                  // Başvuru reddedildi
 }
