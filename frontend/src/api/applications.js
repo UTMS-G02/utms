@@ -1,16 +1,37 @@
 import apiClient from './client'
-import { mockApplications, mockApplicationDetail, mockResult, delay } from './mock'
+import { mockApplications, mockResult, delay } from './mock'
 
 export const applicationsApi = {
-  getMyApplications: async () => {
-    try {
-      const response = await apiClient.get('/applications')
-      return response.data
-    } catch (error) {
-      await delay(500)
-      return mockApplications
-    }
+  // --- Öğrenci uçları (backend hazır) ---
+
+  // GET /applications Spring Page döndürüyor; düz array için content'i alıyoruz.
+  getMyApplications: () =>
+    apiClient.get('/applications').then((res) => res.data.content),
+
+  getApplicationById: (id) =>
+    apiClient.get(`/applications/${id}`).then((res) => res.data),
+
+  createApplication: (payload) =>
+    apiClient.post('/applications', payload).then((res) => res.data),
+
+  submitApplication: (id) =>
+    apiClient.patch(`/applications/${id}/submit`).then((res) => res.data),
+
+  withdrawApplication: (id) =>
+    apiClient.patch(`/applications/${id}/withdraw`).then((res) => res.data),
+
+  uploadDocument: (id, file, documentType) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return apiClient
+      .post(`/applications/${id}/documents`, formData, {
+        params: { documentType },
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((res) => res.data)
   },
+
+  // --- ÖİDB uçları (backend hazır değilse mock fallback'li) ---
 
   getOidbApplications: async () => {
     try {
@@ -19,55 +40,6 @@ export const applicationsApi = {
     } catch (error) {
       await delay(500)
       return mockApplications
-    }
-  },
-
-  getApplicationById: async (_id) => {
-    try {
-      const response = await apiClient.get(`/applications/${_id}`)
-      return response.data
-    } catch (error) {
-      await delay(500)
-      return mockApplicationDetail
-    }
-  },
-
-  createApplication: async (_payload) => {
-    try {
-      const response = await apiClient.post('/applications', _payload)
-      return response.data
-    } catch (error) {
-      await delay(500)
-      return {
-        applicationId: Date.now(),
-        status: 'DRAFT',
-        createdAt: new Date().toISOString(),
-      }
-    }
-  },
-
-  submitApplication: async (_id) => {
-    try {
-      const response = await apiClient.post(`/applications/${_id}/submit`)
-      return response.data
-    } catch (error) {
-      await delay(500)
-      return { ...mockApplicationDetail, status: 'SUBMITTED' }
-    }
-  },
-
-  uploadDocument: async (_id, _formData) => {
-    try {
-      const response = await apiClient.post(`/applications/${_id}/documents`, _formData)
-      return response.data
-    } catch (error) {
-      await delay(500)
-      return {
-        documentId: Date.now(),
-        docType: 'OTHER',
-        fileName: 'document.pdf',
-        uploadedAt: new Date().toISOString(),
-      }
     }
   },
 
@@ -120,6 +92,8 @@ export const applicationsApi = {
       return { success: true }
     }
   },
+
+  // --- Sonuç (gerçek uç + fallback) ---
 
   getMyResult: async () => {
     try {

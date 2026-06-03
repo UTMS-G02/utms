@@ -4,19 +4,24 @@ import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 
 import java.util.List;
 import java.util.Optional;
 
 public interface ApplicationRepository extends JpaRepository<Application, Integer> {
 
-    List<Application> findByStatus(ApplicationStatus status); 
+    Page<Application> findByStatus(ApplicationStatus status, Pageable pageable);
 
-    List<Application> findByStudentId(String studentId); 
+    Page<Application> findByStudent_UserId(Integer userId, Pageable pageable);
 
-    List<Application> findByAcademicYear(String academicYear); 
+    Page<Application> findByStudent_UserIdAndStatus(Integer userId, ApplicationStatus status, Pageable pageable);
 
-    List<Application> findByTargetDept(String targetDept); 
+    List<Application> findByAcademicYear(String academicYear);
+
+    List<Application> findByTargetDepartment(String targetDepartment);
 
     List<Application> findByTargetFaculty(String targetFaculty); 
 
@@ -24,8 +29,11 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
 
     List<Application> findByYdyoApproved(boolean ydyoApproved);
 
-    Optional<Application> findByApplicationId(int applicationId);
+    Optional<Application> findByApplicationId(Integer applicationId);
+
+    //eklendi 02.06
+    List<Application> findByStudent_EmailAndStatus(String email, ApplicationStatus status);
 
     // Aynı öğrencinin, aynı döneme ve aynı bölüme kaydı var mı kontrolü
-    boolean existsByStudentIdAndTargetDeptAndAcademicYear(String studentId, String targetDept, String academicYear);
+    boolean existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(Integer userId, String targetDept, String academicYear);
 }

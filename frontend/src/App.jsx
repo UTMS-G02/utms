@@ -1,4 +1,3 @@
-import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/auth/Login';
 import StudentDashboard from './pages/student/Dashboard';
@@ -7,7 +6,9 @@ import ApplicationDetail from './pages/student/ApplicationDetail';
 import ApplicationForm from './pages/student/ApplicationForm';
 import Profile from './pages/student/Profile';
 import OidbDashboard from './pages/oidb/Dashboard';
-import AppLayout from './components/Layout/AppLayout'; 
+import YdyoDashboard from './pages/ydyo/YdyoDashboard';
+import YdyoApplicationDetail from './pages/ydyo/YdyoApplicationDetail';
+import AppLayout from './components/Layout/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROLES } from './contexts/AuthContext';
 
@@ -44,6 +45,11 @@ export default function App() {
         path="/oidb"
         element={
           <ProtectedRoute allowedRoles={[ROLES.OIDB]}>
+      {/* YDYO (Yabancı Diller) Portalı */}
+      <Route
+        path="/ydyo"
+        element={
+          <ProtectedRoute allowedRoles={[ROLES.YDYO]}>
             <AppLayout />
           </ProtectedRoute>
         }
@@ -51,6 +57,9 @@ export default function App() {
         <Route index element={<OidbDashboard />} />
         <Route path="dashboard" element={<OidbDashboard />} />
         <Route path="pending" element={<OidbDashboard />} />
+        <Route index element={<YdyoDashboard />} />
+        <Route path="dashboard" element={<YdyoDashboard />} />
+        <Route path="applications/:id" element={<YdyoApplicationDetail />} />
       </Route>
 
       {/* Dekanlık Portalı */}

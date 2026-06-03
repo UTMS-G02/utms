@@ -1,48 +1,80 @@
 package edu.iztech.utms.g02.utms_app.bl.application;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.*;
-
 import edu.iztech.utms.g02.utms_app.dal.application.entity.*;
-
 import edu.iztech.utms.g02.utms_app.dal.application.repository.*;
+
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Student; // EKLENDİ
+import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository; // EKLENDİ
+
+import edu.iztech.utms.g02.utms_app.integration.yoksis.YoksisIntegrationService; // EKLENDİ
+import edu.iztech.utms.g02.utms_app.integration.yoksis.dto.YoksisStudentResponse; // EKLENDİ
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-// --- EKLENEN YENİ İMPORTLAR ---
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import jakarta.persistence.EntityNotFoundException;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+
+
+
+// EKLENDİ 28.05
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-// ------------------------------
+
+
+/*
+// ApplicationService.java
+// Tüm iş kurallarının yaşadığı yer. En kritik class.
+
+// - create(): Yeni başvuru oluşturur, durumu DRAFT yapar, veritabanına kaydeder
+// - submit(): DRAFT kontrolü yapar → SUBMITTED yapar (DRAFT değilse hata fırlatır)
+// - processOidbReview(): ÖİDB kararına göre → YDYO_REVIEW veya OIDB_REJECTED
+// - processYdyoReview(): YDYO kararına göre → EVALUATION_QUEUE veya YDYO_REJECTED
+// - Her metod: Repository'den veriyi çeker → iş kuralını uygular → kaydeder → Response döner
+*/
+
 
 @Service
 @RequiredArgsConstructor
 public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
-    private final DocumentRepository documentRepository;
-//  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için
+    private final ApplicationPeriodRepository applicationPeriodRepository;
+
+    private final StudentRepository studentRepository; // EKLENDİ
+    private final YoksisIntegrationService yoksisIntegrationService; // EKLENDİ
+
+    //  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için --> en aşağıda manuel olarak yapıyoruz, toResponse() metodu ile
 
     @Transactional
-    public ApplicationResponse create(Integer userId, ApplicationCreateRequest req) { 
+    public ApplicationResponse create(ApplicationCreateRequest req) { // Integer userId, silindi
+
+        // 1. Güvenlik: İsteği atan kullanıcıyı tespit et
+        String currentStudentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        // 2. Senin StudentRepository'ni kullanarak veritabanından öğrenciyi çek
+        Student currentStudent = studentRepository.findByEmail(currentStudentEmail)
+            .orElseThrow(() -> new EntityNotFoundException("Öğrenci bulunamadı."));
 
         // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla başvuru yapamaz
-        boolean alreadyApplied = applicationRepository.existsByStudentIdAndTargetDeptAndAcademicYear(
-                req.getStudentId(), // String dönüyordur diye varsayıyoruz
-                req.getTargetDept(), 
+        boolean alreadyApplied = applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
+                currentStudent.getUserId(), // Artık request'ten değil, güvenilir kaynaktan alıyoruz
+                req.getTargetDepartment(), 
                 req.getAcademicYear()
         );
 
@@ -50,18 +82,46 @@ public class ApplicationService {
             throw new IllegalArgumentException("Bir öğrenci aynı bölüme, aynı akademik dönemde birden fazla başvuru yapamaz.");
         }
 
-        // 2. Diğer geçerlilik kontrolleri
+        //2. Diğer geçerlilik kontrolleri // gerekli miiii?
         if (!Boolean.TRUE.equals(req.getKvkkAccepted())) {
             throw new IllegalArgumentException("KVKK onayı zorunludur.");
         }
 
-        // 3. Application objesini oluşturma
+        // 3. Dış Sistem Entegrasyonu: YÖKSİS'ten akademik verileri çek
+        YoksisStudentResponse yoksisData = yoksisIntegrationService.fetchAcademicDataByTckn(currentStudent.getTckn());
+
+        // YENİ EKLENEN: Akademik Yeterlilik Barajı (Minimum 2.50 GPA)
+        if (yoksisData.gpa() < 2.50) {
+            throw new IllegalArgumentException("Başvurunuz reddedildi: Genel not ortalamanız (GPA) IZTECH yatay geçiş barajı olan 2.50'nin altındadır.");
+        }
+
+        // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü
+        // (Not: Yoksis'ten gelen field ismine göre yoksisData.semester(), grade() veya year() gibi kendi record'ındaki ismi kullanmalısın)
+        // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü (Integer Tipi ile)
+        Integer currentSemester = yoksisData.semester(); 
+        
+        if (currentSemester == null || (currentSemester != 2 && currentSemester != 4)) {
+            throw new IllegalArgumentException("Başvurunuz reddedildi: Yatay geçiş başvuruları yalnızca 3. veya 5. yarıyıllara yapılabilir. Başvuru yapabilmek için şu an 2. veya 4. yarıyılı tamamlıyor olmalısınız.");
+        }
+
+        // 4. Application objesini oluşturma (Kendi verilerimiz + YÖKSİS verileri + Request verileri harmanlanıyor)
         Application app = Application.builder()
-                .studentId(req.getStudentId())
+                .student(currentStudent) // İlişkiyi kuruyoruz ?????
                 .status(ApplicationStatus.DRAFT) // İlk oluşumda durumu genelde DRAFT (Taslak) olur
                 .academicYear(req.getAcademicYear())
-                .targetDept(req.getTargetDept())
+                .targetDepartment(req.getTargetDepartment())
                 .targetFaculty(req.getTargetFaculty())
+
+                // Front-end'den gelen YKS verileri
+                .sayYksScore(req.getSayYksScore())
+                .sayYksRank(req.getSayYksRank())
+
+                // YÖKSİS'ten otomatik gelen veriler
+                .currentUniversity(yoksisData.currentUniversity())
+                .currentFaculty(yoksisData.currentFaculty())
+                .currentDepartment(yoksisData.currentDepartment())
+                .gpa(yoksisData.gpa())
+
                 .build();
         
         // 4. Veritabanına kaydet
@@ -72,13 +132,16 @@ public class ApplicationService {
     }
 
     @Transactional
-    public ApplicationResponse submit(Integer applicationId, Integer userId) {
-        
+    public ApplicationResponse submit(Integer applicationId) { //, Integer userId silindi
+
+        // Sadece başvuru id'si yeterli, kullanıcının kendi başvurusu olup olmadığını kontrol edelim
         Application app = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
         
-        if (app.getStatus() != ApplicationStatus.DRAFT) {
-            throw new IllegalStateException("Application is not in DRAFT state");
+        verifyOwnership(app); // Helper metot ile güvenlik kontrolü
+
+        if (app.getStatus() != ApplicationStatus.DRAFT && app.getStatus() != ApplicationStatus.REVISION_REQUESTED) { // REVISION_REQUESTED ekledik, böylece öğrenci düzeltme yapıp tekrar gönderebilir
+            throw new IllegalStateException("Sadece DRAFT veya REVISION_REQUESTED durumundaki başvurular gönderilebilir.");
         }
         
         app.setStatus(ApplicationStatus.SUBMITTED);
@@ -87,139 +150,390 @@ public class ApplicationService {
         return toResponse(app);
     }
 
+    // --- DIŞARIYA AÇIK TEK METOT (DISPATCHER) ---
     @Transactional
-    public ApplicationResponse processOidbReview(Integer applicationId, OidbReviewRequest req) {
-         
-        Application app = applicationRepository.findByApplicationId(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException("Application not found"));
+    public ApplicationResponse processDynamicOidbReview(Integer applicationId, OidbReviewRequest req) {
+        Application app = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException("Başvuru bulunamadı."));
 
-        app.setStatus(req.isApproved() ? ApplicationStatus.YDYO_REVIEW : ApplicationStatus.OIDB_REJECTED);
-        
+        // Başvurunun o anki statüsüne göre doğru iş akışına yönlendir (Dynamic Routing)
+        switch (app.getStatus()) {
+            case SUBMITTED:
+            case REVISION_REQUESTED:
+                return processOidbReviewAfterSubmission(app, req);
+
+            case YDYO_ACCEPTED:
+            case YDYO_REJECTED:
+                // 2. aşamada req içindeki 'approved' alanı true ise Dekanlığa ilet, false ise Reddet
+                boolean forwardToDean = Boolean.TRUE.equals(req.isApproved());
+                return processOidbPostYdyoReview(app, forwardToDean, req);
+
+            default:
+                throw new IllegalStateException("Başvuru şu an OİDB'nin işlem yapabileceği bir statüde değil. Güncel Statü: " + app.getStatus());
+        }
+    }
+
+    // --------------------------------------------------------
+    // GİZLİ (PRIVATE) İŞ AKIŞI METOTLARI
+    // --------------------------------------------------------
+
+    // AŞAMA 1: İlk Evrak Kontrolü
+    private ApplicationResponse processOidbReviewAfterSubmission(Application app, OidbReviewRequest req) {
+        if (req.isRequestRevision()) {
+            if (app.isRevisionRequestedBefore()) {
+                throw new IllegalStateException("Öğrenciye zaten bir kez düzeltme hakkı tanınmış.");
+            }
+            app.setStatus(ApplicationStatus.REVISION_REQUESTED);
+            app.setRevisionRequestedBefore(true);
+        } else if (Boolean.TRUE.equals(req.isApproved())) {
+            app.setStatus(ApplicationStatus.YDYO_REVIEW); 
+        } else {
+            app.setStatus(ApplicationStatus.OIDB_REJECTED); 
+        }
+
         app.setOidbApproved(req.isApproved());
         app.setOidbNotes(req.getNotes());
-        app.setOidbReviewedBy(req.getReviewerId()); 
+        app.setOidbReviewedBy(req.getReviewer());
         app.setOidbReviewedDate(LocalDateTime.now());
 
-        app = applicationRepository.save(app);
-        
-        return toResponse(app);
+        return toResponse(applicationRepository.save(app));
     }
+
+    // AŞAMA 2: YDYO Sonrası Karar
+    private ApplicationResponse processOidbPostYdyoReview(Application app, boolean forwardToDean, OidbReviewRequest req) {
+        if (forwardToDean && app.getStatus() == ApplicationStatus.YDYO_ACCEPTED) {
+            app.setStatus(ApplicationStatus.DEAN_OFFICE_REVIEW); 
+        } else {
+            app.setStatus(ApplicationStatus.REJECTED); 
+        }
+        
+        // Memur bu aşamada da not eklemek isteyebilir
+
+        app.setOidbApproved(req.isApproved());
+        app.setOidbNotes(req.getNotes());
+        app.setOidbReviewedBy(req.getReviewer());
+        app.setOidbReviewedDate(LocalDateTime.now());
+
+        return toResponse(applicationRepository.save(app));
+    }
+
+
+
+    
+    // --------------------------------------------------------
+    // YDYO 1. AŞAMA: EVRAK KONTROLÜ
+    // --------------------------------------------------------
 
     @Transactional
     public ApplicationResponse processYdyoReview(Integer applicationId, YdyoReviewRequest req) {
         
         Application app = applicationRepository.findByApplicationId(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
+        
+        
+        if (app.getStatus() != ApplicationStatus.YDYO_REVIEW) {
+            throw new IllegalStateException("Bu başvuru YDYO evrak inceleme aşamasında değil.");
+        }
 
-        app.setStatus(req.isApproved() ? ApplicationStatus.EVALUATION_QUEUE : ApplicationStatus.YDYO_REJECTED);
+        // 1. Durum: Öğrencinin belgesi yetersiz, sınava girecek
+        if (Boolean.TRUE.equals(req.getRequiresExam())) {
+            app.setStatus(ApplicationStatus.YDYO_EXAM_PENDING);
+        } 
+        // 2. Durum: Belgesi yeterli (Muaf)
+        else if (Boolean.TRUE.equals(req.isApproved())) {
+            app.setStatus(ApplicationStatus.YDYO_ACCEPTED); //  EVALUATION_QUEUE yerine YDYO_ACCEPTED olmalı ??
+        } 
+        // 3. Durum: Belge geçersiz ve sınava girme hakkı yok (Direkt red) --> bu yok değil mi ? 
+
+        
         app.setYdyoApproved(req.isApproved());
         app.setYdyoNotes(req.getNotes());
-        app.setYdyoReviewedBy(req.getReviewerId()); 
+        app.setYdyoReviewedBy(req.getReviewer()); 
         app.setYdyoReviewedDate(LocalDateTime.now());
 
         app = applicationRepository.save(app);
-        
         return toResponse(app);
+
+    }
+
+
+
+    // --------------------------------------------------------
+    // YDYO 2. AŞAMA: TOPLU CSV İLE SINAV SONUCU YÜKLEME
+    // --------------------------------------------------------
+    @Transactional
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    public int uploadYdyoExamResultsCsv(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Yüklenen CSV dosyası boş olamaz.");
+        }
+
+        // YENİ EKLENEN: Sadece .csv uzantılı dosyalara izin ver
+        String filename = file.getOriginalFilename();
+        if (filename == null || !filename.toLowerCase().endsWith(".csv")) {
+            throw new IllegalArgumentException("Geçersiz dosya formatı. Lütfen sadece .csv uzantılı dosya yükleyin.");
+        }
+
+        int processedCount = 0; // Kaç öğrencinin güncellendiğini tutmak için
+
+        try (java.io.BufferedReader br = new java.io.BufferedReader(
+                new java.io.InputStreamReader(file.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+            
+            String line;
+            boolean isFirstLine = true; // Başlık (Header) satırını atlamak için
+
+            while ((line = br.readLine()) != null) {
+                // Türkiye bölgesel ayarlarında Excel CSV'leri noktalı virgül (;) ile, 
+                // İngilizce sistemler virgül (,) ile böler. İkisine de hazırlıklıyız.
+                String[] columns = line.split("[,;]"); 
+
+                if (isFirstLine) {
+                    isFirstLine = false;
+                    continue; // "Ad Soyad, E-posta, Sınav Sonucu" yazan ilk satırı atla
+                }
+
+                // Beklenen format: [0] Ad Soyad, [1] E-posta, [2] Sınav Sonucu
+                if (columns.length < 3) continue; // Eksik veri olan satırları atla
+
+                String email = columns[1].trim();
+                String scoreStr = columns[2].trim();
+
+                try {
+                    Double score = Double.parseDouble(scoreStr);
+                    
+                    // Öğrencinin "YDYO_EXAM_PENDING" (Sınav Bekliyor) statüsündeki başvurusunu bul
+                    List<Application> pendingApps = applicationRepository.findByStudent_EmailAndStatus(email, ApplicationStatus.YDYO_EXAM_PENDING);
+                    
+                    if (!pendingApps.isEmpty()) {
+                        Application app = pendingApps.get(0); // Öğrencinin o dönemki aktif başvurusunu al
+                        
+                        app.setYdyoExamScore(score);
+                        app.setYdyoReviewedDate(LocalDateTime.now());
+                        
+                        // İŞ KURALI: 60 ve üzeri Muaf (Kabul), altı ise Red
+                        if (score >= 60.0) {
+                            app.setStatus(ApplicationStatus.YDYO_ACCEPTED);
+                        } else {
+                            app.setStatus(ApplicationStatus.YDYO_REJECTED);
+                        }
+                        
+                        applicationRepository.save(app);
+                        processedCount++;
+                    }
+
+                } catch (NumberFormatException e) {
+                    // Not kısmı sayı değilse (örn: "Girmedi" yazıyorsa) bu satırı güvenle atla
+                    System.err.println("Geçersiz not formatı atlandı: " + scoreStr + " (Email: " + email + ")");
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("CSV dosyası işlenirken sistemsel bir hata oluştu: " + e.getMessage());
+        }
+
+        return processedCount; // Başarıyla güncellenen öğrenci sayısını döndürüyoruz
     }
 
     // ==========================================
     // YENİ EKLENEN 3 METOT (GET ALL, GET BY ID, UPLOAD)
     // ==========================================
 
-    public List<ApplicationResponse> getAllApplications() {
+    //public List<ApplicationResponse> getAllApplications() {
+        //return getAllApplications(null);
+    //}
+
+    @Transactional(readOnly = true) // toResponse içinde lazy documents erişimi için
+    public Page<ApplicationResponse> getAllApplications(ApplicationStatus status, int page, int size) { // eklendi 29.05 : ApplicationStatus status, int page, int size
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String currentUsername = authentication.getName(); // Genelde öğrenci numarası/ID'si buraya düşer
+
+        // JWT'den gelen getName() metodu kullanıcının E-POSTA adresini döner (Örn: busra@std.iztech.edu.tr)
+        String currentUserEmail = authentication.getName(); 
 
         boolean isStudent = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_STUDENT") || a.getAuthority().equals("STUDENT"));
 
-        List<Application> applications;
+        //eklendi 29.05
+        Pageable pageable = PageRequest.of(page, size);
 
         if (isStudent) {
-            // DİKKAT: ApplicationRepository içine "List<Application> findByStudentId(String studentId);" metodunu eklemelisin.
-            applications = applicationRepository.findByStudentId(currentUsername); 
+            // E-postadan ID'yi buluyoruz
+            Student currentStudent = studentRepository.findByEmail(currentUserEmail)
+                    .orElseThrow(() -> new EntityNotFoundException("Kullanıcı bulunamadı."));
+
+            if (status == null) {
+                return applicationRepository.findByStudent_UserId(currentStudent.getUserId(),pageable).map(this::toResponse);
+            }
+
+            return applicationRepository.findByStudent_UserIdAndStatus(currentStudent.getUserId(), status, pageable).map(this::toResponse);
+
         } else {
             // Öğrenci değilse (OIDB, YDYO, FACULTY, DEAN vs.) herkesi görebilir
-            applications = applicationRepository.findAll(); 
+            if (status == null) {
+                return applicationRepository.findAll(pageable).map(this::toResponse);
+            }
+
+            return applicationRepository.findByStatus(status, pageable).map(this::toResponse);
         }
 
-        return applications.stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true) // toResponse içinde lazy documents erişimi için
     public ApplicationResponse getApplicationById(Integer id) {
         Application app = applicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + id));
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String currentUsername = authentication.getName();
+        //String currentUsername = authentication.getName();
         
         boolean isStudent = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_STUDENT") || a.getAuthority().equals("STUDENT"));
 
         // Güvenlik: Öğrenci sadece kendi başvurusunu görebilir. String.valueOf() ile tip uyuşmazlığını önlüyoruz.
-        if (isStudent && !String.valueOf(app.getStudentId()).equals(currentUsername)) {
-            throw new AccessDeniedException("Bu başvuruyu görüntüleme yetkiniz bulunmuyor.");
+        if (isStudent) {
+            verifyOwnership(app);
         }
 
         return toResponse(app);
     }
 
+
     @Transactional
-    public void uploadDocument(Integer id, MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Yüklenecek dosya boş olamaz.");
+    public ApplicationResponse withdrawApplication(Integer applicationId) {
+        Application app = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı."));
+
+        // 1. GÜVENLİK: Sadece başvurunun sahibi iptal edebilir
+        verifyOwnership(app);
+
+        // 2. ZAMAN KONTROLÜ (Tek ve kesin kural)
+        if (!isApplicationPeriodActive()) {
+            throw new IllegalStateException("Başvuru dönemi sona erdiği için başvurunuzu artık geri çekemezsiniz.");
         }
 
-        Application app = applicationRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + id));
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String currentUsername = authentication.getName();
-
-        if (!String.valueOf(app.getStudentId()).equals(currentUsername)) {
-            throw new AccessDeniedException("Sadece kendi başvurunuza belge yükleyebilirsiniz.");
+        // Sistemin patlamaması için eklenebilecek tek minik statü kontrolü (Opsiyonel)
+        if (app.getStatus() == ApplicationStatus.WITHDRAWN) {
+             throw new IllegalStateException("Başvuru zaten geri çekilmiş.");
         }
 
-        try {
-            Path uploadPath = Paths.get("uploads");
-            if (!Files.exists(uploadPath)) {
-                Files.createDirectories(uploadPath);
-            }
+        // 3. STATÜYÜ GÜNCELLE VE KAYDET
+        app.setStatus(ApplicationStatus.WITHDRAWN);
+        app = applicationRepository.save(app);
 
-            String originalFileName = file.getOriginalFilename();
-            String uniqueFileName = id + "_" + System.currentTimeMillis() + "_" + originalFileName;
-            Path filePath = uploadPath.resolve(uniqueFileName);
-
-            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-
-            // Document Entity'sini oluşturup veritabanına kaydediyoruz
-            // DİKKAT: Document sınıfında @Builder olduğunu ve aşağıdakine benzer alanları olduğunu varsaydım.
-            // Eğer yoksa new Document() yapıp set... metotlarıyla doldurabilirsin.
-            Document document = Document.builder()
-                     //.application(app) // Eğer Document ile Application arasında @ManyToOne ilişkiniz varsa bunu açın
-                     .filePath(filePath.toString())
-                     .fileName(originalFileName)
-                    .build();
-            
-            documentRepository.save(document);
-
-        } catch (IOException e) {
-            throw new RuntimeException("Dosya sisteme kaydedilirken bir hata oluştu: " + e.getMessage());
-        }
+        return toResponse(app);
     }
 
 
-    // --- HELPER METHOD ---
+    // --- ZAMAN KONTROLÜ İÇİN YARDIMCI METOT ---
+    private boolean isApplicationPeriodActive() {
+        // Veritabanından "aktif" olarak işaretlenmiş başvuru dönemini çek
+        Optional<ApplicationPeriod> activePeriodOpt = applicationPeriodRepository.findByActiveTrue();
+
+        // Eğer veritabanında aktif bir dönem tanımlanmamışsa, kimse işlem yapamaz (false döner)
+        if (activePeriodOpt.isEmpty()) {
+            return false;
+        }
+
+        ApplicationPeriod currentPeriod = activePeriodOpt.get();
+        LocalDateTime now = LocalDateTime.now();
+
+        // Şu anki zaman, başlangıç tarihinden SONRA ve bitiş tarihinden ÖNCE ise true döner
+        return !now.isBefore(currentPeriod.getStartDate()) && !now.isAfter(currentPeriod.getEndDate());
+    }
+
+    // --- HELPER METHODS ---
+
+    // DRY (Don't Repeat Yourself) prensibi için sahiplik kontrolünü tek bir yere aldık
+    private void verifyOwnership(Application app) {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        // E-posta ile veritabanından kullanıcıyı bul
+        Student student = studentRepository.findByEmail(currentUserEmail)
+                .orElseThrow(() -> new EntityNotFoundException("Kullanıcı bulunamadı."));
+
+        // Veritabanındaki Student ID'si ile Başvuru üzerindeki Student ID eşleşiyor mu?
+        if (!app.getStudent().getUserId().equals(student.getUserId())) { 
+            throw new AccessDeniedException("Bu başvuru üzerinde işlem yapma yetkiniz bulunmuyor.");
+        }
+    }
+
     private ApplicationResponse toResponse(Application app) {
         ApplicationResponse response = new ApplicationResponse();
         response.setId(app.getApplicationId());
-        response.setStudentId(app.getStudentId());
+        //response.setStudentId(app.getStudent().getUserId()); //
         response.setStatus(app.getStatus());
         response.setAcademicYear(app.getAcademicYear());
-        response.setTargetDept(app.getTargetDept());
-        // ... diğer alanlarınızı (get/set) ihtiyaca göre buraya ekleyebilirsiniz.
+        response.setTargetFaculty(app.getTargetFaculty());
+        response.setTargetDepartment(app.getTargetDepartment());
+        response.setCurrentUniversity(app.getCurrentUniversity());
+        response.setCurrentFaculty(app.getCurrentFaculty());
+        response.setCurrentDepartment(app.getCurrentDepartment());
+        response.setGpa(app.getGpa());
+        response.setSubmissionDate(app.getSubmissionDate());
+
+        // Öğrenci kimlik/iletişim (YDYO paneli için) — student @ManyToOne EAGER, güvenli
+        Student student = app.getStudent();
+        if (student != null) {
+            response.setStudentName(buildFullName(student));
+            response.setTckn(student.getTckn());
+            response.setEmail(student.getEmail());
+            response.setPhoneNumber(student.getPhoneNumber());
+        }
+
+        // ÖİDB inceleme detayları
+        response.setOidbApproved(app.getOidbApproved());
+        response.setOidbNotes(app.getOidbNotes());
+        response.setOidbReviewedBy(app.getOidbReviewedBy() != null ? app.getOidbReviewedBy().getUserId() : null);
+        response.setOidbReviewedDate(app.getOidbReviewedDate());
+
+        // YDYO inceleme detayları
+        response.setYdyoApproved(app.getYdyoApproved());
+        response.setYdyoNotes(app.getYdyoNotes());
+        response.setYdyoReviewedBy(app.getYdyoReviewedBy() != null ? app.getYdyoReviewedBy().getUserId() : null);
+        response.setYdyoReviewedDate(app.getYdyoReviewedDate());
+        response.setExamScore(app.getYdyoExamScore());
+
+        // Türetilen YDYO alanları (entity'de saklanmıyor):
+        //   ydyoApproved == true  → belge onaylı, muaf, sınav gerekmez (requiresExam=false)
+        //   ydyoApproved == false → sınava yönlendirildi (requiresExam=true)
+        //   ydyoApproved == null  → henüz değerlendirilmedi (REVIEW)
+        Boolean ydyoApproved = app.getYdyoApproved();
+        response.setRequiresExam(ydyoApproved == null ? null : !ydyoApproved);
+
+        // examPassed: REJECTED → kaldı (false); sınav yoluyla ACCEPTED (belge onaysız) → geçti (true);
+        // diğer durumlarda (REVIEW, EXAM_PENDING, muafiyetle ACCEPTED) belirsiz → null
+        Boolean examPassed = null;
+        if (app.getStatus() == ApplicationStatus.YDYO_REJECTED) {
+            examPassed = false;
+        } else if (app.getStatus() == ApplicationStatus.YDYO_ACCEPTED && Boolean.FALSE.equals(ydyoApproved)) {
+            examPassed = true;
+        }
+        response.setExamPassed(examPassed);
+
+        // Belgeler — aktif olanların hafif özeti
+        if (app.getDocuments() != null) {
+            response.setDocuments(app.getDocuments().stream()
+                    .filter(Document::isActive)
+                    .map(d -> ApplicationResponse.DocumentSummary.builder()
+                            .documentId(d.getDocumentId())
+                            .documentType(d.getDocumentType())
+                            .fileName(d.getFileName())
+                            .build())
+                    .collect(Collectors.toList()));
+        }
+
         return response;
+    }
+
+    // Ad + (varsa) ikinci ad + soyad → tek görünen ad
+    private String buildFullName(Student student) {
+        StringBuilder sb = new StringBuilder();
+        if (student.getFirstName() != null) sb.append(student.getFirstName());
+        if (student.getMiddleName() != null && !student.getMiddleName().isBlank()) {
+            sb.append(' ').append(student.getMiddleName());
+        }
+        if (student.getLastName() != null) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(student.getLastName());
+        }
+        return sb.toString().trim();
     }
 }

@@ -77,11 +77,16 @@ export function AuthProvider({ children }) {
         console.warn("Backend ulaşılamadı. Test (Mock) verisi ile giriş yapılıyor...");
         await new Promise((r) => setTimeout(r, 500));
         
-        const role = email.includes('admin')
-  ? ROLES.DEAN
-  : email.includes('oidb')
-  ? ROLES.OIDB
-  : ROLES.STUDENT;
+        // Backend yokken rolü e-postadaki anahtar kelimeden türet — böylece
+        // her panel test edilebilir (örn. ydyo@... → YDYO paneli).
+        const lower = email.toLowerCase();
+        const role =
+          lower.includes('ydyo')    ? ROLES.YDYO :
+          lower.includes('oidb')    ? ROLES.OIDB :
+          lower.includes('ygk')     ? ROLES.YGK :
+          lower.includes('faculty') ? ROLES.FACULTY_BOARD :
+          lower.includes('admin') || lower.includes('dean') ? ROLES.DEAN_OFFICE :
+          ROLES.STUDENT;
         const userData = { id: 1, name: email.split('@')[0].toUpperCase(), email, role };
         const jwt = 'mock-jwt-token-123';
         
