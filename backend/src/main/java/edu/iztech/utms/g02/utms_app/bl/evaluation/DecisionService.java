@@ -62,10 +62,10 @@ public class DecisionService {
 
         String decision = normalizeDecision(req.getDecision());
 
-        // EKLE-ONLY: her karar yeni satır. FINAL_DEAN da makam olarak "DEAN" kaydedilir.
+        // EKLE-ONLY: her karar yeni satır. Makam role olarak saklanır: DEAN / FACULTY_BOARD / FINAL_DEAN.
         committeeDecisionRepository.save(CommitteeDecision.builder()
                 .application(app)
-                .decisionBy("FINAL_DEAN".equals(role) ? "DEAN" : role)
+                .decisionBy(role)
                 .decision(decision)
                 .notes(req.getNotes())
                 .build());

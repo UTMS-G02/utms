@@ -30,7 +30,7 @@ public class PublishedResult {
     private Application application;
 
     // Nihai karar: "ACCEPTED" veya "REJECTED"
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private String finalDecision;
 
     @CreationTimestamp

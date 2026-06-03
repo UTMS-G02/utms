@@ -30,12 +30,12 @@ public class CommitteeDecision {
     @JoinColumn(name = "application_id", nullable = false)
     private Application application;
 
-    // Kararı veren makam: "DEAN" veya "FACULTY_BOARD"
-    @Column(nullable = false)
+    // Kararı veren makam: "DEAN", "FACULTY_BOARD" veya "FINAL_DEAN"
+    @Column(nullable = false, length = 50)
     private String decisionBy;
 
     // Karar: "APPROVED" veya "REJECTED"
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private String decision;
 
     @Column(columnDefinition = "TEXT")
