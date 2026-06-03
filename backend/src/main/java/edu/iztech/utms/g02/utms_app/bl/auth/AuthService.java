@@ -108,7 +108,7 @@ public class AuthService {
         }
 
         if (!user.isActive()) {
-            throw new AuthException("Hesap aktif değil.", HttpStatus.UNAUTHORIZED);
+            throw new AuthException("Hesabınız henüz aktive edilmemiş. Lütfen e-postanızı kontrol edin.", HttpStatus.UNAUTHORIZED);
         }
 
         user.setLastLoginDate(LocalDate.now());
