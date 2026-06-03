@@ -38,6 +38,20 @@ const TARGET_DEPT_OPTIONS = [
   'Mimarlık',
 ]
 
+const TARGET_FACULTY_OPTIONS = [
+  'Mühendislik Fakültesi',
+  'Mimarlık Fakültesi',
+  'Fen Fakültesi',
+]
+
+const ACADEMIC_YEAR_OPTIONS = ['2025-2026', '2026-2027', '2027-2028']
+
+// Yatay geçiş yalnızca belirli yarıyıllara (3. / 5.) yapılabilir.
+const SEMESTER_OPTIONS = [
+  { value: '3', label: '3. Yarıyıl' },
+  { value: '5', label: '5. Yarıyıl' },
+]
+
 const styles = {
   page: {
     fontFamily: "'DM Sans', sans-serif",
@@ -78,6 +92,14 @@ const styles = {
   },
 }
 
+// Zorunlu alanlarda etiketin sağında kırmızı * göster
+const requiredMark = (label, { required }) => (
+  <>
+    {label}
+    {required && <span style={{ color: '#ff4d4f', marginLeft: 2 }}>*</span>}
+  </>
+)
+
 const tcknValidator = (_, value) => {
   if (!value) return Promise.reject(new Error('TC Kimlik No zorunludur.'))
   if (!/^\d{11}$/.test(value)) return Promise.reject(new Error('TC Kimlik No 11 haneli rakamdan oluşmalıdır.'))
@@ -90,8 +112,6 @@ export default function ApplicationForm() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { message } = App.useApp()
-
-  const kvkkAccepted = Form.useWatch('kvkk', form)
 
   const nameParts = (user?.name ?? '').trim().split(/\s+/)
   const initialFirstName = user?.firstName || nameParts[0] || ''
@@ -118,15 +138,30 @@ export default function ApplicationForm() {
       courseContents,
       languageCert,
       additionalDocs,
-      kvkk,
-      ...formInfo
     } = values
+
+    // Backend ApplicationCreateRequest yalnızca şu alanları bekliyor; isimleri
+    // form alanlarından bilerek farklı (sayYksScore/sayYksRank) ve kvkkAccepted
+    // zorunlu. currentUniversity/gpa gibi alanlar backend'de YÖKSİS'ten
+    // çekildiği için gönderilmiyor.
+    const payload = {
+      academicYear: values.academicYear,
+      // NOT: backend ApplicationCreateRequest'te henüz `semester` alanı yok,
+      // bu yüzden şimdilik yok sayılıyor. Backend DTO + map + 3/5 doğrulaması
+      // eklediğinde otomatik çalışacak.
+      semester: values.semester,
+      targetFaculty: values.targetFaculty,
+      targetDepartment: values.targetDepartment,
+      sayYksScore: values.yksScore,
+      sayYksRank: values.yksRanking,
+      kvkkAccepted: values.kvkk === true,
+    }
 
     try {
       message.loading('Başvuru oluşturuluyor...', 0)
-      const created = await applicationsApi.createApplication(formInfo)
+      const created = await applicationsApi.createApplication(payload)
       message.destroy()
-      const applicationId = created.applicationId
+      const applicationId = created.id
 
       const allFiles = [
         { type: 'STUDENT_CERTIFICATE', file: studentCertificate?.[0]?.originFileObj },
@@ -140,10 +175,7 @@ export default function ApplicationForm() {
       let uploadedCount = 0
       for (const item of allFiles) {
         message.loading(`Belge yükleniyor ${uploadedCount + 1}/${allFiles.length}...`, 0)
-        const fd = new FormData()
-        fd.append('file', item.file)
-        fd.append('docType', item.type)
-        await applicationsApi.uploadDocument(applicationId, fd)
+        await applicationsApi.uploadDocument(applicationId, item.file, item.type)
         uploadedCount++
       }
 
@@ -166,7 +198,7 @@ export default function ApplicationForm() {
           Yeni Başvuru
         </Title>
         <Text type="secondary" style={{ fontSize: 14 }}>
-          Yatay geçiş başvuru formunu doldurun. Tüm alanlar zorunludur.
+          Yatay geçiş başvuru formunu doldurun. Zorunlu alanlar * ile işaretlenmiştir.
         </Text>
       </div>
 
@@ -174,7 +206,7 @@ export default function ApplicationForm() {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
-        requiredMark={false}
+        requiredMark={requiredMark}
         size="large"
         initialValues={{
           firstName: initialFirstName,
@@ -186,7 +218,318 @@ export default function ApplicationForm() {
           currentUniversity: 'İzmir Yüksek Teknoloji Enstitüsü',
         }}
       >
-        {/* KVKK */}
+        {/* Kişisel Bilgiler */}
+        <div style={styles.card}>
+          <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Kişisel Bilgiler</Title>
+          <Text type="secondary" style={styles.cardSubtitle}>
+            Temel iletişim ve kimlik bilgileriniz
+          </Text>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Ad"
+                name="firstName"
+                rules={[{ required: true, message: 'Ad zorunludur.' }]}
+              >
+                <Input placeholder="Adınız" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Soyad"
+                name="lastName"
+                rules={[{ required: true, message: 'Soyad zorunludur.' }]}
+              >
+                <Input placeholder="Soyadınız" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="TC Kimlik Numarası"
+                name="tcKimlik"
+                required
+                rules={[{ validator: tcknValidator }]}
+              >
+                <Input placeholder="11 haneli TC Kimlik No" maxLength={11} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Doğum Tarihi"
+                name="birthDate"
+                rules={[{ required: true, message: 'Doğum tarihi zorunludur.' }]}
+              >
+                <DatePicker
+                  style={{ width: '100%' }}
+                  format="DD/MM/YYYY"
+                  placeholder="Seçiniz"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="E-posta Adresi"
+                name="email"
+                rules={[
+                  { required: true, message: 'E-posta zorunludur.' },
+                  { type: 'email', message: 'Geçerli bir e-posta giriniz.' },
+                ]}
+              >
+                <Input
+                  placeholder="eposta@ogrenci.edu.tr"
+                  readOnly
+                  style={styles.readonlyInput}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Telefon Numarası"
+                name="phone"
+                rules={[{ required: true, message: 'Telefon numarası zorunludur.' }]}
+              >
+                <Input placeholder="(5XX) XXX-XXXX" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </div>
+
+        {/* Akademik Bilgiler */}
+        <div style={styles.card}>
+          <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Akademik Bilgiler</Title>
+          <Text type="secondary" style={styles.cardSubtitle}>
+            Mevcut akademik durumunuz ve tercihleriniz
+          </Text>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Akademik Yıl"
+                name="academicYear"
+                rules={[{ required: true, message: 'Akademik yıl zorunludur.' }]}
+              >
+                <Select placeholder="Seçiniz">
+                  {ACADEMIC_YEAR_OPTIONS.map((y) => (
+                    <Option key={y} value={y}>{y}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Başvurulan Yarıyıl"
+                name="semester"
+                rules={[{ required: true, message: 'Yarıyıl zorunludur.' }]}
+              >
+                <Select placeholder="Seçiniz">
+                  {SEMESTER_OPTIONS.map((s) => (
+                    <Option key={s.value} value={s.value}>{s.label}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Kayıtlı Olduğunuz Üniversite"
+                name="currentUniversity"
+                rules={[{ required: true, message: 'Üniversite zorunludur.' }]}
+              >
+                <Select placeholder="Seçiniz">
+                  {UNIVERSITIES.map((u) => (
+                    <Option key={u} value={u}>{u}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Sınıf"
+                name="currentYear"
+                rules={[{ required: true, message: 'Sınıf zorunludur.' }]}
+              >
+                <Select placeholder="Seçiniz">
+                  {YEAR_OPTIONS.map((y) => (
+                    <Option key={y} value={y}>{y}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Genel Not Ortalaması (GPA)"
+                name="gpa"
+                extra="Yatay geçiş için minimum 2.50 ortalama gereklidir; altındaki başvurular kabul edilmez."
+                rules={[{ required: true, message: 'GPA zorunludur.' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0}
+                  max={4}
+                  step={0.01}
+                  placeholder="0.00"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Mevcut Bölümünüz"
+                name="currentDept"
+                rules={[{ required: true, message: 'Mevcut bölüm zorunludur.' }]}
+              >
+                <Select placeholder="Seçiniz">
+                  {CURRENT_DEPT_OPTIONS.map((d) => (
+                    <Option key={d} value={d}>{d}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Geçmek İstediğiniz Fakülte"
+                name="targetFaculty"
+                rules={[{ required: true, message: 'Hedef fakülte zorunludur.' }]}
+              >
+                <Select placeholder="Seçiniz">
+                  {TARGET_FACULTY_OPTIONS.map((f) => (
+                    <Option key={f} value={f}>{f}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="Geçmek İstediğiniz Bölüm"
+                name="targetDepartment"
+                rules={[{ required: true, message: 'Hedef bölüm zorunludur.' }]}
+              >
+                <Select placeholder="Seçiniz">
+                  {TARGET_DEPT_OPTIONS.map((d) => (
+                    <Option key={d} value={d}>{d}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="SAY YKS Puanı"
+                name="yksScore"
+                rules={[{ required: true, message: 'YKS puanı zorunludur.' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0}
+                  max={500}
+                  step={0.001}
+                  placeholder="0.000"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label="SAY YKS Sıralaması"
+                name="yksRanking"
+                rules={[{ required: true, message: 'YKS sıralaması zorunludur.' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={1}
+                  placeholder="Sıralamanız"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+        </div>
+
+        {/* Belge Yüklemeleri */}
+        <div style={styles.card}>
+          <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Belge Yüklemeleri</Title>
+          <Text type="secondary" style={styles.cardSubtitle}>
+            Gerekli belgeleri yükleyin
+          </Text>
+
+          <Form.Item
+            label="Öğrenci Belgesi"
+            name="studentCertificate"
+            valuePropName="fileList"
+            getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+            rules={[{ required: true, message: 'Öğrenci belgesi zorunludur.' }]}
+          >
+            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+              <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
+            </Upload.Dragger>
+          </Form.Item>
+
+          <Form.Item
+            label="Transkript"
+            name="transcript"
+            valuePropName="fileList"
+            getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+            rules={[{ required: true, message: 'Transkript zorunludur.' }]}
+          >
+            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+              <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
+            </Upload.Dragger>
+          </Form.Item>
+
+          <Form.Item
+            label="YKS Sonuç Belgesi"
+            name="yksResult"
+            valuePropName="fileList"
+            getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+            rules={[{ required: true, message: 'YKS sonuç belgesi zorunludur.' }]}
+          >
+            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+              <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
+            </Upload.Dragger>
+          </Form.Item>
+
+          <Form.Item
+            label="Almış Olduğunuz Derslerin İçerikleri"
+            name="courseContents"
+            valuePropName="fileList"
+            getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+            rules={[{ required: true, message: 'Ders içerikleri belgesi zorunludur.' }]}
+          >
+            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+              <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
+            </Upload.Dragger>
+          </Form.Item>
+
+          <Form.Item
+            label="İngilizce Yeterlilik Belgesi"
+            name="languageCert"
+            valuePropName="fileList"
+            getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+          >
+            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+              <p className="ant-upload-hint">Yalnızca PDF, max 10MB (opsiyonel)</p>
+            </Upload.Dragger>
+          </Form.Item>
+
+          <Form.Item
+            label="Ek Belgeler"
+            name="additionalDocs"
+            valuePropName="fileList"
+            getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+          >
+            <Upload.Dragger accept=".pdf" maxCount={5} beforeUpload={beforeUpload} multiple>
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
+              <p className="ant-upload-hint">Yalnızca PDF, max 10MB, en fazla 5 dosya (opsiyonel)</p>
+            </Upload.Dragger>
+          </Form.Item>
+        </div>
+
+        {/* KVKK — en sonda; formu kilitlemez, ama onay zorunlu */}
         <div style={styles.kvkkCard}>
           <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
             Kişisel Verilerin Korunması
@@ -209,296 +552,22 @@ export default function ApplicationForm() {
           </Form.Item>
         </div>
 
-        {kvkkAccepted && (
-          <>
-            {/* Kişisel Bilgiler */}
-            <div style={styles.card}>
-              <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Kişisel Bilgiler</Title>
-              <Text type="secondary" style={styles.cardSubtitle}>
-                Temel iletişim ve kimlik bilgileriniz
-              </Text>
-              <Row gutter={16}>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Ad"
-                    name="firstName"
-                    rules={[{ required: true, message: 'Ad zorunludur.' }]}
-                  >
-                    <Input placeholder="Adınız" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Soyad"
-                    name="lastName"
-                    rules={[{ required: true, message: 'Soyad zorunludur.' }]}
-                  >
-                    <Input placeholder="Soyadınız" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="TC Kimlik Numarası"
-                    name="tcKimlik"
-                    rules={[{ validator: tcknValidator }]}
-                  >
-                    <Input placeholder="11 haneli TC Kimlik No" maxLength={11} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Doğum Tarihi"
-                    name="birthDate"
-                    rules={[{ required: true, message: 'Doğum tarihi zorunludur.' }]}
-                  >
-                    <DatePicker
-                      style={{ width: '100%' }}
-                      format="DD/MM/YYYY"
-                      placeholder="Seçiniz"
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="E-posta Adresi"
-                    name="email"
-                    rules={[
-                      { required: true, message: 'E-posta zorunludur.' },
-                      { type: 'email', message: 'Geçerli bir e-posta giriniz.' },
-                    ]}
-                  >
-                    <Input
-                      placeholder="eposta@ogrenci.edu.tr"
-                      readOnly
-                      style={styles.readonlyInput}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Telefon Numarası"
-                    name="phone"
-                    rules={[{ required: true, message: 'Telefon numarası zorunludur.' }]}
-                  >
-                    <Input placeholder="(5XX) XXX-XXXX" />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </div>
-
-            {/* Akademik Bilgiler */}
-            <div style={styles.card}>
-              <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Akademik Bilgiler</Title>
-              <Text type="secondary" style={styles.cardSubtitle}>
-                Mevcut akademik durumunuz ve tercihleriniz
-              </Text>
-              <Row gutter={16}>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Kayıtlı Olduğunuz Üniversite"
-                    name="currentUniversity"
-                    rules={[{ required: true, message: 'Üniversite zorunludur.' }]}
-                  >
-                    <Select placeholder="Seçiniz">
-                      {UNIVERSITIES.map((u) => (
-                        <Option key={u} value={u}>{u}</Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Sınıf"
-                    name="currentYear"
-                    rules={[{ required: true, message: 'Sınıf zorunludur.' }]}
-                  >
-                    <Select placeholder="Seçiniz">
-                      {YEAR_OPTIONS.map((y) => (
-                        <Option key={y} value={y}>{y}</Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Genel Not Ortalaması (GPA)"
-                    name="gpa"
-                    rules={[{ required: true, message: 'GPA zorunludur.' }]}
-                  >
-                    <InputNumber
-                      style={{ width: '100%' }}
-                      min={0}
-                      max={4}
-                      step={0.01}
-                      placeholder="0.00"
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Mevcut Bölümünüz"
-                    name="currentDept"
-                    rules={[{ required: true, message: 'Mevcut bölüm zorunludur.' }]}
-                  >
-                    <Select placeholder="Seçiniz">
-                      {CURRENT_DEPT_OPTIONS.map((d) => (
-                        <Option key={d} value={d}>{d}</Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Geçmek İstediğiniz Bölüm"
-                    name="targetDepartment"
-                    rules={[{ required: true, message: 'Hedef bölüm zorunludur.' }]}
-                  >
-                    <Select placeholder="Seçiniz">
-                      {TARGET_DEPT_OPTIONS.map((d) => (
-                        <Option key={d} value={d}>{d}</Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="SAY YKS Puanı"
-                    name="yksScore"
-                    rules={[{ required: true, message: 'YKS puanı zorunludur.' }]}
-                  >
-                    <InputNumber
-                      style={{ width: '100%' }}
-                      min={0}
-                      max={500}
-                      step={0.001}
-                      placeholder="0.000"
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="SAY YKS Sıralaması"
-                    name="yksRanking"
-                    rules={[{ required: true, message: 'YKS sıralaması zorunludur.' }]}
-                  >
-                    <InputNumber
-                      style={{ width: '100%' }}
-                      min={1}
-                      placeholder="Sıralamanız"
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </div>
-
-            {/* Belge Yüklemeleri */}
-            <div style={styles.card}>
-              <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Belge Yüklemeleri</Title>
-              <Text type="secondary" style={styles.cardSubtitle}>
-                Gerekli belgeleri yükleyin
-              </Text>
-
-              <Form.Item
-                label="Öğrenci Belgesi"
-                name="studentCertificate"
-                valuePropName="fileList"
-                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
-                rules={[{ required: true, message: 'Öğrenci belgesi zorunludur.' }]}
-              >
-                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
-                </Upload.Dragger>
-              </Form.Item>
-
-              <Form.Item
-                label="Transkript"
-                name="transcript"
-                valuePropName="fileList"
-                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
-                rules={[{ required: true, message: 'Transkript zorunludur.' }]}
-              >
-                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
-                </Upload.Dragger>
-              </Form.Item>
-
-              <Form.Item
-                label="YKS Sonuç Belgesi"
-                name="yksResult"
-                valuePropName="fileList"
-                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
-                rules={[{ required: true, message: 'YKS sonuç belgesi zorunludur.' }]}
-              >
-                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
-                </Upload.Dragger>
-              </Form.Item>
-
-              <Form.Item
-                label="Almış Olduğunuz Derslerin İçerikleri"
-                name="courseContents"
-                valuePropName="fileList"
-                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
-                rules={[{ required: true, message: 'Ders içerikleri belgesi zorunludur.' }]}
-              >
-                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
-                </Upload.Dragger>
-              </Form.Item>
-
-              <Form.Item
-                label="İngilizce Yeterlilik Belgesi"
-                name="languageCert"
-                valuePropName="fileList"
-                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
-              >
-                <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB (opsiyonel)</p>
-                </Upload.Dragger>
-              </Form.Item>
-
-              <Form.Item
-                label="Ek Belgeler"
-                name="additionalDocs"
-                valuePropName="fileList"
-                getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
-              >
-                <Upload.Dragger accept=".pdf" maxCount={5} beforeUpload={beforeUpload} multiple>
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-                  <p className="ant-upload-hint">Yalnızca PDF, max 10MB, en fazla 5 dosya (opsiyonel)</p>
-                </Upload.Dragger>
-              </Form.Item>
-            </div>
-
-            {/* Footer */}
-            <div style={styles.footer}>
-              <Space>
-                <Button onClick={() => navigate('/student/dashboard')}>
-                  Geri Dön
-                </Button>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={submitting}
-                  style={{ background: '#8B1A2B', borderColor: '#8B1A2B', fontWeight: 600 }}
-                >
-                  Başvuruyu Oluştur
-                </Button>
-              </Space>
-            </div>
-          </>
-        )}
+        {/* Footer */}
+        <div style={styles.footer}>
+          <Space>
+            <Button onClick={() => navigate('/student/dashboard')}>
+              Geri Dön
+            </Button>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={submitting}
+              style={{ background: '#8B1A2B', borderColor: '#8B1A2B', fontWeight: 600 }}
+            >
+              Başvuruyu Oluştur
+            </Button>
+          </Space>
+        </div>
       </Form>
     </div>
   )

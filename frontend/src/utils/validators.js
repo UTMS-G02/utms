@@ -45,14 +45,18 @@ export const institutionalEmailRule = () => ({
 // ─── Phone ────────────────────────────────────────────────────────────────────
 export const validatePhone = (phone) => {
   if (!phone) return false
-  return /^\d{10,11}$/.test(phone.replace(/\s/g, ''))
+  // 0 olmadan, 5 ile başlayan 10 haneli numara (örn: 5xxxxxxxxx)
+  return /^5\d{9}$/.test(phone.replace(/\s/g, ''))
 }
 
 export const phoneRule = () => ({
   validator(_, value) {
     if (!value) return Promise.reject('Telefon numarası zorunludur.')
-    if (!validatePhone(value))
-      return Promise.reject('Geçerli bir telefon numarası giriniz (10-11 rakam).')
+    const digits = value.replace(/\s/g, '')
+    if (digits.startsWith('0'))
+      return Promise.reject('Telefon numarasını 0 olmadan girin (örn: 5xxxxxxxxx).')
+    if (!validatePhone(digits))
+      return Promise.reject('Geçerli bir telefon numarası giriniz (5 ile başlayan 10 rakam).')
     return Promise.resolve()
   },
 })

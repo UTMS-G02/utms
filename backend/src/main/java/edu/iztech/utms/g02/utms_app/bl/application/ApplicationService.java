@@ -341,6 +341,7 @@ public class ApplicationService {
         //return getAllApplications(null);
     //}
 
+    @Transactional(readOnly = true) // toResponse içinde lazy documents erişimi için
     public Page<ApplicationResponse> getAllApplications(ApplicationStatus status, int page, int size) { // eklendi 29.05 : ApplicationStatus status, int page, int size
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
@@ -375,6 +376,7 @@ public class ApplicationService {
 
     }
 
+    @Transactional(readOnly = true) // toResponse içinde lazy documents erişimi için
     public ApplicationResponse getApplicationById(Integer id) {
         Application app = applicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + id));
@@ -459,11 +461,79 @@ public class ApplicationService {
         //response.setStudentId(app.getStudent().getUserId()); //
         response.setStatus(app.getStatus());
         response.setAcademicYear(app.getAcademicYear());
+        response.setTargetFaculty(app.getTargetFaculty());
         response.setTargetDepartment(app.getTargetDepartment());
         response.setCurrentUniversity(app.getCurrentUniversity());
         response.setCurrentFaculty(app.getCurrentFaculty());
         response.setCurrentDepartment(app.getCurrentDepartment());
         response.setGpa(app.getGpa());
+        response.setSubmissionDate(app.getSubmissionDate());
+
+        // Öğrenci kimlik/iletişim (YDYO paneli için) — student @ManyToOne EAGER, güvenli
+        Student student = app.getStudent();
+        if (student != null) {
+            response.setStudentName(buildFullName(student));
+            response.setTckn(student.getTckn());
+            response.setEmail(student.getEmail());
+            response.setPhoneNumber(student.getPhoneNumber());
+        }
+
+        // ÖİDB inceleme detayları
+        response.setOidbApproved(app.getOidbApproved());
+        response.setOidbNotes(app.getOidbNotes());
+        response.setOidbReviewedBy(app.getOidbReviewedBy() != null ? app.getOidbReviewedBy().getUserId() : null);
+        response.setOidbReviewedDate(app.getOidbReviewedDate());
+
+        // YDYO inceleme detayları
+        response.setYdyoApproved(app.getYdyoApproved());
+        response.setYdyoNotes(app.getYdyoNotes());
+        response.setYdyoReviewedBy(app.getYdyoReviewedBy() != null ? app.getYdyoReviewedBy().getUserId() : null);
+        response.setYdyoReviewedDate(app.getYdyoReviewedDate());
+        response.setExamScore(app.getYdyoExamScore());
+
+        // Türetilen YDYO alanları (entity'de saklanmıyor):
+        //   ydyoApproved == true  → belge onaylı, muaf, sınav gerekmez (requiresExam=false)
+        //   ydyoApproved == false → sınava yönlendirildi (requiresExam=true)
+        //   ydyoApproved == null  → henüz değerlendirilmedi (REVIEW)
+        Boolean ydyoApproved = app.getYdyoApproved();
+        response.setRequiresExam(ydyoApproved == null ? null : !ydyoApproved);
+
+        // examPassed: REJECTED → kaldı (false); sınav yoluyla ACCEPTED (belge onaysız) → geçti (true);
+        // diğer durumlarda (REVIEW, EXAM_PENDING, muafiyetle ACCEPTED) belirsiz → null
+        Boolean examPassed = null;
+        if (app.getStatus() == ApplicationStatus.YDYO_REJECTED) {
+            examPassed = false;
+        } else if (app.getStatus() == ApplicationStatus.YDYO_ACCEPTED && Boolean.FALSE.equals(ydyoApproved)) {
+            examPassed = true;
+        }
+        response.setExamPassed(examPassed);
+
+        // Belgeler — aktif olanların hafif özeti
+        if (app.getDocuments() != null) {
+            response.setDocuments(app.getDocuments().stream()
+                    .filter(Document::isActive)
+                    .map(d -> ApplicationResponse.DocumentSummary.builder()
+                            .documentId(d.getDocumentId())
+                            .documentType(d.getDocumentType())
+                            .fileName(d.getFileName())
+                            .build())
+                    .collect(Collectors.toList()));
+        }
+
         return response;
+    }
+
+    // Ad + (varsa) ikinci ad + soyad → tek görünen ad
+    private String buildFullName(Student student) {
+        StringBuilder sb = new StringBuilder();
+        if (student.getFirstName() != null) sb.append(student.getFirstName());
+        if (student.getMiddleName() != null && !student.getMiddleName().isBlank()) {
+            sb.append(' ').append(student.getMiddleName());
+        }
+        if (student.getLastName() != null) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(student.getLastName());
+        }
+        return sb.toString().trim();
     }
 }
