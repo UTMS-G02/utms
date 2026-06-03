@@ -34,6 +34,7 @@ function mapMeToUser(m) {
     id: m.userId,
     name: m.fullName,
     firstName: parts[0] || '',
+    middleName: m.middleName ?? '',
     lastName: parts.slice(1).join(' ') || '',
     email: m.email,
     role: m.role,

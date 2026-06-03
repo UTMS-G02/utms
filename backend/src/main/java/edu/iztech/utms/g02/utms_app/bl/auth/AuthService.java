@@ -155,7 +155,7 @@ public class AuthService {
             phoneNumber = student.getPhoneNumber();
         }
 
-        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, tckn, dateOfBirth, phoneNumber);
+        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, user.getMiddleName(), tckn, dateOfBirth, phoneNumber);
     }
 
     /**

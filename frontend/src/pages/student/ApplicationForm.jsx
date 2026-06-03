@@ -104,6 +104,7 @@ export default function ApplicationForm() {
     const nameParts = (user.name ?? '').trim().split(/\s+/)
     form.setFieldsValue({
       firstName: user.firstName || nameParts[0] || '',
+      middleName: user.middleName ?? '',
       lastName: user.lastName || nameParts.slice(1).join(' ') || '',
       email: user.email ?? '',
       tcKimlik: user.tckn ?? '',
@@ -260,6 +261,11 @@ export default function ApplicationForm() {
                 rules={[{ required: true, message: 'Ad zorunludur.' }]}
               >
                 <Input placeholder="Adınız" readOnly style={styles.readonlyInput} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="İkinci Ad" name="middleName">
+                <Input placeholder="—" readOnly style={styles.readonlyInput} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
