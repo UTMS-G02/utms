@@ -28,6 +28,7 @@ import static org.mockito.Mockito.when;
 /**
  * DecisionService — komisyon karar zinciri (Dekanlık → Fakülte Kurulu → Nihai Dekanlık).
  * PDF §6 geçiş tablosunu ve committee_decisions ekle-only davranışını doğrular.
+ * İstek gövdesi Pair 2 ile tutarlı: approved (boolean) + notes.
  */
 @ExtendWith(MockitoExtension.class)
 class DecisionServiceTest {
@@ -48,7 +49,7 @@ class DecisionServiceTest {
         when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
         when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
 
-        decisionService.recordDeanDecision(1, new DecisionRequest("APPROVED", "uygun"));
+        decisionService.recordDeanDecision(1, new DecisionRequest(true, "uygun"));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REVIEW);
 
@@ -66,7 +67,7 @@ class DecisionServiceTest {
         when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
         when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
 
-        decisionService.recordDeanDecision(1, new DecisionRequest("REJECTED", null));
+        decisionService.recordDeanDecision(1, new DecisionRequest(false, null));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.DEAN_REJECTED);
     }
@@ -81,7 +82,7 @@ class DecisionServiceTest {
         when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
         when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
 
-        decisionService.recordFacultyBoardDecision(1, new DecisionRequest("APPROVED", null));
+        decisionService.recordFacultyBoardDecision(1, new DecisionRequest(true, null));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FINAL_DEAN_REVIEW);
 
@@ -96,7 +97,7 @@ class DecisionServiceTest {
         when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
         when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
 
-        decisionService.recordFacultyBoardDecision(1, new DecisionRequest("REJECTED", null));
+        decisionService.recordFacultyBoardDecision(1, new DecisionRequest(false, null));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REJECTED);
     }
@@ -111,8 +112,7 @@ class DecisionServiceTest {
         when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
         when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
 
-        // küçük harf "approved" da kabul edilmeli (normalizeDecision)
-        decisionService.recordFinalDeanDecision(1, new DecisionRequest("approved", null));
+        decisionService.recordFinalDeanDecision(1, new DecisionRequest(true, null));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.RESULT_PUBLISHED);
 
@@ -127,7 +127,7 @@ class DecisionServiceTest {
         when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
         when(applicationService.getApplicationById(1)).thenReturn(new ApplicationResponse());
 
-        decisionService.recordFinalDeanDecision(1, new DecisionRequest("REJECTED", null));
+        decisionService.recordFinalDeanDecision(1, new DecisionRequest(false, null));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.REJECTED);
     }
@@ -141,7 +141,7 @@ class DecisionServiceTest {
         Application app = buildApp(1, ApplicationStatus.SUBMITTED); // dekanlık aşamasında değil
         when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
 
-        assertThatThrownBy(() -> decisionService.recordDeanDecision(1, new DecisionRequest("APPROVED", null)))
+        assertThatThrownBy(() -> decisionService.recordDeanDecision(1, new DecisionRequest(true, null)))
                 .isInstanceOf(IllegalStateException.class);
 
         verify(committeeDecisionRepository, never()).save(any());
@@ -149,11 +149,11 @@ class DecisionServiceTest {
     }
 
     @Test
-    void invalidDecision_throwsIllegalArgument_andSavesNothing() {
+    void nullApproved_throwsIllegalArgument_andSavesNothing() {
         Application app = buildApp(1, ApplicationStatus.YGK_SCORED);
         when(applicationRepository.findById(1)).thenReturn(Optional.of(app));
 
-        assertThatThrownBy(() -> decisionService.recordDeanDecision(1, new DecisionRequest("MAYBE", null)))
+        assertThatThrownBy(() -> decisionService.recordDeanDecision(1, new DecisionRequest(null, null)))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(committeeDecisionRepository, never()).save(any());
@@ -163,7 +163,7 @@ class DecisionServiceTest {
     void applicationNotFound_throwsEntityNotFound() {
         when(applicationRepository.findById(99)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> decisionService.recordDeanDecision(99, new DecisionRequest("APPROVED", null)))
+        assertThatThrownBy(() -> decisionService.recordDeanDecision(99, new DecisionRequest(true, null)))
                 .isInstanceOf(EntityNotFoundException.class);
     }
 
