@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/auth/Login';
+import Login from './pages/auth/Login'
+import ActivatePage from './pages/auth/ActivatePage';
 import StudentDashboard from './pages/student/Dashboard';
 import ApplicationList from './pages/student/ApplicationList';
 import ApplicationDetail from './pages/student/ApplicationDetail';
@@ -22,6 +23,7 @@ export default function App() {
       <Route path="/register" element={<Login initialModal="register" />} />
       <Route path="/forgot-password" element={<Login initialModal="forgot" />} />
       <Route path="/reset-password" element={<Login initialModal="reset" />} />
+      <Route path="/activate" element={<ActivatePage />} />
 
       {/* Öğrenci Portalı */}
       <Route
