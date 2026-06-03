@@ -71,6 +71,7 @@ public class Application {
     private Double gpa;
 
     @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
     // Süreç ilerledikçe dolacak alanlar — başlangıçta boş olabilir
