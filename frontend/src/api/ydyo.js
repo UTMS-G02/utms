@@ -1,3 +1,4 @@
+import apiClient from './client'
 import { delay } from './mock'
 
 // ─── YDYO status flow (state machine, per UC-7) ───────────────────────────────
@@ -194,7 +195,7 @@ const findOrThrow = (id) => {
   return app
 }
 
-export const ydyoApi = {
+const mockApi = {
   // GET /api/applications?status=YDYO_REVIEW (Spring Page → .content)
   // The real list endpoint filters by a single status; the board needs every YDYO
   // stage. Mock returns all YDYO records when no status is passed.
@@ -274,3 +275,103 @@ export const ydyoApi = {
     return clone(app)
   },
 }
+
+// ─── Real backend adapter ─────────────────────────────────────────────────────
+// Backend `ApplicationResponse` alan adları UI'nin beklediğinden farklı; tek
+// noktada eşliyoruz. (Bkz. docs/ydyo-frontend-backend-uyum.md)
+const LANG_CERT_TYPES = ['LANGUAGE_CERT', 'LANGUAGE_CERTIFICATE', 'ENGLISH_CERT', 'YDS', 'TOEFL']
+
+const mapApplication = (dto) => {
+  if (!dto) return dto
+  const allDocs = (dto.documents ?? []).map((d) => ({
+    documentId: d.documentId,
+    docType: d.documentType,
+    fileName: d.fileName,
+  }))
+  // İngilizce yeterlilik belgesi backend'de ayrı bir kavram değil → dil belgesi
+  // tipindeki ilk belgeden türetilir; kalanı "Başvuru Belgeleri" altında kalır.
+  const isLangCert = (d) => LANG_CERT_TYPES.includes((d.docType ?? '').toUpperCase())
+  const langDoc = allDocs.find(isLangCert)
+  return {
+    applicationId: dto.id,
+    studentName: dto.studentName,
+    tcKimlikNo: dto.tckn,
+    email: dto.email,
+    phone: dto.phoneNumber,
+    currentUniversity: dto.currentUniversity,
+    currentDepartment: dto.currentDepartment,
+    targetDepartment: dto.targetDepartment,
+    targetFaculty: dto.targetFaculty,
+    academicYear: dto.academicYear,
+    status: dto.status,
+    requiresExam: dto.requiresExam,
+    exemptionApproved: dto.ydyoApproved,   // backend "ydyoApproved" → UI "exemptionApproved"
+    examScore: dto.examScore,
+    examPassed: dto.examPassed,
+    submittedAt: dto.submissionDate,
+    notes: dto.ydyoNotes ?? '',
+    documents: allDocs.filter((d) => !isLangCert(d)),
+    englishCertificate: langDoc
+      ? { documentId: langDoc.documentId, fileName: langDoc.fileName, examType: null, score: null }
+      : null,
+  }
+}
+
+const realApi = {
+  // Board tüm YDYO_* aşamalarını ister ama endpoint tek status alır → filtresiz
+  // çekip client-side YDYO_* filtreliyoruz (status verilirse doğrudan ona filtre).
+  getApplications: async (status) => {
+    const params = status ? { status, size: 500 } : { size: 500 }
+    const res = await apiClient.get('/applications', { params })
+    const mapped = (res.data.content ?? []).map(mapApplication)
+    const list = status ? mapped : mapped.filter((a) => String(a.status).startsWith('YDYO_'))
+    return { content: list }
+  },
+
+  getApplicationById: async (id) =>
+    apiClient.get(`/applications/${id}`).then((r) => mapApplication(r.data)),
+
+  getDocuments: async (applicationId) =>
+    apiClient.get(`/applications/${applicationId}/documents`).then((r) =>
+      (r.data ?? []).map((d) => ({
+        documentId: d.documentId,
+        docType: d.documentType,
+        fileName: d.fileName,
+      }))
+    ),
+
+  // Plain href (yeni sekmede açılır); dev proxy /api → backend.
+  getDocumentDownloadUrl: (documentId) => `/api/documents/${documentId}/download`,
+
+  // ⚠️ Sadece reviewerId gönderilir — asla tam reviewer entity'si (passwordHash vb.).
+  // Backend DTO alanı `isApproved` (Jackson JSON adı `approved`).
+  submitInitialReview: async (id, { approved, requiresExam, notes, reviewerId }) =>
+    apiClient
+      .patch(`/applications/${id}/ydyo-initial-review`, { approved, requiresExam, notes, reviewerId })
+      .then((r) => mapApplication(r.data)),
+
+  // Backend exam-result'ı yalnız YDYO_EXAM_PENDING statüsünde kabul eder. Detay
+  // ekranı "Onaylanmadı + puan"ı tek adımda gönderir; kayıt henüz YDYO_REVIEW ise
+  // önce sınava yönlendirip (initial-review) sonra sonucu gireriz (iki PATCH zinciri).
+  submitExamResult: async (id, { examScore, passed, notes, reviewerId }) => {
+    const body = { examScore, passed, notes, reviewerId }
+    try {
+      const r = await apiClient.patch(`/applications/${id}/ydyo-exam-result`, body)
+      return mapApplication(r.data)
+    } catch (err) {
+      // 400 = "bekleyen sınav yok" (statü YDYO_REVIEW). Önce EXAM_PENDING'e taşı, tekrar dene.
+      if (err?.response?.status !== 400) throw err
+      await apiClient.patch(`/applications/${id}/ydyo-initial-review`, {
+        approved: false, requiresExam: true, notes, reviewerId,
+      })
+      const r2 = await apiClient.patch(`/applications/${id}/ydyo-exam-result`, body)
+      return mapApplication(r2.data)
+    }
+  },
+}
+
+// Varsayılan: MOCK. Gerçek backend'e geçmek için .env'de VITE_USE_MOCK=false.
+// (Test/demo mock üzerinden geçtiği için bayrak açıkça kapatılana dek mock kalır.)
+const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
+
+export const ydyoApi = USE_MOCK ? mockApi : realApi
