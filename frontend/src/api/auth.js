@@ -17,6 +17,9 @@ export const authApi = {
   resetPassword: (token, newPassword) =>
     apiClient.post('/auth/reset-password', { token, newPassword }),
 
+  activateAccount: (token) =>
+    apiClient.get(`/auth/activate?token=${token}`),
+
   getMe: () =>
     apiClient.get('/auth/me'),
 

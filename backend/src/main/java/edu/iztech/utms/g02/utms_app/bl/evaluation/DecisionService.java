@@ -21,15 +21,13 @@ import static edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationSta
 /**
  * Komisyon kararları: Dekanlık → Fakülte Kurulu → Nihai Dekanlık.
  *
- * <p>committee_decisions tablosu EKLE-ONLY'dir: her karar yeni bir satır olarak eklenir,
+ * <p>İstek gövdesi Pair 2 ile tutarlı: {@code approved} (boolean) + {@code notes}.
+ * committee_decisions tablosu EKLE-ONLY'dir: her karar yeni bir satır olarak eklenir,
  * mevcut satırlar güncellenmez. Statü geçişleri {@link #nextStatus} ile yönetilir.
  */
 @Service
 @RequiredArgsConstructor
 public class DecisionService {
-
-    private static final String DECISION_APPROVED = "APPROVED";
-    private static final String DECISION_REJECTED = "REJECTED";
 
     private final ApplicationRepository applicationRepository;
     private final CommitteeDecisionRepository committeeDecisionRepository;
@@ -60,36 +58,31 @@ public class DecisionService {
                     "Başvuru bu karar için uygun aşamada değil. Güncel Statü: " + app.getStatus());
         }
 
-        String decision = normalizeDecision(req.getDecision());
+        boolean approved = resolveApproved(req);
 
         // EKLE-ONLY: her karar yeni satır. Makam role olarak saklanır: DEAN / FACULTY_BOARD / FINAL_DEAN.
         committeeDecisionRepository.save(CommitteeDecision.builder()
                 .application(app)
-                .decisionBy(role)
-                .decision(decision)
+                .decisionBy("FINAL_DEAN".equals(role) ? "FINAL_DEAN" : role)
+                .decision(approved ? "APPROVED" : "REJECTED")
                 .notes(req.getNotes())
                 .build());
 
-        app.setStatus(nextStatus(role, decision));
+        app.setStatus(nextStatus(role, approved));
         applicationRepository.save(app);
 
         return applicationService.getApplicationById(applicationId);
     }
 
-    private String normalizeDecision(String decision) {
-        if (decision == null) {
-            throw new IllegalArgumentException("Karar (decision) boş olamaz. Beklenen: APPROVED veya REJECTED.");
+    private boolean resolveApproved(DecisionRequest req) {
+        if (req.getApproved() == null) {
+            throw new IllegalArgumentException("Karar (approved) belirtilmelidir: true (onay) veya false (ret).");
         }
-        String normalized = decision.trim().toUpperCase();
-        if (!DECISION_APPROVED.equals(normalized) && !DECISION_REJECTED.equals(normalized)) {
-            throw new IllegalArgumentException("Geçersiz karar: " + decision + ". Beklenen: APPROVED veya REJECTED.");
-        }
-        return normalized;
+        return req.getApproved();
     }
 
     /** PDF §6'daki geçiş tablosu. */
-    private ApplicationStatus nextStatus(String role, String decision) {
-        boolean approved = DECISION_APPROVED.equals(decision);
+    private ApplicationStatus nextStatus(String role, boolean approved) {
         return switch (role) {
             case "DEAN"          -> approved ? FACULTY_BOARD_REVIEW : DEAN_REJECTED;
             case "FACULTY_BOARD" -> approved ? FINAL_DEAN_REVIEW    : FACULTY_BOARD_REJECTED;

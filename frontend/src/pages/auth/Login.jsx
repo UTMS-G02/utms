@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { Form, Input, Button, Typography, App, Modal, Checkbox, DatePicker, Row, Col } from 'antd'
 import { MailOutlined, LockOutlined } from '@ant-design/icons'
@@ -110,6 +110,16 @@ export default function LoginPage({ initialModal }) {
     }
   }, [initialModal, resetToken])
 
+  useEffect(() => {
+    if (searchParams.get('activated') === 'true') {
+      message.success('Hesabınız başarıyla aktive edildi. Giriş yapabilirsiniz.')
+      navigate('/login', { replace: true })
+    } else if (searchParams.get('activationError') === 'true') {
+      message.error('Aktivasyon bağlantısı geçersiz veya süresi dolmuş.')
+      navigate('/login', { replace: true })
+    }
+  }, [])
+
   const from = location.state?.from?.pathname ?? null
 
   const closeModal = () => {
@@ -136,7 +146,7 @@ export default function LoginPage({ initialModal }) {
       };
 
       await authApi.register(payload)
-      message.success('Kayıt başarılı. Şimdi giriş yapabilirsiniz.')
+      message.success('Kayıt başarılı. Hesabınızı aktive etmek için e-postanızı kontrol edin.')
       registerForm.resetFields()
       closeModal()
     } catch (error) {
@@ -194,7 +204,10 @@ export default function LoginPage({ initialModal }) {
       navigate(destination, { replace: true })
     } catch (err) {
       const status = err.response?.status
-      if (status === 401) {
+      const serverMessage = err.response?.data?.message
+      if (status === 401 && serverMessage?.includes('aktive')) {
+        message.warning('Hesabınız henüz aktive edilmemiş. E-postanızı kontrol edin.')
+      } else if (status === 401) {
         message.error('E-posta veya şifre hatalı.')
       } else if (status === 403) {
         message.warning('Hesabınız henüz doğrulanmamış.')

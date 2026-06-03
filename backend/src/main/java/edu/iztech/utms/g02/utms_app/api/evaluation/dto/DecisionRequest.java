@@ -4,15 +4,17 @@ import lombok.*;
 
 /**
  * Komisyon kararı isteği — dean-review / faculty-board-review / final-dean-review.
- * Skor ağırlıkları ASLA buradan okunmaz; sadece karar + not taşır.
+ *
+ * <p>Pair 2'nin inceleme uçlarıyla (oidb-review, ydyo-review) tutarlı şekilde
+ * {@code approved} (boolean) + {@code notes} alır. Skor ağırlıkları ASLA buradan okunmaz.
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class DecisionRequest {
 
-    // "APPROVED" veya "REJECTED"
-    private String decision;
+    // true = onay (APPROVED), false = ret (REJECTED). Zorunlu.
+    private Boolean approved;
 
     private String notes;
 }

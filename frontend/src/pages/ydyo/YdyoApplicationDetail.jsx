@@ -11,12 +11,14 @@ import {
   Row,
   Col,
   App,
+  Tooltip,
 } from 'antd'
 import {
   FileTextOutlined,
   DownloadOutlined,
   SafetyCertificateOutlined,
   FormOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '../../contexts/AuthContext'
 import {
@@ -92,6 +94,36 @@ function LabeledBadge({ caption, label, tint }) {
       <Text type="secondary" style={{ fontSize: 11 }}>{caption}</Text>
       <div><Badge label={label} tint={tint} /></div>
     </div>
+  )
+}
+
+// "Değişiklik yapılmıştır" uyarı işareti — karar sonradan değiştirildiğinde görünür.
+// Yanlışlıkla yapılan değişiklikleri (kullanıcının bildirdiği hata) görünür kılar.
+function ModificationMark({ by, at }) {
+  const when = at
+    ? new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(at))
+    : null
+  const detail = [by, when].filter(Boolean).join(' · ')
+  return (
+    <Tooltip title={detail ? `Değiştiren: ${detail}` : 'Karar sonradan değiştirildi'}>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 12,
+          fontWeight: 600,
+          padding: '3px 12px',
+          borderRadius: 999,
+          background: '#FEF3C7',
+          color: '#B45309',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <ExclamationCircleOutlined />
+        Değişiklik yapılmıştır{detail ? ` (${detail})` : ''}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -227,6 +259,8 @@ function DetailBody({ application, onChange, locked = false }) {
 
   // Reviewer = logged-in YDYO staff. getMe → {id}, login → {userId}.
   const reviewerId = user?.userId ?? user?.id ?? null
+  // Audit damgası ("değişiklik yapılmıştır") için inceleyenin e-postası (varsa).
+  const reviewerEmail = user?.email ?? null
 
   const {
     applicationId,
@@ -300,20 +334,20 @@ function DetailBody({ application, onChange, locked = false }) {
         // Belge yeterli → muaf, sınav gerekmez.
         // TODO: real → PATCH /applications/{id}/ydyo-initial-review
         await ydyoApi.submitInitialReview(applicationId, {
-          approved: true, requiresExam: false, notes: trimmedNotes, reviewerId,
+          approved: true, requiresExam: false, notes: trimmedNotes, reviewerId, reviewerEmail,
         })
       } else if (hasScore) {
         // Belge yetersiz ama sınav puanı girildi → doğrudan sınav sonucu kaydı.
         // passed eşikten türetilir (PASS_THRESHOLD).
         // TODO: real → PATCH /applications/{id}/ydyo-exam-result
         await ydyoApi.submitExamResult(applicationId, {
-          examScore: Number(examScore), passed: examPassed, notes: trimmedNotes, reviewerId,
+          examScore: Number(examScore), passed: examPassed, notes: trimmedNotes, reviewerId, reviewerEmail,
         })
       } else {
         // Belge yetersiz, henüz sonuç yok → sınava yönlendir (Bekleniyor).
         // TODO: real → PATCH /applications/{id}/ydyo-initial-review
         await ydyoApi.submitInitialReview(applicationId, {
-          approved: false, requiresExam: true, notes: trimmedNotes, reviewerId,
+          approved: false, requiresExam: true, notes: trimmedNotes, reviewerId, reviewerEmail,
         })
       }
       message.success('Değerlendirme kaydedildi.')
@@ -341,6 +375,12 @@ function DetailBody({ application, onChange, locked = false }) {
           <LabeledBadge caption="Belge Onayı" {...DOC_APPROVAL_BADGE[deriveDocumentApproval(application)]} />
           <LabeledBadge caption="Sınav Sonucu" {...EXAM_BADGE[deriveExamStatus(application)]} />
           <LabeledBadge caption="Muafiyet Sonucu" {...EXEMPTION_BADGE[deriveExemptionStatus(application)]} />
+          {application.modified && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <Text type="secondary" style={{ fontSize: 11 }}>Uyarı</Text>
+              <div><ModificationMark by={application.modifiedBy} at={application.modifiedAt} /></div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -489,6 +529,9 @@ function DetailBody({ application, onChange, locked = false }) {
             <Text type="secondary" style={{ fontSize: 13 }}>
               Liste ÖİDB'ye iletildi; bu kayıt artık düzenlenemez.
             </Text>
+            {application.modified && (
+              <ModificationMark by={application.modifiedBy} at={application.modifiedAt} />
+            )}
             <Space size={24} wrap>
               <Space>
                 <Text style={{ fontSize: 13 }}>Belge Onayı:</Text>

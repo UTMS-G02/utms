@@ -18,6 +18,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,15 +43,13 @@ class EvaluationServiceTest {
 
     @Test
     void scoreAll_picksUpEvaluationQueue_scoresAndMarksYgkScored() {
-        // Tek giriş statüsü: EVALUATION_QUEUE. Pair 2, OİDB son onayında başvuruyu bu
-        // statüye taşır (processOidbPostYdyoReview).
-        Application queued = buildApplication(1, ApplicationStatus.EVALUATION_QUEUE, 3.0, 400.0);  // 0.30 + 360 = 360.30
+        Application queued = buildApplication(1, ApplicationStatus.EVALUATION_QUEUE, 3.0, 400.0); // 0.30 + 360 = 360.30
 
         when(applicationRepository.findByStatus(eq(ApplicationStatus.EVALUATION_QUEUE), any(Pageable.class)))
                 .thenReturn(page(queued));
         when(evaluationResultRepository.findByApplication_ApplicationId(anyInt())).thenReturn(Optional.empty());
         when(evaluationResultRepository.save(any(EvaluationResult.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(evaluationResultRepository.findAllByOrderByCompositeScoreDesc()).thenReturn(List.of());
+        when(evaluationResultRepository.findAll()).thenReturn(List.of());
 
         int count = evaluationService.scoreAllPendingApplications();
 
@@ -63,15 +63,63 @@ class EvaluationServiceTest {
         when(applicationRepository.findByStatus(any(ApplicationStatus.class), any(Pageable.class)))
                 .thenReturn(page()); // hiç bekleyen yok; sadece sıralama mantığını test ediyoruz
 
-        EvaluationResult high = EvaluationResult.builder().compositeScore(360.30).build();
-        EvaluationResult low = EvaluationResult.builder().compositeScore(180.40).build();
-        when(evaluationResultRepository.findAllByOrderByCompositeScoreDesc()).thenReturn(List.of(high, low));
+        EvaluationResult high = result(buildApplication(1, ApplicationStatus.YGK_SCORED, 0, 0), 360.30);
+        EvaluationResult low = result(buildApplication(2, ApplicationStatus.YGK_SCORED, 0, 0), 180.40);
+        when(evaluationResultRepository.findAll()).thenReturn(List.of(low, high)); // "yanlış" sırada
         when(evaluationResultRepository.save(any(EvaluationResult.class))).thenAnswer(inv -> inv.getArgument(0));
 
         evaluationService.scoreAllPendingApplications();
 
         assertThat(high.getRanking()).isEqualTo(1);
         assertThat(low.getRanking()).isEqualTo(2);
+    }
+
+    // ==========================================
+    // TIE-BREAK (eşit skor) — TestReport PRE-1
+    // ==========================================
+
+    @Test
+    void scoreAll_tieOnScore_brokenByEarlierCreatedAt_overridesApplicationId() {
+        // Aynı skor, submissionDate yok. Erken createdAt önce gelmeli — id sırasına RAĞMEN.
+        Application earlier = buildApplication(2, ApplicationStatus.YGK_SCORED, 3.0, 400.0); // büyük id
+        earlier.setCreatedAt(LocalDateTime.of(2026, 5, 1, 9, 0));
+        Application later = buildApplication(1, ApplicationStatus.YGK_SCORED, 3.0, 400.0);   // küçük id
+        later.setCreatedAt(LocalDateTime.of(2026, 5, 10, 9, 0));
+
+        EvaluationResult rEarlier = result(earlier, 360.30);
+        EvaluationResult rLater = result(later, 360.30);
+
+        when(applicationRepository.findByStatus(any(ApplicationStatus.class), any(Pageable.class))).thenReturn(page());
+        when(evaluationResultRepository.findAll()).thenReturn(List.of(rLater, rEarlier));
+        when(evaluationResultRepository.save(any(EvaluationResult.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        evaluationService.scoreAllPendingApplications();
+
+        assertThat(rEarlier.getRanking()).isEqualTo(1); // erken başvuran önce
+        assertThat(rLater.getRanking()).isEqualTo(2);
+    }
+
+    @Test
+    void scoreAll_tieOnScore_submissionDateTakesPrecedenceOverCreatedAt() {
+        // submissionDate spec alanı; createdAt'ten önceliklidir.
+        Application a = buildApplication(1, ApplicationStatus.YGK_SCORED, 3.0, 400.0);
+        a.setSubmissionDate(LocalDate.of(2026, 5, 1));   // erken submission
+        a.setCreatedAt(LocalDateTime.of(2026, 5, 10, 9, 0)); // ama geç created
+        Application b = buildApplication(2, ApplicationStatus.YGK_SCORED, 3.0, 400.0);
+        b.setSubmissionDate(LocalDate.of(2026, 5, 5));
+        b.setCreatedAt(LocalDateTime.of(2026, 5, 1, 9, 0));
+
+        EvaluationResult ra = result(a, 360.30);
+        EvaluationResult rb = result(b, 360.30);
+
+        when(applicationRepository.findByStatus(any(ApplicationStatus.class), any(Pageable.class))).thenReturn(page());
+        when(evaluationResultRepository.findAll()).thenReturn(List.of(rb, ra));
+        when(evaluationResultRepository.save(any(EvaluationResult.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        evaluationService.scoreAllPendingApplications();
+
+        assertThat(ra.getRanking()).isEqualTo(1); // erken submissionDate kazanır
+        assertThat(rb.getRanking()).isEqualTo(2);
     }
 
     // ==========================================
@@ -87,7 +135,7 @@ class EvaluationServiceTest {
                 .compositeScore(360.35)
                 .ranking(1)
                 .build();
-        when(evaluationResultRepository.findAllByOrderByCompositeScoreDesc()).thenReturn(List.of(result));
+        when(evaluationResultRepository.findAll()).thenReturn(List.of(result));
 
         List<EvaluationResponse> responses = evaluationService.getEvaluations();
 
@@ -106,6 +154,10 @@ class EvaluationServiceTest {
 
     private Page<Application> page(Application... apps) {
         return new PageImpl<>(List.of(apps));
+    }
+
+    private EvaluationResult result(Application app, double score) {
+        return EvaluationResult.builder().application(app).compositeScore(score).build();
     }
 
     private Application buildApplication(Integer id, ApplicationStatus status, double gpa, double yks) {

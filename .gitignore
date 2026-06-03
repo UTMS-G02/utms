@@ -20,5 +20,10 @@
 # Binary files and PlantUML generated output
 out/
 
-# Personal notes (not project docs)
+# Personal notes
 *_notes
+docs/
+
+# Runtime logs
+backend.log
+frontend.log

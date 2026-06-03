@@ -35,6 +35,7 @@ public class Document { // abstract mı olacak
     private boolean ydyoApproved;
 
     @Column(nullable = false)
+    @Builder.Default
     private Boolean oidbApproved = false;
 
     @Column(nullable = false)
