@@ -1,9 +1,10 @@
 import apiClient from './client'
-import { mockResult, delay } from './mock'
+import { mockApplications, mockResult, delay } from './mock'
 
 export const applicationsApi = {
-  // GET /api/applications artık Spring Page döndürüyor; sayfalar düz array
-  // beklediği için içindeki content dizisini çıkarıyoruz.
+  // --- Öğrenci uçları (backend hazır) ---
+
+  // GET /applications Spring Page döndürüyor; düz array için content'i alıyoruz.
   getMyApplications: () =>
     apiClient.get('/applications').then((res) => res.data.content),
 
@@ -30,9 +31,77 @@ export const applicationsApi = {
       .then((res) => res.data)
   },
 
-  // TODO: replace with real API call (backend'de net karşılığı yok)
+  // --- ÖİDB uçları (backend hazır değilse mock fallback'li) ---
+
+  getOidbApplications: async () => {
+    try {
+      const response = await apiClient.get('/oidb/applications')
+      return response.data
+    } catch (error) {
+      await delay(500)
+      return mockApplications
+    }
+  },
+
+  requestApplicationUpdate: async (applicationId) => {
+    try {
+      const response = await apiClient.post(`/oidb/applications/${applicationId}/request-update`)
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
+  sendToYdyo: async (applicationId) => {
+    try {
+      const response = await apiClient.post(`/oidb/applications/${applicationId}/send-to-ydyo`)
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
+  forwardToFaculty: async (applicationId) => {
+    try {
+      const response = await apiClient.post(`/oidb/applications/${applicationId}/forward-to-faculty`)
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
+  rejectApplication: async (applicationId) => {
+    try {
+      const response = await apiClient.post(`/oidb/applications/${applicationId}/reject`)
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
+  shareResults: async (applicationIds) => {
+    try {
+      const response = await apiClient.post('/oidb/share-results', { applicationIds })
+      return response.data
+    } catch {
+      await delay(500)
+      return { success: true }
+    }
+  },
+
+  // --- Sonuç (gerçek uç + fallback) ---
+
   getMyResult: async () => {
-    await delay(500)
-    return mockResult
+    try {
+      const response = await apiClient.get('/applications/result')
+      return response.data
+    } catch (error) {
+      await delay(500)
+      return mockResult
+    }
   },
 }

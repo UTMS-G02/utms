@@ -5,6 +5,7 @@ import ApplicationList from './pages/student/ApplicationList';
 import ApplicationDetail from './pages/student/ApplicationDetail';
 import ApplicationForm from './pages/student/ApplicationForm';
 import Profile from './pages/student/Profile';
+import OidbDashboard from './pages/oidb/Dashboard';
 import YdyoDashboard from './pages/ydyo/YdyoDashboard';
 import YdyoApplicationDetail from './pages/ydyo/YdyoApplicationDetail';
 import AppLayout from './components/Layout/AppLayout';
@@ -39,6 +40,11 @@ export default function App() {
         <Route path="profile" element={<Profile />} />
       </Route>
 
+      {/* OIDB Portalı */}
+      <Route
+        path="/oidb"
+        element={
+          <ProtectedRoute allowedRoles={[ROLES.OIDB]}>
       {/* YDYO (Yabancı Diller) Portalı */}
       <Route
         path="/ydyo"
@@ -48,6 +54,9 @@ export default function App() {
           </ProtectedRoute>
         }
       >
+        <Route index element={<OidbDashboard />} />
+        <Route path="dashboard" element={<OidbDashboard />} />
+        <Route path="pending" element={<OidbDashboard />} />
         <Route index element={<YdyoDashboard />} />
         <Route path="dashboard" element={<YdyoDashboard />} />
         <Route path="applications/:id" element={<YdyoApplicationDetail />} />
