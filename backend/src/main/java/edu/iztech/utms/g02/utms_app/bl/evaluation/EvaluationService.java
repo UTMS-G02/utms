@@ -12,6 +12,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,6 +33,23 @@ public class EvaluationService {
 
     private final ApplicationRepository applicationRepository;
     private final EvaluationResultRepository evaluationResultRepository;
+
+    /**
+     * Sıralama düzeni: yüksek compositeScore önce; eşit skorda tie-break uygulanır.
+     *
+     * <p>Tie-break (TestReport PRE-1): eşit skorda erken başvuran önce gelir.
+     * Spec'in istediği alan {@code submissionDate}'dir (Pair 2 doldurunca otomatik devreye
+     * girer). {@code submissionDate} şu an dolmadığından, her zaman dolu olan {@code createdAt}
+     * anlamlı ve deterministik bir tie-break sağlar. Son olarak {@code applicationId} ile
+     * tam belirlilik garanti edilir (artan id ≈ erken oluşturma).
+     */
+    private static final Comparator<EvaluationResult> RANKING_ORDER =
+            Comparator.comparingDouble((EvaluationResult r) -> -r.getCompositeScore())
+                    .thenComparing(r -> r.getApplication().getSubmissionDate(),
+                            Comparator.nullsLast(Comparator.<LocalDate>naturalOrder()))
+                    .thenComparing(r -> r.getApplication().getCreatedAt(),
+                            Comparator.nullsLast(Comparator.<LocalDateTime>naturalOrder()))
+                    .thenComparing(r -> r.getApplication().getApplicationId());
 
     /**
      * Devir (handoff) statüsündeki tüm başvuruları skorlar, EvaluationResult üretir,
@@ -64,9 +85,10 @@ public class EvaluationService {
         return pending.size();
     }
 
-    /** En yüksek skordan en düşüğe doğru sıralayıp ranking atar (1 = en yüksek). */
+    /** Skora ve tie-break'e göre sıralayıp ranking atar (1 = en yüksek). */
     private void updateRankings() {
-        List<EvaluationResult> all = evaluationResultRepository.findAllByOrderByCompositeScoreDesc();
+        List<EvaluationResult> all = new ArrayList<>(evaluationResultRepository.findAll());
+        all.sort(RANKING_ORDER);
         int rank = 1;
         for (EvaluationResult result : all) {
             result.setRanking(rank++);
@@ -76,7 +98,8 @@ public class EvaluationService {
 
     @Transactional(readOnly = true)
     public List<EvaluationResponse> getEvaluations() {
-        return evaluationResultRepository.findAllByOrderByCompositeScoreDesc().stream()
+        return evaluationResultRepository.findAll().stream()
+                .sorted(RANKING_ORDER)
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
