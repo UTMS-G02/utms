@@ -61,6 +61,12 @@ public class ApplicationResponse {
     private Double examScore;
     private Boolean examPassed;
 
+    // YDYO kararı kesinleştikten sonra değiştirildiyse → "değişiklik yapılmıştır" işareti.
+    // Frontend bu alanları (modified/modifiedBy/modifiedAt) doğrudan eşler.
+    private boolean modified;
+    private Integer modifiedBy;
+    private LocalDateTime modifiedAt;
+
     //EKLENDI: YÖKSİS ve YKS verileri
     private String currentUniversity;
     private String currentFaculty;

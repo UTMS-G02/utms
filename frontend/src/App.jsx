@@ -45,6 +45,15 @@ export default function App() {
         path="/oidb"
         element={
           <ProtectedRoute allowedRoles={[ROLES.OIDB]}>
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<OidbDashboard />} />
+        <Route path="dashboard" element={<OidbDashboard />} />
+        <Route path="pending" element={<OidbDashboard />} />
+      </Route>
+
       {/* YDYO (Yabancı Diller) Portalı */}
       <Route
         path="/ydyo"
@@ -54,9 +63,6 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<OidbDashboard />} />
-        <Route path="dashboard" element={<OidbDashboard />} />
-        <Route path="pending" element={<OidbDashboard />} />
         <Route index element={<YdyoDashboard />} />
         <Route path="dashboard" element={<YdyoDashboard />} />
         <Route path="applications/:id" element={<YdyoApplicationDetail />} />

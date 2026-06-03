@@ -60,6 +60,48 @@ export const deriveExemptionStatus = (app) => {
   return 'PENDING'                                         // REVIEW or EXAM_PENDING
 }
 
+// ─── Karar → türetilmiş alanların TAMAMI (tek kaynak) ─────────────────────────
+// Bug: karar değişince (örn. "Onaylandı" iken sonradan "Onaylanmadı + puan")
+// yalnız bir kısım alan güncellenip diğerleri eski kalıyordu → rozetler birbiriyle
+// çelişiyordu (Onaylandı + Sınav Gerekli Değil + Muaf Değil gibi). Çözüm: her karar
+// için status / requiresExam / exemptionApproved / examScore / examPassed alanlarının
+// HEPSİ birlikte hesaplanır; hiçbir alan eski (stale) kalmaz.
+
+// "Belge Onay Durumu" kararı → tutarlı alan kümesi.
+export const initialReviewFields = (approved, requiresExam) => {
+  if (approved && !requiresExam) {
+    // Belge yeterli → muaf, sınav gerekmez. Eski sınav sonucu varsa temizlenir.
+    return { status: YDYO_STATUS.ACCEPTED, requiresExam: false, exemptionApproved: true,  examScore: null, examPassed: null }
+  }
+  if (!approved && requiresExam) {
+    // Belge yetersiz → sınava yönlendir. Önceki sonuç (varsa) sıfırlanır.
+    return { status: YDYO_STATUS.EXAM_PENDING, requiresExam: true, exemptionApproved: false, examScore: null, examPassed: null }
+  }
+  // Belge reddedildi → eleme.
+  return { status: YDYO_STATUS.REJECTED, requiresExam: false, exemptionApproved: false, examScore: null, examPassed: null }
+}
+
+// Sınav sonucu girişi → tutarlı alan kümesi (sınav yolu ⇒ belge muafiyeti yok).
+export const examResultFields = (examScore, passed) => ({
+  status: passed ? YDYO_STATUS.ACCEPTED : YDYO_STATUS.REJECTED,
+  requiresExam: true,
+  exemptionApproved: false,
+  examScore,
+  examPassed: passed,
+})
+
+// Kayıt zaten KESİN bir karara bağlanmış mı? (ACCEPTED/REJECTED). Bu durumdaki bir
+// kaydı yeniden değerlendirmek "değişiklik" sayılır → uyarı işareti konur.
+export const wasDecided = (app) => app.status === YDYO_STATUS.ACCEPTED || app.status === YDYO_STATUS.REJECTED
+
+// Yeniden değerlendirme olduysa "değişiklik yapılmıştır" damgasını ekle (kim/ne zaman).
+const stampModification = (app, reEvaluation, reviewerId, reviewerEmail) => {
+  if (!reEvaluation) return
+  app.modified = true
+  app.modifiedBy = reviewerEmail ?? (reviewerId != null ? `#${reviewerId}` : 'bilinmiyor')
+  app.modifiedAt = new Date().toISOString()
+}
+
 // ─── Mock store ───────────────────────────────────────────────────────────────
 // Mutable in-memory list so review/exam actions are reflected on re-fetch.
 // Mixed statuses on purpose so the board exercises every badge.
@@ -240,21 +282,16 @@ const mockApi = {
   // TODO: replace with real API call →
   //   apiClient.patch(`/applications/${id}/ydyo-initial-review`,
   //     { approved, requiresExam, notes, reviewerId }).then((r) => r.data)
-  submitInitialReview: async (id, { approved, requiresExam, notes, reviewerId }) => {
+  submitInitialReview: async (id, { approved, requiresExam, notes, reviewerId, reviewerEmail }) => {
     await delay(400)
     const app = findOrThrow(id)
+    const reEvaluation = wasDecided(app)     // damga: zaten karara bağlıyken mi değişiyor?
     app.approved = approved
-    app.requiresExam = requiresExam
-    app.exemptionApproved = approved && !requiresExam
     app.notes = notes
     app.reviewerId = reviewerId
-    if (approved && !requiresExam) {
-      app.status = YDYO_STATUS.ACCEPTED        // Belge Onaylandı → Muaf
-    } else if (!approved && requiresExam) {
-      app.status = YDYO_STATUS.EXAM_PENDING    // Belge Onaylanmadı → sınava
-    } else {
-      app.status = YDYO_STATUS.REJECTED        // Belge Reddedildi → eleme
-    }
+    // Türetilen alanların TAMAMINI birlikte yaz → hiçbiri eski (stale) kalmaz.
+    Object.assign(app, initialReviewFields(approved, requiresExam))
+    stampModification(app, reEvaluation, reviewerId, reviewerEmail)
     return clone(app)
   },
 
@@ -264,14 +301,15 @@ const mockApi = {
   // TODO: replace with real API call →
   //   apiClient.patch(`/applications/${id}/ydyo-exam-result`,
   //     { examScore, passed, notes, reviewerId }).then((r) => r.data)
-  submitExamResult: async (id, { examScore, passed, notes, reviewerId }) => {
+  submitExamResult: async (id, { examScore, passed, notes, reviewerId, reviewerEmail }) => {
     await delay(300)
     const app = findOrThrow(id)
-    app.examScore = examScore
-    app.examPassed = passed
+    const reEvaluation = wasDecided(app)     // damga: zaten karara bağlıyken mi değişiyor?
     app.notes = notes
     app.reviewerId = reviewerId
-    app.status = passed ? YDYO_STATUS.ACCEPTED : YDYO_STATUS.REJECTED
+    // Sınav yolu → status + requiresExam + exemptionApproved + puan tutarlı kurulur.
+    Object.assign(app, examResultFields(examScore, passed))
+    stampModification(app, reEvaluation, reviewerId, reviewerEmail)
     return clone(app)
   },
 }
@@ -314,6 +352,12 @@ const mapApplication = (dto) => {
     englishCertificate: langDoc
       ? { documentId: langDoc.documentId, fileName: langDoc.fileName, examType: null, score: null }
       : null,
+    // Karar sonradan değiştirildiyse "değişiklik yapılmıştır" işareti. Backend bu
+    // alanları henüz döndürmüyor → şimdilik undefined (işaret gizli) kalır.
+    // TODO: backend ApplicationResponse'a modified/modifiedBy/modifiedAt eklenince aktif olur.
+    modified: dto.modified,
+    modifiedBy: dto.modifiedBy,
+    modifiedAt: dto.modifiedAt,
   }
 }
 

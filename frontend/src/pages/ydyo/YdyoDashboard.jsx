@@ -8,6 +8,7 @@ import {
   UserOutlined,
   CloseOutlined,
   QuestionCircleOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons'
 import {
   ydyoApi,
@@ -187,9 +188,18 @@ export default function YdyoDashboard() {
   const { message, modal } = App.useApp()
 
   // No status param → mock returns every YDYO stage for the board.
+  // Sabit sıra: başvuru id'sine göre (orijinal/eklenme sırası). Backend findAll
+  // ORDER BY içermediğinden, bir kayıt düzenlenince Postgres onu sona taşıyabiliyor;
+  // burada sabitleyerek düzenleme sonrası satırın yeri DEĞİŞMEZ.
   const loadApplications = () =>
     ydyoApi.getApplications()
-      .then((page) => setApplications(page.content ?? []))
+      .then((page) =>
+        setApplications(
+          (page.content ?? [])
+            .slice()
+            .sort((a, b) => (a.applicationId ?? 0) - (b.applicationId ?? 0))
+        )
+      )
       .catch(() => message.error('Başvurular yüklenirken bir hata oluştu.'))
       .finally(() => setLoading(false))
 
@@ -218,7 +228,7 @@ export default function YdyoDashboard() {
       message.info('Dışa aktarılacak kayıt bulunmuyor.')
       return
     }
-    const headers = ['Ad Soyad', 'E-posta', 'Telefon', 'Belge Onayı', 'Sınav Sonucu', 'Sınav Puanı', 'Muafiyet Sonucu', 'Açıklama']
+    const headers = ['Ad Soyad', 'E-posta', 'Telefon', 'Belge Onayı', 'Sınav Sonucu', 'Sınav Puanı', 'Muafiyet Sonucu', 'Değişiklik', 'Açıklama']
     const rows = filtered.map((app) => [
       app.studentName,
       app.email,
@@ -227,6 +237,7 @@ export default function YdyoDashboard() {
       EXAM_BADGE[deriveExamStatus(app)].label,
       app.examScore ?? '',
       EXEMPTION_BADGE[deriveExemptionStatus(app)].label,
+      app.modified ? `Değiştirildi (${[app.modifiedBy, app.modifiedAt].filter(Boolean).join(' · ')})` : '',
       (app.notes ?? '').replace(/\s+/g, ' ').trim(),
     ])
     const escape = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`
@@ -292,6 +303,17 @@ export default function YdyoDashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={styles.avatar}>{initials(app.studentName)}</div>
           <Text style={{ fontWeight: 600, fontSize: 15 }}>{app.studentName}</Text>
+          {app.modified && (
+            <Tooltip
+              title={`Karar sonradan değiştirildi${
+                app.modifiedBy || app.modifiedAt
+                  ? ` (${[app.modifiedBy, app.modifiedAt && new Date(app.modifiedAt).toLocaleString('tr-TR')].filter(Boolean).join(' · ')})`
+                  : ''
+              }`}
+            >
+              <ExclamationCircleOutlined style={{ color: '#B45309', fontSize: 15 }} />
+            </Tooltip>
+          )}
         </div>
       ),
     },
