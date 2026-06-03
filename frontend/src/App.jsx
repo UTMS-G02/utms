@@ -6,6 +6,9 @@ import ApplicationList from './pages/student/ApplicationList';
 import ApplicationDetail from './pages/student/ApplicationDetail';
 import ApplicationForm from './pages/student/ApplicationForm';
 import Profile from './pages/student/Profile';
+import DekanlikOfisi from './pages/dean/DekanlikOfisi';
+import FakulteKurulu from './pages/dean/FakulteKurulu';
+import YGK from './pages/dean/YGK';
 import AppLayout from './components/Layout/AppLayout'; 
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROLES } from './contexts/AuthContext';
@@ -48,6 +51,9 @@ export default function App() {
         }
       >
         <Route path="dashboard" element={<div style={{ padding: 24 }}><h2>Dean Dashboard</h2></div>} />
+        <Route path="dekanlık-ofisi" element={<DekanlikOfisi />} />
+        <Route path="faculty-board" element={<FakulteKurulu />} />
+        <Route path="ygk" element={<YGK />} />
       </Route>
 
       {/* Yanlış URL girilirse Login'e at */}

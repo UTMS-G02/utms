@@ -38,6 +38,9 @@ const MENU_CONFIG = {
   ],
   [ROLES.DEAN_OFFICE]: [
     { key: '/dean/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
+    { key: '/dean/dekanlık-ofisi', icon: <FileTextOutlined />, label: 'Dekanlık Ofisi' },
+    { key: '/dean/faculty-board', icon: <FileTextOutlined />, label: 'Fakülte Kurulu' },
+    { key: '/dean/ygk', icon: <FileTextOutlined />, label: 'YGK' },
   ],
   [ROLES.FACULTY_BOARD]: [
     { key: '/faculty-board/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
