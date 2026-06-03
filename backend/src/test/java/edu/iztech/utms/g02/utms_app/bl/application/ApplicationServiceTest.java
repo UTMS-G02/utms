@@ -63,10 +63,10 @@ class ApplicationServiceTest {
                 student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
         )).thenReturn(false);
         
-        // YÖKSİS'ten dönen GPA 3.5 (2.50 barajından yüksek, sorunsuz geçmeli)
+        // ÖĞRENCİ 2. YARIYILDA VE ORTALAMASI 3.5 (Başvurusu KABUL EDİLMELİ)
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
                 .thenReturn(new YoksisStudentResponse(
-                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", "3. Sınıf", 3.5
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 3.5
                 ));
                 
         when(applicationRepository.save(any(Application.class))).thenAnswer(invocation -> {
@@ -138,7 +138,7 @@ class ApplicationServiceTest {
         // YÖKSİS'ten GPA'i bilerek 2.49 dönüyoruz
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
                 .thenReturn(new YoksisStudentResponse(
-                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", "3. Sınıf", 2.49 
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 2.49 
                 ));
 
         ApplicationCreateRequest request = buildCreateRequest(); // KVKK true geliyor
@@ -146,6 +146,32 @@ class ApplicationServiceTest {
         assertThatThrownBy(() -> applicationService.create(request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("2.50'nin altındadır"); // Baraj uyarısını görmeliyiz
+
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    @Test
+    void create_invalidSemester_throwsIllegalArgumentException() {
+        Student student = buildStudent();
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
+
+        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
+        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
+                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
+        )).thenReturn(false);
+
+        // ÖĞRENCİ 3. YARIYILDA (Yani başvurduğunda 4. yarıyıla geçecek, ki bu kurala aykırı!) Ortalaması 3.5 olsa bile REDDEDİLMELİ.
+        when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
+                .thenReturn(new YoksisStudentResponse(
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 3, 3.5 
+                ));
+
+        ApplicationCreateRequest request = buildCreateRequest(); // KVKK true geliyor
+
+        // Eylem ve Doğrulama
+        assertThatThrownBy(() -> applicationService.create(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("şu an 2. veya 4. yarıyılı tamamlıyor olmalısınız"); 
 
         verify(applicationRepository, never()).save(any(Application.class));
     }
@@ -258,14 +284,21 @@ class ApplicationServiceTest {
         assertThat(response.getStatus()).isEqualTo(ApplicationStatus.YDYO_ACCEPTED);
     }
 
+    // ==========================================
+    // YDYO — "DEĞİŞİKLİK YAPILMIŞTIR" (yeniden değerlendirme) TESTLERİ
+    // Kullanıcının bildirdiği hata: zaten muaf (Onaylandı) kayda sonradan sınav notu
+    // girilince çelişkili durum oluşuyordu. Artık: yeniden değerlendirilebilir AMA
+    // damgalanır ve alanlar tutarlı kalır.
+    // ==========================================
+
     @Test
-    void enterYdyoExamResult_passed_updatesStatusToAccepted() {
+    void enterYdyoExamResult_firstEntryFromExamPending_notMarkedModified() {
         Application application = buildApplication(buildStudent());
-        application.setStatus(ApplicationStatus.YDYO_EXAM_PENDING); // Sınav bekliyor
+        application.setStatus(ApplicationStatus.YDYO_EXAM_PENDING); // normal sınav akışı
 
         YdyoExamResultRequest request = new YdyoExamResultRequest();
+        request.setExamScore(72.0);
         request.setPassed(true);
-        request.setExamScore(85.5);
 
         when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
         when(applicationRepository.save(application)).thenReturn(application);
@@ -273,39 +306,201 @@ class ApplicationServiceTest {
         ApplicationResponse response = applicationService.enterYdyoExamResult(1, request);
 
         assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_ACCEPTED);
-        assertThat(application.getYdyoExamScore()).isEqualTo(85.5);
+        assertThat(application.isYdyoDecisionModified()).isFalse(); // ilk karar = değişiklik değil
+        assertThat(response.isModified()).isFalse();
+        assertThat(response.getExamPassed()).isTrue();
     }
 
     @Test
-    void enterYdyoExamResult_failed_updatesStatusToRejected() {
+    void enterYdyoExamResult_reEvaluatesExemptApplication_marksModifiedAndStaysConsistent() {
+        // HATA SENARYOSU: kayıt zaten "Onaylandı/muaf" (YDYO_ACCEPTED), üstüne 50 girilir.
         Application application = buildApplication(buildStudent());
-        application.setStatus(ApplicationStatus.YDYO_EXAM_PENDING);
+        application.setStatus(ApplicationStatus.YDYO_ACCEPTED);
+        application.setYdyoApproved(true); // belgeyle muaftı
 
+        Staff reviewer = buildYdyoStaff();
         YdyoExamResultRequest request = new YdyoExamResultRequest();
-        request.setPassed(false); // Sınavdan kaldı
+        request.setExamScore(50.0);
+        request.setPassed(false);
+        request.setNotes("yanlışlıkla değiştirildi");
+        request.setReviewer(reviewer);
 
         when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
         when(applicationRepository.save(application)).thenReturn(application);
 
         ApplicationResponse response = applicationService.enterYdyoExamResult(1, request);
 
+        // Damga konur:
+        assertThat(application.isYdyoDecisionModified()).isTrue();
+        assertThat(application.getYdyoModifiedBy()).isEqualTo(reviewer);
+        assertThat(application.getYdyoModifiedDate()).isNotNull();
+        assertThat(response.isModified()).isTrue();
+
+        // Alanlar TUTARLI: sınav yolu → ydyoApproved=false → requiresExam=true, kaldı.
+        // (Eski hatada bunlar eski kalıp Onaylandı+Muaf Değil çelişiyordu.)
         assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_REJECTED);
+        assertThat(application.getYdyoApproved()).isFalse();
+        assertThat(response.getRequiresExam()).isTrue();
+        assertThat(response.getExamPassed()).isFalse();
+        assertThat(response.getExamScore()).isEqualTo(50.0);
     }
 
     @Test
-    void enterYdyoExamResult_notPendingExam_throwsIllegalStateException() {
+    void enterYdyoExamResult_invalidStatus_throwsIllegalState() {
         Application application = buildApplication(buildStudent());
-        application.setStatus(ApplicationStatus.DRAFT); // Sınav bekleyen bir durumu yok!
+        application.setStatus(ApplicationStatus.YDYO_REVIEW); // ne EXAM_PENDING ne kesin karar
 
         YdyoExamResultRequest request = new YdyoExamResultRequest();
-        request.setPassed(true);
+        request.setExamScore(50.0);
+        request.setPassed(false);
 
         when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
 
         assertThatThrownBy(() -> applicationService.enterYdyoExamResult(1, request))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("bekleyen bir sınavı bulunmuyor");
+                .hasMessageContaining("sınav sonucu girilebilecek");
+
+        verify(applicationRepository, never()).save(any(Application.class));
     }
+
+    @Test
+    void processYdyoReview_reEvaluatesDecidedApplication_marksModified() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.YDYO_ACCEPTED); // zaten karara bağlı
+        application.setYdyoApproved(true);
+
+        Staff reviewer = buildYdyoStaff();
+        YdyoReviewRequest request = new YdyoReviewRequest();
+        request.setRequiresExam(true); // fikir değişti → sınava yönlendir
+        request.setNotes("tekrar incelendi");
+        request.setReviewer(reviewer);
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        ApplicationResponse response = applicationService.processYdyoReview(1, request);
+
+        assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_EXAM_PENDING);
+        assertThat(application.getYdyoExamScore()).isNull(); // eski sonuç temizlendi
+        assertThat(application.isYdyoDecisionModified()).isTrue();
+        assertThat(response.isModified()).isTrue();
+    }
+
+    @Test
+    void processYdyoReview_nonYdyoStatus_throwsIllegalState() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.SUBMITTED); // YDYO aşamasında değil
+
+        YdyoReviewRequest request = new YdyoReviewRequest();
+        request.setApproved(true);
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+
+        assertThatThrownBy(() -> applicationService.processYdyoReview(1, request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("YDYO'nun işlem yapabileceği");
+
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    // ==========================================
+    // YDYO 3. AŞAMA: CSV TOPLU YÜKLEME TESTLERİ
+    // ==========================================
+
+    
+    @Test
+    void uploadYdyoExamResultsCsv_emptyFile_throwsIllegalArgumentException() {
+        org.springframework.web.multipart.MultipartFile file = mock(org.springframework.web.multipart.MultipartFile.class);
+        when(file.isEmpty()).thenReturn(true);
+        
+        assertThatThrownBy(() -> applicationService.uploadYdyoExamResultsCsv(file))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("boş olamaz");
+                
+        verify(applicationRepository, never()).save(any());
+    }
+    @Test
+    void uploadYdyoExamResultsCsv_studentNotPendingExam_skipsStudent() throws Exception {
+        // 1. HAZIRLIK (Arrange)
+        String csvContent = "Adı Soyadı,E-posta,Sınav Notu\n" +
+                            "Mehmet Can,mehmet@std.iztech.edu.tr,85.5\n";
+
+        org.springframework.web.multipart.MultipartFile file = mock(org.springframework.web.multipart.MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        // DÜZELTME: Servisteki uzantı kontrolünü geçmesi için sahte dosya adı verdik
+        when(file.getOriginalFilename()).thenReturn("sonuclar.csv"); 
+        when(file.getInputStream()).thenReturn(new java.io.ByteArrayInputStream(csvContent.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+
+        when(applicationRepository.findByStudent_EmailAndStatus("mehmet@std.iztech.edu.tr", ApplicationStatus.YDYO_EXAM_PENDING))
+                .thenReturn(java.util.Collections.emptyList());
+
+        // 2. EYLEM (Act)
+        int processedCount = applicationService.uploadYdyoExamResultsCsv(file);
+
+        // 3. DOĞRULAMA (Assert)
+        assertThat(processedCount).isEqualTo(0); 
+        verify(applicationRepository, never()).save(any(Application.class)); 
+    }
+
+    @Test
+    void uploadYdyoExamResultsCsv_notCsvFormat_throwsIllegalArgumentException() {
+        org.springframework.web.multipart.MultipartFile file = mock(org.springframework.web.multipart.MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("sinav_sonuclari.pdf"); // .csv DEĞİL
+
+        assertThatThrownBy(() -> applicationService.uploadYdyoExamResultsCsv(file))
+                .isInstanceOf(IllegalArgumentException.class)
+                // DÜZELTME: Servisteki mesaj "sadece" diye küçük harfle başlıyordu, AssertJ büyük/küçük harfe duyarlıdır.
+                .hasMessageContaining("sadece .csv uzantılı"); 
+
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void uploadYdyoExamResultsCsv_validCsv_updatesApplicationsAndReturnsCount() throws Exception {
+        // 1. HAZIRLIK (Arrange)
+        String csvContent = "Adı Soyadı,E-posta,Sınav Notu\n" +
+                            "Ahmet Yılmaz,ahmet@std.iztech.edu.tr,85.5\n" +
+                            "Ayşe Demir,ayse@std.iztech.edu.tr,45.0\n";
+                            
+        org.springframework.web.multipart.MultipartFile file = mock(org.springframework.web.multipart.MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        // DÜZELTME: Servisteki uzantı kontrolünü geçmesi için sahte dosya adı verdik
+        when(file.getOriginalFilename()).thenReturn("sonuclar.csv");
+        when(file.getInputStream()).thenReturn(new java.io.ByteArrayInputStream(csvContent.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+
+        Application app1 = new Application();
+        app1.setApplicationId(1);
+        app1.setStatus(ApplicationStatus.YDYO_EXAM_PENDING);
+
+        Application app2 = new Application();
+        app2.setApplicationId(2);
+        app2.setStatus(ApplicationStatus.YDYO_EXAM_PENDING);
+
+        when(applicationRepository.findByStudent_EmailAndStatus("ahmet@std.iztech.edu.tr", ApplicationStatus.YDYO_EXAM_PENDING))
+                .thenReturn(List.of(app1));
+                
+        when(applicationRepository.findByStudent_EmailAndStatus("ayse@std.iztech.edu.tr", ApplicationStatus.YDYO_EXAM_PENDING))
+                .thenReturn(List.of(app2));
+
+        // 2. EYLEM (Act)
+        int processedCount = applicationService.uploadYdyoExamResultsCsv(file);
+
+        // 3. DOĞRULAMA (Assert)
+        assertThat(processedCount).isEqualTo(2); 
+        
+        assertThat(app1.getStatus()).isEqualTo(ApplicationStatus.YDYO_ACCEPTED); 
+        assertThat(app1.getYdyoExamScore()).isEqualTo(85.5);
+        assertThat(app1.getYdyoReviewedDate()).isNotNull();
+
+        assertThat(app2.getStatus()).isEqualTo(ApplicationStatus.YDYO_REJECTED); 
+        assertThat(app2.getYdyoExamScore()).isEqualTo(45.0);
+        assertThat(app2.getYdyoReviewedDate()).isNotNull();
+
+        verify(applicationRepository, times(2)).save(any(Application.class));
+    }
+
+
 
     //@Test
     /*void create_kvkkNotAccepted_throwsIllegalArgumentException() {
@@ -401,6 +596,18 @@ class ApplicationServiceTest {
         student.setTckn("99999999999");
         student.setUserId(9);
         return student;
+    }
+
+    private Staff buildYdyoStaff() {
+        Staff staff = Staff.builder()
+                .email("ydyo@iyte.edu.tr")
+                .passwordHash("hashed")
+                .firstName("YDYO")
+                .lastName("Personeli")
+                .role(UserRole.YDYO)
+                .build();
+        staff.setUserId(2);
+        return staff;
     }
 
     private Application buildApplication(Student student) {

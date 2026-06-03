@@ -4,6 +4,7 @@ import edu.iztech.utms.g02.utms_app.api.application.dto.*;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.*;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.*;
 
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff; // EKLENDİ: YDYO değişiklik damgası için
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student; // EKLENDİ
 import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository; // EKLENDİ
 
@@ -13,6 +14,7 @@ import edu.iztech.utms.g02.utms_app.integration.yoksis.dto.YoksisStudentResponse
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.AccessDeniedException;
@@ -21,9 +23,15 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.persistence.EntityNotFoundException;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+
 
 
 // EKLENDİ 28.05
@@ -90,11 +98,30 @@ public class ApplicationService {
             throw new IllegalArgumentException("Başvurunuz reddedildi: Genel not ortalamanız (GPA) IZTECH yatay geçiş barajı olan 2.50'nin altındadır.");
         }
 
+        // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü
+        // (Not: Yoksis'ten gelen field ismine göre yoksisData.semester(), grade() veya year() gibi kendi record'ındaki ismi kullanmalısın)
+        // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü (Integer Tipi ile)
+        Integer currentSemester = yoksisData.semester(); 
+        
+        if (currentSemester == null || (currentSemester != 2 && currentSemester != 4)) {
+            throw new IllegalArgumentException("Başvurunuz reddedildi: Yatay geçiş başvuruları yalnızca 3. veya 5. yarıyıllara yapılabilir. Başvuru yapabilmek için şu an 2. veya 4. yarıyılı tamamlıyor olmalısınız.");
+        }
+
+        // YENİ: Öğrencinin seçtiği hedef yarıyıl (3/5), YÖKSİS'teki mevcut yarıyıl ile tutarlı olmalı.
+        // 2. yarıyılı tamamlayan -> yalnızca 3., 4. yarıyılı tamamlayan -> yalnızca 5. yarıyıla başvurabilir.
+        Integer targetSemester = req.getSemester();
+        if (targetSemester == null || targetSemester != currentSemester + 1) {
+            throw new IllegalArgumentException("Başvurulan yarıyıl seçimi mevcut durumunuzla tutarlı değil: "
+                    + currentSemester + ". yarıyılı tamamlayan öğrenciler yalnızca " + (currentSemester + 1)
+                    + ". yarıyıla başvurabilir.");
+        }
+
         // 4. Application objesini oluşturma (Kendi verilerimiz + YÖKSİS verileri + Request verileri harmanlanıyor)
         Application app = Application.builder()
                 .student(currentStudent) // İlişkiyi kuruyoruz ?????
                 .status(ApplicationStatus.DRAFT) // İlk oluşumda durumu genelde DRAFT (Taslak) olur
                 .academicYear(req.getAcademicYear())
+                .semester(String.valueOf(req.getSemester())) // hedef yarıyıl (3/5); NOT NULL + unique key parçası
                 .targetDepartment(req.getTargetDepartment())
                 .targetFaculty(req.getTargetFaculty())
 
@@ -217,71 +244,154 @@ public class ApplicationService {
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
         
         
-        if (app.getStatus() != ApplicationStatus.YDYO_REVIEW) {
-            throw new IllegalStateException("Bu başvuru YDYO evrak inceleme aşamasında değil.");
+        // YDYO yalnızca kendi aşamasındaki kayıtlarda işlem yapar. Kesin karara bağlı
+        // (ACCEPTED/REJECTED) bir kaydı YENİDEN değerlendirmeye izin verilir, ancak bu
+        // "değişiklik" olarak damgalanır (yanlışlıkla yapılan değişiklik koruması, UC-7).
+        if (!YDYO_EDITABLE_STATUSES.contains(app.getStatus())) {
+            throw new IllegalStateException("Bu başvuru YDYO'nun işlem yapabileceği bir aşamada değil. Güncel Statü: " + app.getStatus());
         }
+        boolean wasDecided = isYdyoDecided(app);
 
         // 1. Durum: Öğrencinin belgesi yetersiz, sınava girecek
         if (Boolean.TRUE.equals(req.getRequiresExam())) {
             app.setStatus(ApplicationStatus.YDYO_EXAM_PENDING);
-        } 
+            app.setYdyoExamScore(null);   // yeniden sınava → önceki sonuç (varsa) sıfırlanır
+        }
         // 2. Durum: Belgesi yeterli (Muaf)
         else if (Boolean.TRUE.equals(req.isApproved())) {
             app.setStatus(ApplicationStatus.YDYO_ACCEPTED); //  EVALUATION_QUEUE yerine YDYO_ACCEPTED olmalı ??
-        } 
-        // 3. Durum: Belge geçersiz ve sınava girme hakkı yok (Direkt red) --> bu yok değil mi ? 
+            app.setYdyoExamScore(null);   // muaf → sınav notu anlamsız, temizlenir
+        }
+        // 3. Durum: Belge reddedildi (onaysız + sınava da girmeyecek) → eleme
+        else {
+            app.setStatus(ApplicationStatus.YDYO_REJECTED);
+            app.setYdyoExamScore(null);
+        }
 
-        
+
         app.setYdyoApproved(req.isApproved());
         app.setYdyoNotes(req.getNotes());
-        app.setYdyoReviewedBy(req.getReviewer()); 
+        app.setYdyoReviewedBy(req.getReviewer());
         app.setYdyoReviewedDate(LocalDateTime.now());
+        stampYdyoModification(app, wasDecided, req.getReviewer());
 
         app = applicationRepository.save(app);
         return toResponse(app);
 
     }
 
-
     // --------------------------------------------------------
-    // YDYO 2. AŞAMA: SINAV SONUCU GİRİŞİ
+    // YDYO 2. AŞAMA (TEKİL): Bir öğrencinin sınav sonucunu gir
+    //  - Toplu CSV yolundan farklı olarak detay ekranından tek tek girilir.
+    //  - Geç/kaldı kararı manuel 'passed' ile gelir (eşik UI'da uygulanır).
     // --------------------------------------------------------
     @Transactional
-    @PreAuthorize("hasRole('YDYO')")
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
     public ApplicationResponse enterYdyoExamResult(Integer applicationId, YdyoExamResultRequest req) {
-        Application app = applicationRepository.findByApplicationId(applicationId) // find by Id mi find by applicationId mi ?
+        Application app = applicationRepository.findByApplicationId(applicationId)
                 .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı."));
 
-        if (app.getStatus() != ApplicationStatus.YDYO_EXAM_PENDING) {
-            throw new IllegalStateException("Bu öğrencinin bekleyen bir sınavı bulunmuyor.");
+        // Sınav sonucu yalnız sınava yönlendirilmiş (EXAM_PENDING) ya da kesin karara
+        // bağlı (ACCEPTED/REJECTED → yeniden değerlendirme) kayıtlara girilebilir.
+        if (app.getStatus() != ApplicationStatus.YDYO_EXAM_PENDING && !isYdyoDecided(app)) {
+            throw new IllegalStateException("Bu başvuru için sınav sonucu girilebilecek bir aşamada değil. Güncel Statü: " + app.getStatus());
         }
+        boolean wasDecided = isYdyoDecided(app);
 
-        // Sınav notunu kaydet
         app.setYdyoExamScore(req.getExamScore());
         app.setYdyoNotes(req.getNotes());
-
         app.setYdyoReviewedBy(req.getReviewer());
         app.setYdyoReviewedDate(LocalDateTime.now());
 
-        // GEÇME NOTU KONTROLÜ (Örn: 60 ve üzeri geçer)
-        // BURAYA DİKKAT !!!!!
-        //double passingGrade = 60.0; // Bunu application.properties'den de çekebiliriz
-
-        /*if (req.getExamScore() >= passingGrade) {
-            app.setStatus(ApplicationStatus.YDYO_ACCEPTED); // Sınavı geçti, OİDB 2. aşamasına hazır
-        } else {
-            app.setStatus(ApplicationStatus.YDYO_REJECTED); // Sınavdan kaldı
-        }*/
-
-        // MANUEL KARAR: Memur "passed = true" yollarsa geçti, "false" yollarsa kaldı.
+        // Sınav yolu → belge muafiyeti yoktur. ydyoApproved=false yapılır ki türetilen
+        // alanlar (requiresExam=true, "Onaylanmadı") kayıtla TUTARLI kalsın — eski hatada
+        // bu alanlar eski kalıp rozetler çelişiyordu.
+        app.setYdyoApproved(false);
         if (Boolean.TRUE.equals(req.getPassed())) {
-            app.setStatus(ApplicationStatus.YDYO_ACCEPTED); // Sınavı geçti
+            app.setStatus(ApplicationStatus.YDYO_ACCEPTED);   // sınavı geçti → muaf
         } else {
-            app.setStatus(ApplicationStatus.YDYO_REJECTED); // Sınavdan kaldı
+            app.setStatus(ApplicationStatus.YDYO_REJECTED);   // sınavdan kaldı
         }
 
-
+        stampYdyoModification(app, wasDecided, req.getReviewer());
         return toResponse(applicationRepository.save(app));
+    }
+
+
+
+    // --------------------------------------------------------
+    // YDYO 2. AŞAMA: TOPLU CSV İLE SINAV SONUCU YÜKLEME
+    // --------------------------------------------------------
+    @Transactional
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    public int uploadYdyoExamResultsCsv(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Yüklenen CSV dosyası boş olamaz.");
+        }
+
+        // YENİ EKLENEN: Sadece .csv uzantılı dosyalara izin ver
+        String filename = file.getOriginalFilename();
+        if (filename == null || !filename.toLowerCase().endsWith(".csv")) {
+            throw new IllegalArgumentException("Geçersiz dosya formatı. Lütfen sadece .csv uzantılı dosya yükleyin.");
+        }
+
+        int processedCount = 0; // Kaç öğrencinin güncellendiğini tutmak için
+
+        try (java.io.BufferedReader br = new java.io.BufferedReader(
+                new java.io.InputStreamReader(file.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+            
+            String line;
+            boolean isFirstLine = true; // Başlık (Header) satırını atlamak için
+
+            while ((line = br.readLine()) != null) {
+                // Türkiye bölgesel ayarlarında Excel CSV'leri noktalı virgül (;) ile, 
+                // İngilizce sistemler virgül (,) ile böler. İkisine de hazırlıklıyız.
+                String[] columns = line.split("[,;]"); 
+
+                if (isFirstLine) {
+                    isFirstLine = false;
+                    continue; // "Ad Soyad, E-posta, Sınav Sonucu" yazan ilk satırı atla
+                }
+
+                // Beklenen format: [0] Ad Soyad, [1] E-posta, [2] Sınav Sonucu
+                if (columns.length < 3) continue; // Eksik veri olan satırları atla
+
+                String email = columns[1].trim();
+                String scoreStr = columns[2].trim();
+
+                try {
+                    Double score = Double.parseDouble(scoreStr);
+                    
+                    // Öğrencinin "YDYO_EXAM_PENDING" (Sınav Bekliyor) statüsündeki başvurusunu bul
+                    List<Application> pendingApps = applicationRepository.findByStudent_EmailAndStatus(email, ApplicationStatus.YDYO_EXAM_PENDING);
+                    
+                    if (!pendingApps.isEmpty()) {
+                        Application app = pendingApps.get(0); // Öğrencinin o dönemki aktif başvurusunu al
+                        
+                        app.setYdyoExamScore(score);
+                        app.setYdyoReviewedDate(LocalDateTime.now());
+                        
+                        // İŞ KURALI: 60 ve üzeri Muaf (Kabul), altı ise Red
+                        if (score >= 60.0) {
+                            app.setStatus(ApplicationStatus.YDYO_ACCEPTED);
+                        } else {
+                            app.setStatus(ApplicationStatus.YDYO_REJECTED);
+                        }
+                        
+                        applicationRepository.save(app);
+                        processedCount++;
+                    }
+
+                } catch (NumberFormatException e) {
+                    // Not kısmı sayı değilse (örn: "Girmedi" yazıyorsa) bu satırı güvenle atla
+                    System.err.println("Geçersiz not formatı atlandı: " + scoreStr + " (Email: " + email + ")");
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("CSV dosyası işlenirken sistemsel bir hata oluştu: " + e.getMessage());
+        }
+
+        return processedCount; // Başarıyla güncellenen öğrenci sayısını döndürüyoruz
     }
 
     // ==========================================
@@ -292,6 +402,7 @@ public class ApplicationService {
         //return getAllApplications(null);
     //}
 
+    @Transactional(readOnly = true) // toResponse içinde lazy documents erişimi için
     public Page<ApplicationResponse> getAllApplications(ApplicationStatus status, int page, int size) { // eklendi 29.05 : ApplicationStatus status, int page, int size
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
@@ -326,6 +437,7 @@ public class ApplicationService {
 
     }
 
+    @Transactional(readOnly = true) // toResponse içinde lazy documents erişimi için
     public ApplicationResponse getApplicationById(Integer id) {
         Application app = applicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + id));
@@ -390,6 +502,28 @@ public class ApplicationService {
 
     // --- HELPER METHODS ---
 
+    // YDYO'nun işlem yapabileceği statüler. ACCEPTED/REJECTED dahil → kesin karar
+    // sonrası YENİDEN değerlendirmeye izin verir (değişiklik damgalanır).
+    private static final Set<ApplicationStatus> YDYO_EDITABLE_STATUSES = EnumSet.of(
+            ApplicationStatus.YDYO_REVIEW,
+            ApplicationStatus.YDYO_EXAM_PENDING,
+            ApplicationStatus.YDYO_ACCEPTED,
+            ApplicationStatus.YDYO_REJECTED);
+
+    // Kayıt zaten KESİN bir YDYO kararına bağlı mı? (ACCEPTED/REJECTED)
+    private boolean isYdyoDecided(Application app) {
+        return app.getStatus() == ApplicationStatus.YDYO_ACCEPTED
+                || app.getStatus() == ApplicationStatus.YDYO_REJECTED;
+    }
+
+    // Kesin karara bağlı kayıt yeniden değerlendirildiyse "değişiklik yapılmıştır" damgası.
+    private void stampYdyoModification(Application app, boolean wasDecided, Staff reviewer) {
+        if (!wasDecided) return;
+        app.setYdyoDecisionModified(true);
+        app.setYdyoModifiedBy(reviewer);
+        app.setYdyoModifiedDate(LocalDateTime.now());
+    }
+
     // DRY (Don't Repeat Yourself) prensibi için sahiplik kontrolünü tek bir yere aldık
     private void verifyOwnership(Application app) {
         String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -410,11 +544,84 @@ public class ApplicationService {
         //response.setStudentId(app.getStudent().getUserId()); //
         response.setStatus(app.getStatus());
         response.setAcademicYear(app.getAcademicYear());
+        response.setTargetFaculty(app.getTargetFaculty());
         response.setTargetDepartment(app.getTargetDepartment());
         response.setCurrentUniversity(app.getCurrentUniversity());
         response.setCurrentFaculty(app.getCurrentFaculty());
         response.setCurrentDepartment(app.getCurrentDepartment());
         response.setGpa(app.getGpa());
+        response.setSubmissionDate(app.getSubmissionDate());
+
+        // Öğrenci kimlik/iletişim (YDYO paneli için) — student @ManyToOne EAGER, güvenli
+        Student student = app.getStudent();
+        if (student != null) {
+            response.setStudentName(buildFullName(student));
+            response.setTckn(student.getTckn());
+            response.setEmail(student.getEmail());
+            response.setPhoneNumber(student.getPhoneNumber());
+        }
+
+        // ÖİDB inceleme detayları
+        response.setOidbApproved(app.getOidbApproved());
+        response.setOidbNotes(app.getOidbNotes());
+        response.setOidbReviewedBy(app.getOidbReviewedBy() != null ? app.getOidbReviewedBy().getUserId() : null);
+        response.setOidbReviewedDate(app.getOidbReviewedDate());
+
+        // YDYO inceleme detayları
+        response.setYdyoApproved(app.getYdyoApproved());
+        response.setYdyoNotes(app.getYdyoNotes());
+        response.setYdyoReviewedBy(app.getYdyoReviewedBy() != null ? app.getYdyoReviewedBy().getUserId() : null);
+        response.setYdyoReviewedDate(app.getYdyoReviewedDate());
+        response.setExamScore(app.getYdyoExamScore());
+
+        // YDYO kararı kesinleştikten sonra değiştirildiyse → "değişiklik yapılmıştır" işareti
+        response.setModified(app.isYdyoDecisionModified());
+        response.setModifiedBy(app.getYdyoModifiedBy() != null ? app.getYdyoModifiedBy().getUserId() : null);
+        response.setModifiedAt(app.getYdyoModifiedDate());
+
+        // Türetilen YDYO alanları (entity'de saklanmıyor):
+        //   ydyoApproved == true  → belge onaylı, muaf, sınav gerekmez (requiresExam=false)
+        //   ydyoApproved == false → sınava yönlendirildi (requiresExam=true)
+        //   ydyoApproved == null  → henüz değerlendirilmedi (REVIEW)
+        Boolean ydyoApproved = app.getYdyoApproved();
+        response.setRequiresExam(ydyoApproved == null ? null : !ydyoApproved);
+
+        // examPassed: REJECTED → kaldı (false); sınav yoluyla ACCEPTED (belge onaysız) → geçti (true);
+        // diğer durumlarda (REVIEW, EXAM_PENDING, muafiyetle ACCEPTED) belirsiz → null
+        Boolean examPassed = null;
+        if (app.getStatus() == ApplicationStatus.YDYO_REJECTED) {
+            examPassed = false;
+        } else if (app.getStatus() == ApplicationStatus.YDYO_ACCEPTED && Boolean.FALSE.equals(ydyoApproved)) {
+            examPassed = true;
+        }
+        response.setExamPassed(examPassed);
+
+        // Belgeler — aktif olanların hafif özeti
+        if (app.getDocuments() != null) {
+            response.setDocuments(app.getDocuments().stream()
+                    .filter(Document::isActive)
+                    .map(d -> ApplicationResponse.DocumentSummary.builder()
+                            .documentId(d.getDocumentId())
+                            .documentType(d.getDocumentType())
+                            .fileName(d.getFileName())
+                            .build())
+                    .collect(Collectors.toList()));
+        }
+
         return response;
+    }
+
+    // Ad + (varsa) ikinci ad + soyad → tek görünen ad
+    private String buildFullName(Student student) {
+        StringBuilder sb = new StringBuilder();
+        if (student.getFirstName() != null) sb.append(student.getFirstName());
+        if (student.getMiddleName() != null && !student.getMiddleName().isBlank()) {
+            sb.append(' ').append(student.getMiddleName());
+        }
+        if (student.getLastName() != null) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(student.getLastName());
+        }
+        return sb.toString().trim();
     }
 }

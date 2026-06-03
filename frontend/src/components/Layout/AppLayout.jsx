@@ -28,9 +28,7 @@ const MENU_CONFIG = {
     { key: '/oidb/pending', icon: <FileTextOutlined />, label: 'Bekleyen Başvurular' },
   ],
   [ROLES.YDYO]: [
-    { key: '/ydyo/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
-    { key: '/ydyo/evaluations', icon: <FileTextOutlined />, label: 'Değerlendirmeler' },
-    { key: '/ydyo/bulk-upload', icon: <FolderOpenOutlined />, label: 'Toplu Yükleme' },
+    { key: '/ydyo/dashboard', icon: <HomeOutlined />, label: 'Başvuru Yönetimi' },
   ],
   [ROLES.YGK]: [
     { key: '/ygk/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },

@@ -8,8 +8,8 @@ import org.springframework.http.HttpStatus; //eklendi
 //import org.springframework.http.MediaType; //eklendi
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;      //yetkilendirme
-import org.springframework.web.bind.annotation.*; 
-
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.data.domain.Page; //eklendi
 
 /*
@@ -42,6 +42,7 @@ public class ApplicationController {
     */
 
     @PreAuthorize("hasRole('STUDENT')") // Sadece STUDENT rolü girebilir
+    //@PostMapping("/new")
     @PostMapping
     public ResponseEntity<ApplicationResponse> createApplication(@RequestBody ApplicationCreateRequest req) {
         // Not: Gerçek projede userId'yi SecurityContext'ten (token'dan) alırsın.
@@ -141,15 +142,27 @@ public class ApplicationController {
         return ResponseEntity.ok(response);
     }
 
-    // YDYO 2. Aşama: Sınav Sonucu ve Geçti/Kaldı Girişi
+    // YDYO 2. Aşama (TEKİL): Detay ekranından bir öğrencinin sınav sonucunu gir.
+    // Kesin karara bağlı (ACCEPTED/REJECTED) kayıt yeniden değerlendirilirse servis
+    // bunu "değişiklik yapılmıştır" olarak damgalar.
     @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
     @PatchMapping("/{id}/ydyo-exam-result")
     public ResponseEntity<ApplicationResponse> enterYdyoExamResult(
-            @PathVariable Integer id, 
+            @PathVariable Integer id,
             @RequestBody YdyoExamResultRequest req) {
-        
+
         ApplicationResponse response = applicationService.enterYdyoExamResult(id, req);
         return ResponseEntity.ok(response);
+    }
+
+    // YDYO - Toplu Sınav Sonucu Yükleme (CSV)
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    @PostMapping(value = "/ydyo-exam-result", consumes = "multipart/form-data")
+    public ResponseEntity<String> uploadBulkYdyoResults(@RequestParam("file") MultipartFile file) {
+        
+        int updatedCount = applicationService.uploadYdyoExamResultsCsv(file);
+        
+        return ResponseEntity.ok(updatedCount + " adet öğrencinin sınav sonucu başarıyla sisteme yüklendi ve başvuru statüleri güncellendi.");
     }
 
 }

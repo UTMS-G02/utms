@@ -50,7 +50,44 @@ public class AuthService {
      */
     public void register(RegisterRequest request) {
         validateRegistration(request);
-        studentRepository.save(buildStudent(request));
+        Student student = studentRepository.save(buildStudent(request));
+
+        String activationToken = jwtService.generateActivationToken(student.getEmail());
+        String activationLink = frontendUrl + "/activate?token=" + activationToken;
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(student.getEmail());
+        message.setSubject("UTMS - Hesabınızı Aktive Edin");
+        message.setText(
+                "Merhaba " + student.getFirstName() + ",\n\n" +
+                "Hesabınızı aktive etmek için aşağıdaki bağlantıya tıklayın:\n" +
+                activationLink + "\n\n" +
+                "Bu bağlantı 24 saat boyunca geçerlidir.\n\n" +
+                "Eğer bu isteği siz yapmadıysanız, bu e-postayı görmezden gelebilirsiniz.\n\n" +
+                "UTMS Sistemi"
+        );
+        mailSender.send(message);
+        log.info("Activation email sent to {}", student.getEmail());
+    }
+
+    public void activateAccount(String token) {
+        String email;
+        try {
+            email = jwtService.extractEmailFromActivationToken(token);
+        } catch (Exception e) {
+            throw new AuthException("Geçersiz veya süresi dolmuş aktivasyon bağlantısı.", HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AuthException("Kullanıcı bulunamadı.", HttpStatus.BAD_REQUEST));
+
+        if (user.isActive()) {
+            throw new AuthException("Hesap zaten aktive edilmiş.", HttpStatus.CONFLICT);
+        }
+
+        user.setActive(true);
+        userRepository.save(user);
+        log.info("Account activated for {}", email);
     }
 
     /**
@@ -71,7 +108,7 @@ public class AuthService {
         }
 
         if (!user.isActive()) {
-            throw new AuthException("Hesap aktif değil.", HttpStatus.UNAUTHORIZED);
+            throw new AuthException("Hesabınız henüz aktive edilmemiş. Lütfen e-postanızı kontrol edin.", HttpStatus.UNAUTHORIZED);
         }
 
         user.setLastLoginDate(LocalDate.now());
@@ -104,7 +141,21 @@ public class AuthService {
         }
 
         String fullName = user.getFirstName() + " " + user.getLastName();
-        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName);
+
+        // Öğrenciye özel bilgileri başlangıçta null olarak tanımlıyoruz (Personel giriş yaparsa null dönecek)
+        String tckn = null;
+        LocalDate dateOfBirth = null; 
+        String phoneNumber = null;
+
+        // EĞER bu user objesi arka planda aslında bir Student ise:
+        if (user instanceof Student) {
+            Student student = (Student) user; // User'ı Student'a cast ediyoruz
+            tckn = student.getTckn();
+            dateOfBirth = student.getDateOfBirth();
+            phoneNumber = student.getPhoneNumber();
+        }
+
+        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, tckn, dateOfBirth, phoneNumber);
     }
 
     /**
@@ -186,6 +237,7 @@ public class AuthService {
                 .dateOfBirth(request.getDateOfBirth())
                 .kvkkAcceptedAt(LocalDateTime.now())
                 .role(UserRole.STUDENT)
+                .active(false)
                 .build();
     }
 }
