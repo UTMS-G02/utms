@@ -5,6 +5,7 @@ import {
   InputNumber, DatePicker, Checkbox, Space, App, Upload,
 } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import { useAuth } from '../../contexts/AuthContext'
 import { applicationsApi } from '../../api/applications'
 
@@ -96,9 +97,20 @@ export default function ApplicationForm() {
   const { user } = useAuth()
   const { message } = App.useApp()
 
-  const nameParts = (user?.name ?? '').trim().split(/\s+/)
-  const initialFirstName = user?.firstName || nameParts[0] || ''
-  const initialLastName = user?.lastName || nameParts.slice(1).join(' ') || ''
+  // Kişisel bilgiler kayıt sırasında verilen değerlerle (auth /me) otomatik
+  // doldurulur ve salt-okunur gösterilir; öğrenci başvuru formunda değiştiremez.
+  useEffect(() => {
+    if (!user) return
+    const nameParts = (user.name ?? '').trim().split(/\s+/)
+    form.setFieldsValue({
+      firstName: user.firstName || nameParts[0] || '',
+      lastName: user.lastName || nameParts.slice(1).join(' ') || '',
+      email: user.email ?? '',
+      tcKimlik: user.tckn ?? '',
+      birthDate: user.dateOfBirth ? dayjs(user.dateOfBirth) : null,
+      phone: user.phoneNumber ?? '',
+    })
+  }, [user, form])
 
   // Akademik bilgiler YÖKSİS'ten otomatik gelir ve read-only gösterilir.
   // Formda görünen değer = backend'in create sırasında kaydettiği değerdir.
@@ -228,12 +240,10 @@ export default function ApplicationForm() {
         requiredMark={requiredMark}
         size="large"
         initialValues={{
-          firstName: initialFirstName,
-          lastName: initialLastName,
-          email: user?.email ?? '',
           yksScore: user?.yksScore ?? undefined,
           yksRanking: user?.yksRanking ?? undefined,
-          // currentUniversity / currentDept / currentYear / gpa YÖKSİS'ten doldurulur.
+          // Kişisel bilgiler (ad/soyad/e-posta/TC/doğum tarihi/telefon) useEffect
+          // ile auth /me'den doldurulur; currentUniversity / gpa vb. YÖKSİS'ten.
         }}
       >
         {/* Kişisel Bilgiler */}
@@ -249,7 +259,7 @@ export default function ApplicationForm() {
                 name="firstName"
                 rules={[{ required: true, message: 'Ad zorunludur.' }]}
               >
-                <Input placeholder="Adınız" />
+                <Input placeholder="Adınız" readOnly style={styles.readonlyInput} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -258,7 +268,7 @@ export default function ApplicationForm() {
                 name="lastName"
                 rules={[{ required: true, message: 'Soyad zorunludur.' }]}
               >
-                <Input placeholder="Soyadınız" />
+                <Input placeholder="Soyadınız" readOnly style={styles.readonlyInput} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -268,7 +278,7 @@ export default function ApplicationForm() {
                 required
                 rules={[{ validator: tcknValidator }]}
               >
-                <Input placeholder="11 haneli TC Kimlik No" maxLength={11} />
+                <Input placeholder="11 haneli TC Kimlik No" maxLength={11} readOnly style={styles.readonlyInput} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -278,9 +288,10 @@ export default function ApplicationForm() {
                 rules={[{ required: true, message: 'Doğum tarihi zorunludur.' }]}
               >
                 <DatePicker
-                  style={{ width: '100%' }}
+                  style={{ width: '100%', ...styles.readonlyInput }}
                   format="DD/MM/YYYY"
                   placeholder="Seçiniz"
+                  disabled
                 />
               </Form.Item>
             </Col>
@@ -306,7 +317,7 @@ export default function ApplicationForm() {
                 name="phone"
                 rules={[{ required: true, message: 'Telefon numarası zorunludur.' }]}
               >
-                <Input placeholder="(5XX) XXX-XXXX" />
+                <Input placeholder="(5XX) XXX-XXXX" readOnly style={styles.readonlyInput} />
               </Form.Item>
             </Col>
           </Row>
