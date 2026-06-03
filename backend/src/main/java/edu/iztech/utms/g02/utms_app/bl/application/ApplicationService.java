@@ -4,6 +4,7 @@ import edu.iztech.utms.g02.utms_app.api.application.dto.*;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.*;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.*;
 
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff; // EKLENDİ: YDYO değişiklik damgası için
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student; // EKLENDİ
 import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository; // EKLENDİ
 
@@ -22,8 +23,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.persistence.EntityNotFoundException;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -231,29 +234,77 @@ public class ApplicationService {
                 .orElseThrow(() -> new IllegalArgumentException("Application not found"));
         
         
-        if (app.getStatus() != ApplicationStatus.YDYO_REVIEW) {
-            throw new IllegalStateException("Bu başvuru YDYO evrak inceleme aşamasında değil.");
+        // YDYO yalnızca kendi aşamasındaki kayıtlarda işlem yapar. Kesin karara bağlı
+        // (ACCEPTED/REJECTED) bir kaydı YENİDEN değerlendirmeye izin verilir, ancak bu
+        // "değişiklik" olarak damgalanır (yanlışlıkla yapılan değişiklik koruması, UC-7).
+        if (!YDYO_EDITABLE_STATUSES.contains(app.getStatus())) {
+            throw new IllegalStateException("Bu başvuru YDYO'nun işlem yapabileceği bir aşamada değil. Güncel Statü: " + app.getStatus());
         }
+        boolean wasDecided = isYdyoDecided(app);
 
         // 1. Durum: Öğrencinin belgesi yetersiz, sınava girecek
         if (Boolean.TRUE.equals(req.getRequiresExam())) {
             app.setStatus(ApplicationStatus.YDYO_EXAM_PENDING);
-        } 
+            app.setYdyoExamScore(null);   // yeniden sınava → önceki sonuç (varsa) sıfırlanır
+        }
         // 2. Durum: Belgesi yeterli (Muaf)
         else if (Boolean.TRUE.equals(req.isApproved())) {
             app.setStatus(ApplicationStatus.YDYO_ACCEPTED); //  EVALUATION_QUEUE yerine YDYO_ACCEPTED olmalı ??
-        } 
-        // 3. Durum: Belge geçersiz ve sınava girme hakkı yok (Direkt red) --> bu yok değil mi ? 
+            app.setYdyoExamScore(null);   // muaf → sınav notu anlamsız, temizlenir
+        }
+        // 3. Durum: Belge reddedildi (onaysız + sınava da girmeyecek) → eleme
+        else {
+            app.setStatus(ApplicationStatus.YDYO_REJECTED);
+            app.setYdyoExamScore(null);
+        }
 
-        
+
         app.setYdyoApproved(req.isApproved());
         app.setYdyoNotes(req.getNotes());
-        app.setYdyoReviewedBy(req.getReviewer()); 
+        app.setYdyoReviewedBy(req.getReviewer());
         app.setYdyoReviewedDate(LocalDateTime.now());
+        stampYdyoModification(app, wasDecided, req.getReviewer());
 
         app = applicationRepository.save(app);
         return toResponse(app);
 
+    }
+
+    // --------------------------------------------------------
+    // YDYO 2. AŞAMA (TEKİL): Bir öğrencinin sınav sonucunu gir
+    //  - Toplu CSV yolundan farklı olarak detay ekranından tek tek girilir.
+    //  - Geç/kaldı kararı manuel 'passed' ile gelir (eşik UI'da uygulanır).
+    // --------------------------------------------------------
+    @Transactional
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    public ApplicationResponse enterYdyoExamResult(Integer applicationId, YdyoExamResultRequest req) {
+        Application app = applicationRepository.findByApplicationId(applicationId)
+                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı."));
+
+        // Sınav sonucu yalnız sınava yönlendirilmiş (EXAM_PENDING) ya da kesin karara
+        // bağlı (ACCEPTED/REJECTED → yeniden değerlendirme) kayıtlara girilebilir.
+        if (app.getStatus() != ApplicationStatus.YDYO_EXAM_PENDING && !isYdyoDecided(app)) {
+            throw new IllegalStateException("Bu başvuru için sınav sonucu girilebilecek bir aşamada değil. Güncel Statü: " + app.getStatus());
+        }
+        boolean wasDecided = isYdyoDecided(app);
+
+        app.setYdyoExamScore(req.getExamScore());
+        app.setYdyoNotes(req.getNotes());
+        app.setYdyoReviewedBy(req.getReviewer());
+        app.setYdyoReviewedDate(LocalDateTime.now());
+
+        // Sınav yolu → belge muafiyeti yoktur. ydyoApproved=false yapılır ki türetilen
+        // alanlar (requiresExam=true, "Onaylanmadı") kayıtla TUTARLI kalsın — eski hatada
+        // bu alanlar eski kalıp rozetler çelişiyordu.
+        app.setYdyoApproved(false);
+        if (Boolean.TRUE.equals(req.getPassed())) {
+            app.setStatus(ApplicationStatus.YDYO_ACCEPTED);   // sınavı geçti → muaf
+        } else {
+            app.setStatus(ApplicationStatus.YDYO_REJECTED);   // sınavdan kaldı
+        }
+
+        stampYdyoModification(app, wasDecided, req.getReviewer());
+        return toResponse(applicationRepository.save(app));
     }
 
 
@@ -441,6 +492,28 @@ public class ApplicationService {
 
     // --- HELPER METHODS ---
 
+    // YDYO'nun işlem yapabileceği statüler. ACCEPTED/REJECTED dahil → kesin karar
+    // sonrası YENİDEN değerlendirmeye izin verir (değişiklik damgalanır).
+    private static final Set<ApplicationStatus> YDYO_EDITABLE_STATUSES = EnumSet.of(
+            ApplicationStatus.YDYO_REVIEW,
+            ApplicationStatus.YDYO_EXAM_PENDING,
+            ApplicationStatus.YDYO_ACCEPTED,
+            ApplicationStatus.YDYO_REJECTED);
+
+    // Kayıt zaten KESİN bir YDYO kararına bağlı mı? (ACCEPTED/REJECTED)
+    private boolean isYdyoDecided(Application app) {
+        return app.getStatus() == ApplicationStatus.YDYO_ACCEPTED
+                || app.getStatus() == ApplicationStatus.YDYO_REJECTED;
+    }
+
+    // Kesin karara bağlı kayıt yeniden değerlendirildiyse "değişiklik yapılmıştır" damgası.
+    private void stampYdyoModification(Application app, boolean wasDecided, Staff reviewer) {
+        if (!wasDecided) return;
+        app.setYdyoDecisionModified(true);
+        app.setYdyoModifiedBy(reviewer);
+        app.setYdyoModifiedDate(LocalDateTime.now());
+    }
+
     // DRY (Don't Repeat Yourself) prensibi için sahiplik kontrolünü tek bir yere aldık
     private void verifyOwnership(Application app) {
         String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -490,6 +563,11 @@ public class ApplicationService {
         response.setYdyoReviewedBy(app.getYdyoReviewedBy() != null ? app.getYdyoReviewedBy().getUserId() : null);
         response.setYdyoReviewedDate(app.getYdyoReviewedDate());
         response.setExamScore(app.getYdyoExamScore());
+
+        // YDYO kararı kesinleştikten sonra değiştirildiyse → "değişiklik yapılmıştır" işareti
+        response.setModified(app.isYdyoDecisionModified());
+        response.setModifiedBy(app.getYdyoModifiedBy() != null ? app.getYdyoModifiedBy().getUserId() : null);
+        response.setModifiedAt(app.getYdyoModifiedDate());
 
         // Türetilen YDYO alanları (entity'de saklanmıyor):
         //   ydyoApproved == true  → belge onaylı, muaf, sınav gerekmez (requiresExam=false)
