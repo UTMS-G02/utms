@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   App,
@@ -203,15 +203,21 @@ export default function OidbDashboard() {
     setStatusFilter(isPendingRoute ? 'OIDB_REVIEW' : 'ALL')
   }, [isPendingRoute])
 
+  // Liste çekme tek noktada; hem ilk yüklemede hem de aksiyon sonrası sessiz
+  // yenilemede kullanılır (aksiyon sonrası kart güncel statüyle gelsin diye).
+  const loadApplications = useCallback(async () => {
+    try {
+      const list = await applicationsApi.getOidbApplications()
+      setApplications(list ?? [])
+    } catch {
+      antdMessage.error('Başvurular yüklenirken bir hata oluştu.')
+    }
+  }, [antdMessage])
+
   useEffect(() => {
     setLoading(true)
-    applicationsApi.getOidbApplications()
-      .then((list) => setApplications(list ?? []))
-      .catch(() => {
-        antdMessage.error('Başvurular yüklenirken bir hata oluştu.')
-      })
-      .finally(() => setLoading(false))
-  }, [])
+    loadApplications().finally(() => setLoading(false))
+  }, [loadApplications])
 
   const filteredApplications = useMemo(() => {
     return applications.filter((application) => {
@@ -247,7 +253,7 @@ export default function OidbDashboard() {
     if (!details[applicationId]) {
       antdMessage.loading({ content: 'Detaylar yükleniyor...', key: `loading-${applicationId}` })
       try {
-        const detail = await applicationsApi.getApplicationById(applicationId)
+        const detail = await applicationsApi.getOidbApplicationById(applicationId)
         setDetails((prev) => ({ ...prev, [applicationId]: detail }))
         antdMessage.destroy(`loading-${applicationId}`)
       } catch (error) {
@@ -269,10 +275,11 @@ export default function OidbDashboard() {
 
       if (result?.success !== false) {
         antdMessage.success('İşlem başarılı.')
+        await loadApplications()
       } else {
         throw new Error('Action failed')
       }
-    } catch (error) {
+    } catch {
       antdMessage.error('İşlem gerçekleştirilirken bir hata oluştu.')
     }
   }
@@ -283,6 +290,7 @@ export default function OidbDashboard() {
       await applicationsApi.shareResults(selectedIds)
       antdMessage.success('Sonuç paylaşımı başarılı.')
       setSelectedIds([])
+      await loadApplications()
     } catch {
       antdMessage.error('Sonuç paylaşımı sırasında bir hata oluştu.')
     }
