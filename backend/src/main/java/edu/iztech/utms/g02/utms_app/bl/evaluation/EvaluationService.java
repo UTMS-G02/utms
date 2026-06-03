@@ -31,8 +31,11 @@ public class EvaluationService {
     private final EvaluationResultRepository evaluationResultRepository;
 
     /**
-     * EVALUATION_QUEUE'daki tüm başvuruları skorlar, EvaluationResult üretir,
+     * Devir (handoff) statüsündeki tüm başvuruları skorlar, EvaluationResult üretir,
      * statülerini YGK_SCORED yapar ve tüm değerlendirmeleri yeniden sıralar.
+     *
+     * <p>Giriş statüsü {@code EVALUATION_QUEUE}'dir; Pair 2 kabul edilen başvuruları
+     * OİDB son onayında bu statüye taşır (ApplicationService.processOidbPostYdyoReview).
      *
      * @return skorlanan başvuru sayısı
      */
