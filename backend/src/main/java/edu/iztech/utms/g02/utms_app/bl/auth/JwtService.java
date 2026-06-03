@@ -75,6 +75,40 @@ public class JwtService {
     }
 
     /**
+     * Generates a 24-hour activation token for email verification.
+     * Carries a "type=ACTIVATION" claim so it cannot be used for authentication or password reset.
+     */
+    public String generateActivationToken(String email) {
+        return Jwts.builder()
+                .subject(email)
+                .claims(Map.of("type", "ACTIVATION"))
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000))
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    /**
+     * Returns the email from an activation token after validating its signature,
+     * expiry, and type claim.
+     *
+     * @throws JwtException if the token is invalid, expired, or not an activation token
+     */
+    public String extractEmailFromActivationToken(String token) throws JwtException {
+        Claims claims = Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        if (!"ACTIVATION".equals(claims.get("type", String.class))) {
+            throw new JwtException("Not an activation token");
+        }
+
+        return claims.getSubject();
+    }
+
+    /**
      * Generates a short-lived (15 min) password reset token.
      * Carries a "type=RESET" claim so it cannot be used for authentication.
      */
