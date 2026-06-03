@@ -1,10 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Button, Typography, Select, Spin, Empty, Table, Modal, App, ConfigProvider, Tooltip, Alert } from 'antd'
 import {
   DownloadOutlined,
   SendOutlined,
-  FormOutlined,
   MailOutlined,
   PhoneOutlined,
   UserOutlined,
@@ -186,7 +184,6 @@ export default function YdyoDashboard() {
   const [exemptionFilter, setExemptionFilter] = useState(ALL)
   const [selected, setSelected] = useState(null)   // application shown in the modal
   const [transmitted, setTransmitted] = useState(false)   // ÖİDB'ye iletildi → liste kilitli (YDYO Completed)
-  const navigate = useNavigate()
   const { message, modal } = App.useApp()
 
   // No status param → mock returns every YDYO stage for the board.
@@ -221,13 +218,14 @@ export default function YdyoDashboard() {
       message.info('Dışa aktarılacak kayıt bulunmuyor.')
       return
     }
-    const headers = ['Ad Soyad', 'E-posta', 'Telefon', 'Belge Onayı', 'Sınav Sonucu', 'Muafiyet Sonucu', 'Açıklama']
+    const headers = ['Ad Soyad', 'E-posta', 'Telefon', 'Belge Onayı', 'Sınav Sonucu', 'Sınav Puanı', 'Muafiyet Sonucu', 'Açıklama']
     const rows = filtered.map((app) => [
       app.studentName,
       app.email,
       app.phone,
       DOC_APPROVAL_BADGE[deriveDocumentApproval(app)].label,
       EXAM_BADGE[deriveExamStatus(app)].label,
+      app.examScore ?? '',
       EXEMPTION_BADGE[deriveExemptionStatus(app)].label,
       (app.notes ?? '').replace(/\s+/g, ' ').trim(),
     ])
@@ -338,6 +336,20 @@ export default function YdyoDashboard() {
     },
     {
       title: HeaderWithHelp(
+        'Sınav Puanı',
+        'Yeterlilik sınavına giren adayın aldığı puan. Sınav gerekmeyen (belge onaylı) ya da henüz sonucu girilmemiş kayıtlarda boştur.'
+      ),
+      dataIndex: 'examScore',
+      key: 'examScore',
+      width: 120,
+      align: 'center',
+      render: (score) =>
+        score != null
+          ? <Text style={{ fontWeight: 600 }}>{score}</Text>
+          : <Text type="secondary">—</Text>,
+    },
+    {
+      title: HeaderWithHelp(
         'Muafiyet Sonucu',
         'Öğrencinin İngilizce hazırlıktan muaf olup olmadığı. Belge onayı veya sınav sonucuna göre otomatik belirlenir.'
       ),
@@ -435,9 +447,6 @@ export default function YdyoDashboard() {
 
       {/* Aksiyon satırı */}
       <div style={styles.actionRow}>
-        <Button icon={<FormOutlined />} onClick={() => navigate('/ydyo/exam-results')}>
-          Toplu Sınav Sonucu Yükle
-        </Button>
         <Button icon={<DownloadOutlined />} onClick={handleExportCsv}>
           Tablo Oluştur
         </Button>

@@ -7,15 +7,13 @@
 **Detay ekranı — "Belge Değerlendirme":**
 - "Belge Onay Durumu" = **dropdown**: `Onaylandı` / `Onaylanmadı`.
 - `Onaylandı` seçilince → `Sınav Sonucu` otomatik `Sınav Gerekli Değil`, `Muafiyet Sonucu` otomatik `Muaf`. İkisi de read-only.
-- `Onaylanmadı` seçilince → `Sınav Sonucu` dropdown aktifleşir (`Sınav Sonucu Bekleniyor` / `Sınav Başarılı` / `Sınav Başarısız`), `Muafiyet Sonucu` `Beklemede`.
-- `Sınav Başarılı` → `Muafiyet Sonucu` = `Muaf`; `Sınav Başarısız` → `Muaf Değil` (otomatik).
+- `Onaylanmadı` seçilince → **Sınav Puanı** girişi aktifleşir; `Sınav Sonucu` ve `Muafiyet Sonucu` puana göre otomatik türenir (read-only):
+  - puan boş → `Sınav Sonucu Bekleniyor` / `Beklemede`
+  - puan ≥ 60 → `Sınav Başarılı` / `Muaf`
+  - puan < 60 → `Sınav Başarısız` / `Muaf Değil`
 - `Muafiyet Sonucu` hiçbir koşulda elle değiştirilemez (read-only, sistem hesaplar).
 - `Açıklama` **zorunlu**; boşsa kaydetme.
 - Kayıt **İlet'e kadar düzenlenebilir**: karar (`Onaylandı`/`Onaylanmadı`) değiştirilebilir, `Açıklama` not gibi güncellenebilir. Kilit **yalnızca** ÖİDB'ye İlet sonrası devreye girer.
-
-**Toplu sınav — CSV yükleme** ("Toplu Sınav Sonucu Yükle"):
-- CSV kolonları: `studentId, score, result` (result = `Sınav Başarılı` / `Sınav Başarısız`).
-- İşlenince özet: toplam / başarılı / hatalı sayısı.
 
 **İlet** ("Sonuçları ÖİDB'ye İlet"): tüm kayıtlar finalize ise iletir, `Beklemede` varsa bloklar.
 
@@ -37,25 +35,9 @@
 
 ## TC-7.3 — Document Rejection, Positive (Exam Path) | High
 1. Geçersiz/eksik belgeli öğrenciyi aç.
-2. Belge Onay Durumu = `Onaylanmadı` → `Sınav Sonucu` otomatik `Sınav Sonucu Bekleniyor`, `Muafiyet Sonucu` otomatik `Beklemede`.
+2. Belge Onay Durumu = `Onaylanmadı`, Sınav Puanı boş → `Sınav Sonucu` otomatik `Sınav Sonucu Bekleniyor`, `Muafiyet Sonucu` otomatik `Beklemede`.
 3. Açıklamaya red sebebi (örn. `Geçerli dil belgesi sunulmamıştır`) → kabul.
 4. Kaydet → `Muafiyet Sonucu` = `Beklemede`, listeye döner.
-
-## TC-7.4 — Bulk Exam Result Upload, Positive (All Pass) | High
-1. "Toplu Sınav Sonucu Yükle" → yükleme alanı görünür.
-2. CSV: `studentId, score, result`, hepsi `Sınav Başarılı`.
-3. Yükle → sistem kabul eder, ilerleme göstergesi.
-4. Her satır işlenir → `Sınav Başarılı`, `Muafiyet Sonucu` = `Muaf`.
-5. Özet: toplam işlenen, başarılı sayısı, 0 hata. Önceden `Beklemede` olanlar artık `Muaf`.
-
-## TC-7.5 — Bulk Exam Result Upload, Mixed (Pass & Fail) | High
-- Karışık CSV → geçenler: `Sınav Başarılı` + `Muaf`; kalanlar: `Sınav Başarısız` + `Muaf Değil`. Özet Muaf / Muaf Değil sayılarını doğru gösterir.
-
-## TC-7.6 — Bulk Upload, Negative (Invalid File & Content) | Medium
-- Non-CSV (örn. .xlsx) → `Geçersiz dosya formatı. Lütfen bir .csv dosyası yükleyiniz.`
-- Eksik kolon (örn. `score` yok) → `Geçersiz dosya yapısı. Lütfen zorunlu sütunların (studentId, score, result) mevcut olduğunu kontrol ediniz.` Kayıt güncellenmez.
-- Tanınmayan studentId'ler → satır atlanır, özette "hatalı" olarak raporlanır, o öğrenciler güncellenmez.
-- Boş satırlar → atlanır, özet atlanan sayıyı yansıtır.
 
 ## TC-7.7 — Transmit Final List to ÖİDB, Positive (Phase 3) | High
 1. Dashboard'da hiç `Beklemede` yok → "Sonuçları ÖİDB'ye İlet" **aktif**.
@@ -71,8 +53,8 @@
 2. Doğrudan düzenlemeyi dene → alan non-interaktif (greyed/read-only), girdi kabul etmez.
 3. Belge Onay Durumu'nu `Onaylandı`/`Onaylanmadı` arasında değiştir → `Muafiyet Sonucu` yalnızca sistem mantığıyla otomatik güncellenir, override edilemez.
 
-## TC-7.10 — Dynamic Sınav Sonucu Dropdown Filtering | Medium
-1. Belge Onay Durumu = `Onaylandı` → `Sınav Sonucu` otomatik `Sınav Gerekli Değil`, sınav seçenekleri seçilemez, `Muafiyet Sonucu` = `Muaf`.
-2. `Onaylanmadı` → `Sınav Sonucu` dropdown aktif: `Sınav Sonucu Bekleniyor`, `Sınav Başarılı`, `Sınav Başarısız`.
-3. `Sınav Başarılı` seç → `Muafiyet Sonucu` otomatik `Muaf`.
-4. `Sınav Başarısız` seç → `Muafiyet Sonucu` otomatik `Muaf Değil`.
+## TC-7.10 — Sınav Puanına Göre Otomatik Sonuç | Medium
+1. Belge Onay Durumu = `Onaylandı` → `Sınav Sonucu` otomatik `Sınav Gerekli Değil` (puan girişi yok/pasif), `Muafiyet Sonucu` = `Muaf`.
+2. `Onaylanmadı` seç → **Sınav Puanı** girişi aktifleşir; puan boşken `Sınav Sonucu` = `Sınav Sonucu Bekleniyor`, `Muafiyet Sonucu` = `Beklemede`.
+3. Sınav Puanı = `72` gir → `Sınav Sonucu` otomatik `Sınav Başarılı`, `Muafiyet Sonucu` otomatik `Muaf`.
+4. Sınav Puanı = `45` gir → `Sınav Sonucu` otomatik `Sınav Başarısız`, `Muafiyet Sonucu` otomatik `Muaf Değil`.

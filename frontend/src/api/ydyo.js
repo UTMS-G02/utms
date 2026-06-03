@@ -159,6 +159,30 @@ let mockApplications = [
     ],
     englishCertificate: null,
   },
+  {
+    // Belge onaylanmadı (yetersiz) → sınava girdi → geçti → otomatik muaf.
+    applicationId: 75,
+    studentName: 'Elif Aydın',
+    tcKimlikNo: '56789012345',
+    email: 'elif.aydin@std.iyte.edu.tr',
+    phone: '0536 555 66 77',
+    currentUniversity: 'İstanbul Teknik Üniversitesi',
+    currentDepartment: 'Endüstri Mühendisliği',
+    targetDepartment: 'Endüstri Mühendisliği',
+    targetFaculty: 'Mühendislik Fakültesi',
+    academicYear: '2025-2026',
+    status: YDYO_STATUS.ACCEPTED,
+    requiresExam: true,
+    exemptionApproved: false,
+    examScore: 72,
+    examPassed: true,
+    submittedAt: '2026-05-05T10:30:00Z',
+    notes: 'Belgesi yetersiz, sınavdan geçti — muaf.',
+    documents: [
+      { documentId: 208, docType: 'TRANSCRIPT', fileName: 'Transkript.pdf' },
+    ],
+    englishCertificate: null,
+  },
 ]
 
 // Clone so callers can't mutate the store directly.
@@ -234,8 +258,8 @@ export const ydyoApi = {
   },
 
   // PATCH /api/applications/{id}/ydyo-exam-result  (Phase 2 — exam result)
-  // Body: { examScore, passed, notes, reviewerId }. `passed` is computed from the
-  // score threshold (UC-7 §12); the bulk screen lets staff override before saving.
+  // Body: { examScore, passed, notes, reviewerId }. The exam result is entered per
+  // student from the application detail (Onaylanmadı → Sınav Sonucu dropdown).
   // TODO: replace with real API call →
   //   apiClient.patch(`/applications/${id}/ydyo-exam-result`,
   //     { examScore, passed, notes, reviewerId }).then((r) => r.data)

@@ -5,7 +5,6 @@ import {
   HomeOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
-  FormOutlined,
   UserOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
@@ -30,7 +29,6 @@ const MENU_CONFIG = {
   ],
   [ROLES.YDYO]: [
     { key: '/ydyo/dashboard', icon: <HomeOutlined />, label: 'Başvuru Yönetimi' },
-    { key: '/ydyo/exam-results', icon: <FormOutlined />, label: 'Toplu Sınav Sonucu' },
   ],
   [ROLES.YGK]: [
     { key: '/ygk/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },

@@ -5,6 +5,7 @@ import {
   Typography,
   Spin,
   Input,
+  InputNumber,
   Select,
   Space,
   Row,
@@ -20,6 +21,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import {
   ydyoApi,
+  PASS_THRESHOLD,
   deriveDocumentApproval,
   deriveExamStatus,
   deriveExemptionStatus,
@@ -60,13 +62,6 @@ const EXEMPTION_BADGE = {
 const DOC_OPTIONS = [
   { value: 'APPROVED',     label: 'Onaylandı'   },
   { value: 'NOT_APPROVED', label: 'Onaylanmadı' },
-]
-
-// "Onaylanmadı" seçilince aktifleşen "Sınav Sonucu" dropdown'u (EXAM_BADGE key'leri).
-const EXAM_OPTIONS = [
-  { value: 'PENDING', label: 'Sınav Sonucu Bekleniyor' },
-  { value: 'PASSED',  label: 'Sınav Başarılı'          },
-  { value: 'FAILED',  label: 'Sınav Başarısız'         },
 ]
 
 function Badge({ label, tint }) {
@@ -222,11 +217,11 @@ function DetailBody({ application, onChange, locked = false }) {
     const d = deriveDocumentApproval(application)
     return d === 'APPROVED' || d === 'NOT_APPROVED' ? d : undefined
   })
-  const [examStatus, setExamStatus] = useState(() => {
-    if (deriveDocumentApproval(application) !== 'NOT_APPROVED') return undefined
-    const e = deriveExamStatus(application)
-    return e === 'PASSED' || e === 'FAILED' ? e : 'PENDING'
-  })
+  // "Onaylanmadı" yolunda sınav sonucu artık PUAN ile girilir; sonuç & muafiyet
+  // puandan türetilir. Kayıtlı puan varsa ön-doldurulur.
+  const [examScore, setExamScore] = useState(() =>
+    deriveDocumentApproval(application) === 'NOT_APPROVED' ? application.examScore ?? null : null
+  )
   const [notes, setNotes] = useState(application.notes ?? '')
   const [submitting, setSubmitting] = useState(false)
 
@@ -249,24 +244,30 @@ function DetailBody({ application, onChange, locked = false }) {
     notes: savedNotes,
   } = application
 
-  // "Belge Onay Durumu" seçimine göre kararı seç. "Onaylanmadı"da sınav dropdown'u aktif.
+  // "Belge Onay Durumu" seçimine göre kararı seç. "Onaylanmadı"da sınav puanı aktif.
   const examActive = docStatus === 'NOT_APPROVED'
 
-  // "Sınav Sonucu" alanının gösterdiği değer (Onaylandı → kilitli "Sınav Gerekli Değil").
-  const examSelectValue = docStatus === 'APPROVED' ? 'NOT_REQUIRED' : examStatus
+  // Puan girildi mi? (0 geçerli bir puandır → null/undefined dışı her şey "girildi".)
+  const hasScore = examScore !== null && examScore !== undefined
+  // Puan eşiği geçti mi? (PASS_THRESHOLD tek sabit — kolay değişir.)
+  const examPassed = hasScore ? Number(examScore) >= PASS_THRESHOLD : null
+
+  // "Sınav Sonucu" — read-only, puandan türetilir.
+  //   Onaylandı → Sınav Gerekli Değil · Onaylanmadı: puan boş → Bekleniyor · ≥eşik → Başarılı · <eşik → Başarısız
+  let examKey = 'NOT_DETERMINED'
+  if (docStatus === 'APPROVED') examKey = 'NOT_REQUIRED'
+  else if (examActive) examKey = !hasScore ? 'PENDING' : examPassed ? 'PASSED' : 'FAILED'
 
   // "Muafiyet Sonucu" her zaman sistemce türetilir (read-only):
-  //   Onaylandı → Muaf · Onaylanmadı+Başarılı → Muaf · +Başarısız → Muaf Değil · +Bekleniyor/boş → Beklemede
+  //   Onaylandı → Muaf · Onaylanmadı+Başarılı → Muaf · +Başarısız → Muaf Değil · +puan boş → Beklemede
   let exemptionKey = 'PENDING'
   if (docStatus === 'APPROVED') exemptionKey = 'EXEMPT'
-  else if (examActive) {
-    exemptionKey = examStatus === 'PASSED' ? 'EXEMPT' : examStatus === 'FAILED' ? 'NOT_EXEMPT' : 'PENDING'
-  }
+  else if (examActive) exemptionKey = !hasScore ? 'PENDING' : examPassed ? 'EXEMPT' : 'NOT_EXEMPT'
 
-  // Belge Onay Durumu değişince sınav seçimini sıfırla ("Onaylanmadı"da "Bekleniyor" başlasın).
+  // Belge Onay Durumu değişince puanı sıfırla ("Onaylanmadı"da "Bekleniyor" başlasın).
   const handleDocStatusChange = (val) => {
     setDocStatus(val)
-    setExamStatus(val === 'NOT_APPROVED' ? 'PENDING' : undefined)
+    setExamScore(null)
   }
 
   const descriptionItems = [
@@ -301,11 +302,12 @@ function DetailBody({ application, onChange, locked = false }) {
         await ydyoApi.submitInitialReview(applicationId, {
           approved: true, requiresExam: false, notes: trimmedNotes, reviewerId,
         })
-      } else if (examStatus === 'PASSED' || examStatus === 'FAILED') {
-        // Belge yetersiz ama sınav sonucu girildi → doğrudan sınav sonucu kaydı.
+      } else if (hasScore) {
+        // Belge yetersiz ama sınav puanı girildi → doğrudan sınav sonucu kaydı.
+        // passed eşikten türetilir (PASS_THRESHOLD).
         // TODO: real → PATCH /applications/{id}/ydyo-exam-result
         await ydyoApi.submitExamResult(applicationId, {
-          passed: examStatus === 'PASSED', examScore: null, notes: trimmedNotes, reviewerId,
+          examScore: Number(examScore), passed: examPassed, notes: trimmedNotes, reviewerId,
         })
       } else {
         // Belge yetersiz, henüz sonuç yok → sınava yönlendir (Bekleniyor).
@@ -317,7 +319,7 @@ function DetailBody({ application, onChange, locked = false }) {
       message.success('Değerlendirme kaydedildi.')
       setNotes('')
       setDocStatus(undefined)
-      setExamStatus(undefined)
+      setExamScore(null)
       onChange?.()
     } catch {
       message.error('Değerlendirme kaydedilemedi.')
@@ -418,22 +420,36 @@ function DetailBody({ application, onChange, locked = false }) {
             </Col>
             <Col xs={12} md={8}>
               <div style={styles.readonlyField}>
-                <Text style={{ fontSize: 13, fontWeight: 500 }}>Sınav Sonucu</Text>
-                <Select
-                  value={examSelectValue}
-                  onChange={setExamStatus}
-                  disabled={!examActive}
-                  placeholder="—"
-                  style={{ width: '100%' }}
-                  options={
-                    docStatus === 'APPROVED'
-                      ? [{ value: 'NOT_REQUIRED', label: 'Sınav Gerekli Değil' }]
-                      : EXAM_OPTIONS
-                  }
-                />
-                <Text type="secondary" style={{ fontSize: 11 }}>
-                  {examActive ? 'Sınav sonucunu seçiniz' : 'Otomatik belirlenir'}
+                <Text style={{ fontSize: 13, fontWeight: 500 }}>
+                  {examActive ? 'Sınav Puanı' : 'Sınav Sonucu'}
                 </Text>
+                {examActive ? (
+                  <>
+                    <InputNumber
+                      value={examScore}
+                      onChange={setExamScore}
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      placeholder="Puan giriniz"
+                      style={{ width: '100%' }}
+                    />
+                    <div style={{ marginTop: 2 }}>
+                      <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+                        Sınav Sonucu
+                      </Text>
+                      <Badge {...EXAM_BADGE[examKey]} />
+                    </div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      Puana göre otomatik belirlenir (eşik: {PASS_THRESHOLD})
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <div><Badge {...EXAM_BADGE[examKey]} /></div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Otomatik belirlenir</Text>
+                  </>
+                )}
               </div>
             </Col>
             <Col xs={12} md={8}>

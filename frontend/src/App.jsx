@@ -7,7 +7,6 @@ import ApplicationForm from './pages/student/ApplicationForm';
 import Profile from './pages/student/Profile';
 import YdyoDashboard from './pages/ydyo/YdyoDashboard';
 import YdyoApplicationDetail from './pages/ydyo/YdyoApplicationDetail';
-import YdyoExamResults from './pages/ydyo/YdyoExamResults';
 import AppLayout from './components/Layout/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROLES } from './contexts/AuthContext';
@@ -51,7 +50,6 @@ export default function App() {
       >
         <Route index element={<YdyoDashboard />} />
         <Route path="dashboard" element={<YdyoDashboard />} />
-        <Route path="exam-results" element={<YdyoExamResults />} />
         <Route path="applications/:id" element={<YdyoApplicationDetail />} />
       </Route>
 
