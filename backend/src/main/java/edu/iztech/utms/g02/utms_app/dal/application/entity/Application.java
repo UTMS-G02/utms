@@ -107,6 +107,22 @@ public class Application {
 
     private LocalDateTime ydyoReviewedDate;
 
+    // YDYO kararı KESİNLEŞTİKTEN (YDYO_ACCEPTED/REJECTED) sonra yeniden değiştirildiyse
+    // işaretlenir → "değişiklik yapılmıştır" uyarısı. Yanlışlıkla yapılan değişiklikleri
+    // (örn. muaf kayda sonradan sınav notu girilmesi) görünür kılar.
+    // columnDefinition'daki "default false": tabloda zaten veri varken (ddl-auto=update)
+    // NOT NULL kolon eklenince mevcut satırların false ile dolması için — aksi halde
+    // Postgres "column contains null values" verip uygulama açılmazdı.
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean ydyoDecisionModified = false;
+
+    @ManyToOne
+    @JoinColumn(name = "ydyo_modified_by")
+    private Staff ydyoModifiedBy;
+
+    private LocalDateTime ydyoModifiedDate;
+
     // YGK incelemesi — ancak YGK incelediğinde dolar
     private String ygkNotes;
 

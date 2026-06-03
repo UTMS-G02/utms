@@ -142,6 +142,19 @@ public class ApplicationController {
         return ResponseEntity.ok(response);
     }
 
+    // YDYO 2. Aşama (TEKİL): Detay ekranından bir öğrencinin sınav sonucunu gir.
+    // Kesin karara bağlı (ACCEPTED/REJECTED) kayıt yeniden değerlendirilirse servis
+    // bunu "değişiklik yapılmıştır" olarak damgalar.
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    @PatchMapping("/{id}/ydyo-exam-result")
+    public ResponseEntity<ApplicationResponse> enterYdyoExamResult(
+            @PathVariable Integer id,
+            @RequestBody YdyoExamResultRequest req) {
+
+        ApplicationResponse response = applicationService.enterYdyoExamResult(id, req);
+        return ResponseEntity.ok(response);
+    }
+
     // YDYO - Toplu Sınav Sonucu Yükleme (CSV)
     @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
     @PostMapping(value = "/ydyo-exam-result", consumes = "multipart/form-data")

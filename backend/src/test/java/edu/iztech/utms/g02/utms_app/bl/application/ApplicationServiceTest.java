@@ -285,6 +285,125 @@ class ApplicationServiceTest {
     }
 
     // ==========================================
+    // YDYO — "DEĞİŞİKLİK YAPILMIŞTIR" (yeniden değerlendirme) TESTLERİ
+    // Kullanıcının bildirdiği hata: zaten muaf (Onaylandı) kayda sonradan sınav notu
+    // girilince çelişkili durum oluşuyordu. Artık: yeniden değerlendirilebilir AMA
+    // damgalanır ve alanlar tutarlı kalır.
+    // ==========================================
+
+    @Test
+    void enterYdyoExamResult_firstEntryFromExamPending_notMarkedModified() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.YDYO_EXAM_PENDING); // normal sınav akışı
+
+        YdyoExamResultRequest request = new YdyoExamResultRequest();
+        request.setExamScore(72.0);
+        request.setPassed(true);
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        ApplicationResponse response = applicationService.enterYdyoExamResult(1, request);
+
+        assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_ACCEPTED);
+        assertThat(application.isYdyoDecisionModified()).isFalse(); // ilk karar = değişiklik değil
+        assertThat(response.isModified()).isFalse();
+        assertThat(response.getExamPassed()).isTrue();
+    }
+
+    @Test
+    void enterYdyoExamResult_reEvaluatesExemptApplication_marksModifiedAndStaysConsistent() {
+        // HATA SENARYOSU: kayıt zaten "Onaylandı/muaf" (YDYO_ACCEPTED), üstüne 50 girilir.
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.YDYO_ACCEPTED);
+        application.setYdyoApproved(true); // belgeyle muaftı
+
+        Staff reviewer = buildYdyoStaff();
+        YdyoExamResultRequest request = new YdyoExamResultRequest();
+        request.setExamScore(50.0);
+        request.setPassed(false);
+        request.setNotes("yanlışlıkla değiştirildi");
+        request.setReviewer(reviewer);
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        ApplicationResponse response = applicationService.enterYdyoExamResult(1, request);
+
+        // Damga konur:
+        assertThat(application.isYdyoDecisionModified()).isTrue();
+        assertThat(application.getYdyoModifiedBy()).isEqualTo(reviewer);
+        assertThat(application.getYdyoModifiedDate()).isNotNull();
+        assertThat(response.isModified()).isTrue();
+
+        // Alanlar TUTARLI: sınav yolu → ydyoApproved=false → requiresExam=true, kaldı.
+        // (Eski hatada bunlar eski kalıp Onaylandı+Muaf Değil çelişiyordu.)
+        assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_REJECTED);
+        assertThat(application.getYdyoApproved()).isFalse();
+        assertThat(response.getRequiresExam()).isTrue();
+        assertThat(response.getExamPassed()).isFalse();
+        assertThat(response.getExamScore()).isEqualTo(50.0);
+    }
+
+    @Test
+    void enterYdyoExamResult_invalidStatus_throwsIllegalState() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.YDYO_REVIEW); // ne EXAM_PENDING ne kesin karar
+
+        YdyoExamResultRequest request = new YdyoExamResultRequest();
+        request.setExamScore(50.0);
+        request.setPassed(false);
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+
+        assertThatThrownBy(() -> applicationService.enterYdyoExamResult(1, request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sınav sonucu girilebilecek");
+
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    @Test
+    void processYdyoReview_reEvaluatesDecidedApplication_marksModified() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.YDYO_ACCEPTED); // zaten karara bağlı
+        application.setYdyoApproved(true);
+
+        Staff reviewer = buildYdyoStaff();
+        YdyoReviewRequest request = new YdyoReviewRequest();
+        request.setRequiresExam(true); // fikir değişti → sınava yönlendir
+        request.setNotes("tekrar incelendi");
+        request.setReviewer(reviewer);
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        ApplicationResponse response = applicationService.processYdyoReview(1, request);
+
+        assertThat(application.getStatus()).isEqualTo(ApplicationStatus.YDYO_EXAM_PENDING);
+        assertThat(application.getYdyoExamScore()).isNull(); // eski sonuç temizlendi
+        assertThat(application.isYdyoDecisionModified()).isTrue();
+        assertThat(response.isModified()).isTrue();
+    }
+
+    @Test
+    void processYdyoReview_nonYdyoStatus_throwsIllegalState() {
+        Application application = buildApplication(buildStudent());
+        application.setStatus(ApplicationStatus.SUBMITTED); // YDYO aşamasında değil
+
+        YdyoReviewRequest request = new YdyoReviewRequest();
+        request.setApproved(true);
+
+        when(applicationRepository.findByApplicationId(1)).thenReturn(Optional.of(application));
+
+        assertThatThrownBy(() -> applicationService.processYdyoReview(1, request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("YDYO'nun işlem yapabileceği");
+
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    // ==========================================
     // YDYO 3. AŞAMA: CSV TOPLU YÜKLEME TESTLERİ
     // ==========================================
 
@@ -477,6 +596,18 @@ class ApplicationServiceTest {
         student.setTckn("99999999999");
         student.setUserId(9);
         return student;
+    }
+
+    private Staff buildYdyoStaff() {
+        Staff staff = Staff.builder()
+                .email("ydyo@iyte.edu.tr")
+                .passwordHash("hashed")
+                .firstName("YDYO")
+                .lastName("Personeli")
+                .role(UserRole.YDYO)
+                .build();
+        staff.setUserId(2);
+        return staff;
     }
 
     private Application buildApplication(Student student) {
