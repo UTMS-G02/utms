@@ -22,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 import jakarta.persistence.EntityNotFoundException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
@@ -158,6 +159,11 @@ public class ApplicationService {
         }
         
         app.setStatus(ApplicationStatus.SUBMITTED);
+        // Başvuru tarihi = öğrencinin başvuruyu İLK gönderdiği an. REVISION_REQUESTED'tan
+        // sonra tekrar gönderimde orijinal tarihi korumak için yalnızca boşken atanır.
+        if (app.getSubmissionDate() == null) {
+            app.setSubmissionDate(LocalDate.now());
+        }
         app = applicationRepository.save(app);
 
         return toResponse(app);
