@@ -1,5 +1,8 @@
 package edu.iztech.utms.g02.utms_app.config;
 
+import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
+import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
+import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.UserRole;
@@ -21,6 +24,7 @@ public class DataInitializer implements CommandLineRunner {
     private final UserRepository userRepository;
     private final StaffRepository staffRepository;
     private final StudentRepository studentRepository;
+    private final ApplicationRepository applicationRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -47,6 +51,41 @@ public class DataInitializer implements CommandLineRunner {
                     "Ardacan", "Aktürk", "11111111110", "5551112233", LocalDate.of(2002, 5, 14));
             System.out.println("Test öğrencisi (ogrenci@iyte.edu.tr / test123) başarıyla eklendi.");
         }
+
+        // Geçmiş döneme (2025-2026) ait, REDDEDİLMİŞ örnek başvuru. Amaç: "Başvurularım"
+        // listesinde geçmiş kayıt + akademik yıl kolonu görünür olsun. Reddedilmiş statü
+        // olduğu için tek-program kuralını ihlal etmez; öğrenci 2026-2027'ye başvurabilir.
+        seedPastRejectedApplication("ogrenci@iyte.edu.tr");
+    }
+
+    private void seedPastRejectedApplication(String studentEmail) {
+        studentRepository.findByEmail(studentEmail).ifPresent(student -> {
+            boolean hasPast = applicationRepository
+                    .findFirstByStudent_UserIdAndStatus(student.getUserId(), ApplicationStatus.OIDB_REJECTED)
+                    .isPresent();
+            if (hasPast) return;
+
+            Application past = Application.builder()
+                    .student(student)
+                    .status(ApplicationStatus.OIDB_REJECTED)
+                    .academicYear("2025-2026")
+                    .semester("3")
+                    .targetFaculty("Mühendislik Fakültesi")
+                    .targetDepartment("Bilgisayar Mühendisliği")
+                    .currentUniversity("Ege Üniversitesi")
+                    .currentFaculty("Mühendislik Fakültesi")
+                    .currentDepartment("Yazılım Mühendisliği")
+                    .gpa(2.85)
+                    .sayYksScore(455.0)
+                    .sayYksRank(18500)
+                    .submissionDate(LocalDate.of(2025, 7, 15))
+                    .oidbApproved(false)
+                    .oidbNotes("Önceki dönem başvurusu eksik belgeler nedeniyle reddedilmiştir.")
+                    .build();
+
+            applicationRepository.save(past);
+            System.out.println("Geçmiş dönem (2025-2026) örnek reddedilmiş başvuru eklendi.");
+        });
     }
 
     private void createStudent(String email, String passwordHash, String firstName, String lastName,

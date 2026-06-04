@@ -67,6 +67,21 @@ public class ApplicationService {
 
     //  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için --> en aşağıda manuel olarak yapıyoruz, toResponse() metodu ile
 
+    // Şu an başvuru kabul edilen tek akademik yıl. Yeni başvurular yalnızca bu yıla yapılabilir;
+    // geçmiş dönemlere ait (ör. 2025-2026) kayıtlar yalnızca görüntüleme amaçlıdır.
+    private static final String ACTIVE_ACADEMIC_YEAR = "2026-2027";
+
+    // Yeni başvuruyu ENGELLEMEYEN durumlar. Bunların dışındaki her durum "aktif/devam eden"
+    // sayılır ve tek-program kuralı gereği yeni başvuruyu engeller.
+    private static final Set<ApplicationStatus> NON_BLOCKING_STATUSES = EnumSet.of(
+            ApplicationStatus.DRAFT,
+            ApplicationStatus.WITHDRAWN,
+            ApplicationStatus.OIDB_REJECTED,
+            ApplicationStatus.YDYO_REJECTED,
+            ApplicationStatus.FACULTY_BOARD_REJECTED,
+            ApplicationStatus.DEAN_REJECTED,
+            ApplicationStatus.REJECTED);
+
     @Transactional
     public ApplicationResponse create(ApplicationCreateRequest req) { // Integer userId, silindi
 
@@ -76,34 +91,36 @@ public class ApplicationService {
         Student currentStudent = studentRepository.findByEmail(currentStudentEmail)
             .orElseThrow(() -> new EntityNotFoundException("Öğrenci bulunamadı."));
 
-        // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla "gerçek" başvuru yapamaz.
-        // DRAFT (yarım kalmış taslak) ve WITHDRAWN (geri çekilmiş) duplicate SAYILMAZ:
-        //   - yarım taslak tekrar denemeyi engellememeli (yeniden kullanılır),
-        //   - geri çekilen bir başvurudan sonra yeniden başvurulabilmeli.
-        Set<ApplicationStatus> notBlocking = EnumSet.of(ApplicationStatus.DRAFT, ApplicationStatus.WITHDRAWN);
-        boolean alreadyApplied = applicationRepository
-                .existsByStudent_UserIdAndTargetDepartmentAndAcademicYearAndStatusNotIn(
-                        currentStudent.getUserId(),
-                        req.getTargetDepartment(),
-                        req.getAcademicYear(),
-                        notBlocking
-                );
-
-        if (alreadyApplied) {
-            throw new IllegalArgumentException("Bir öğrenci aynı bölüme, aynı akademik dönemde birden fazla başvuru yapamaz.");
+        // 0. İŞ KURALI: Akademik yıl yalnızca içinde bulunulan dönem (2026-2027) olabilir.
+        if (!ACTIVE_ACADEMIC_YEAR.equals(req.getAcademicYear())) {
+            throw new IllegalArgumentException("Başvurular yalnızca " + ACTIVE_ACADEMIC_YEAR + " akademik yılı için yapılabilir.");
         }
 
-        // Aynı bölüm/dönem için yarım kalmış bir taslak varsa onu YENİDEN KULLAN (yeni taslak üretme).
-        // Böylece belge yükleme/iptal gibi sebeplerle yarıda kalan akış öğrenciyi kilitlemez.
+        // 1. İŞ KURALI: Bir öğrenci yalnızca TEK bir programa yatay geçiş başvurusu yapabilir.
+        // Yalnızca AKTİF (devam eden/onaylı) bir başvuru engel oluşturur. Aşağıdaki durumlar
+        // duplicate SAYILMAZ, yeni başvuruya engel değildir:
+        //   - DRAFT (yarım kalmış taslak) → yeniden kullanılır,
+        //   - WITHDRAWN (geri çekilmiş) → yeniden başvurulabilir,
+        //   - *_REJECTED / REJECTED (sonuçlanmış/elenmiş) → ör. geçmiş döneme ait reddedilmiş başvuru.
+        boolean hasActiveApplication = applicationRepository
+                .existsByStudent_UserIdAndStatusNotIn(currentStudent.getUserId(), NON_BLOCKING_STATUSES);
+
+        if (hasActiveApplication) {
+            throw new IllegalArgumentException("Yalnızca bir program için yatay geçiş başvurusu yapabilirsiniz. Devam eden bir başvurunuz bulunduğu için yeni başvuru oluşturamazsınız.");
+        }
+
+        // Yarım kalmış bir taslak varsa onu YENİDEN KULLAN (yeni taslak üretme). Hedef program
+        // değişmiş olabileceğinden taslağın hedef/dönem alanlarını güncelleriz. Böylece belge
+        // yükleme/iptal gibi sebeplerle yarıda kalan akış öğrenciyi kilitlemez.
         Optional<Application> existingDraft = applicationRepository
-                .findFirstByStudent_UserIdAndTargetDepartmentAndAcademicYearAndStatus(
-                        currentStudent.getUserId(),
-                        req.getTargetDepartment(),
-                        req.getAcademicYear(),
-                        ApplicationStatus.DRAFT
-                );
+                .findFirstByStudent_UserIdAndStatus(currentStudent.getUserId(), ApplicationStatus.DRAFT);
         if (existingDraft.isPresent()) {
-            return toResponse(existingDraft.get());
+            Application draft = existingDraft.get();
+            draft.setAcademicYear(req.getAcademicYear());
+            draft.setSemester(String.valueOf(req.getSemester()));
+            draft.setTargetDepartment(req.getTargetDepartment());
+            draft.setTargetFaculty(req.getTargetFaculty());
+            return toResponse(applicationRepository.save(draft));
         }
 
         //2. Diğer geçerlilik kontrolleri // gerekli miiii?
@@ -576,12 +593,15 @@ public class ApplicationService {
         //response.setStudentId(app.getStudent().getUserId()); //
         response.setStatus(app.getStatus());
         response.setAcademicYear(app.getAcademicYear());
+        response.setSemester(app.getSemester());
         response.setTargetFaculty(app.getTargetFaculty());
         response.setTargetDepartment(app.getTargetDepartment());
         response.setCurrentUniversity(app.getCurrentUniversity());
         response.setCurrentFaculty(app.getCurrentFaculty());
         response.setCurrentDepartment(app.getCurrentDepartment());
         response.setGpa(app.getGpa());
+        response.setSayYksScore(app.getSayYksScore());
+        response.setSayYksRank(app.getSayYksRank());
         response.setSubmissionDate(app.getSubmissionDate());
 
         // Öğrenci kimlik/iletişim (YDYO paneli için) — student @ManyToOne EAGER, güvenli
@@ -591,6 +611,7 @@ public class ApplicationService {
             response.setTckn(student.getTckn());
             response.setEmail(student.getEmail());
             response.setPhoneNumber(student.getPhoneNumber());
+            response.setDateOfBirth(student.getDateOfBirth());
         }
 
         // ÖİDB inceleme detayları
