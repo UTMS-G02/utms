@@ -25,6 +25,25 @@ export const ROLE_HOME = {
   [ROLES.FACULTY_BOARD]: '/faculty-board/dashboard',
 }
 
+// Backend MeResponse (GET /auth/me) → frontend user nesnesi. tckn / dateOfBirth /
+// phoneNumber yalnızca öğrenci hesaplarında dolu gelir; başvuru formu bunları
+// salt-okunur olarak otomatik doldurmak için kullanır.
+function mapMeToUser(m) {
+  const parts = (m.fullName ?? '').trim().split(/\s+/)
+  return {
+    id: m.userId,
+    name: m.fullName,
+    firstName: parts[0] || '',
+    middleName: m.middleName ?? '',
+    lastName: parts.slice(1).join(' ') || '',
+    email: m.email,
+    role: m.role,
+    tckn: m.tckn ?? '',
+    dateOfBirth: m.dateOfBirth ?? null,
+    phoneNumber: m.phoneNumber ?? '',
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(null)
@@ -42,8 +61,7 @@ export function AuthProvider({ children }) {
 
     authApi.getMe()
       .then((response) => {
-        const { userId, email, role, fullName } = response.data
-        const userData = { id: userId, name: fullName, email, role }
+        const userData = mapMeToUser(response.data)
         setUser(userData)
         localStorage.setItem('utms_user', JSON.stringify(userData))
       })
@@ -62,12 +80,25 @@ export function AuthProvider({ children }) {
       // Önce gerçek API'ye istek atmayı dener
       const response = await apiClient.post('/auth/login', { email, password });
       const { token: jwt, userId, firstName, lastName, role } = response.data;
-      const userData = { userId, firstName, lastName, role };
-      
+
       setToken(jwt);
-      setUser(userData);
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${jwt}`;
       localStorage.setItem('utms_token', jwt);
+
+      // Login response'ta tckn/doğum tarihi/telefon yok; başvuru formunun bu
+      // kayıt bilgilerini otomatik doldurabilmesi için /me ile zenginleştiriyoruz.
+      let userData = {
+        id: userId, userId, firstName, lastName,
+        name: `${firstName} ${lastName}`.trim(), role,
+      };
+      try {
+        const me = await authApi.getMe();
+        userData = { ...mapMeToUser(me.data), firstName, lastName };
+      } catch {
+        // /me başarısız olursa temel bilgilerle devam et
+      }
+
+      setUser(userData);
       localStorage.setItem('utms_user', JSON.stringify(userData));
       return userData;
 

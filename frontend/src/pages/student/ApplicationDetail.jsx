@@ -1,30 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Typography, Tag, Spin, Steps, Alert, Descriptions, Divider, Space, App } from 'antd'
-import { FileTextOutlined } from '@ant-design/icons'
+import { Button, Typography, Tag, Spin, Steps, Alert, Descriptions, Divider, Space, Upload, App } from 'antd'
+import { FileTextOutlined, UploadOutlined } from '@ant-design/icons'
 import { applicationsApi } from '../../api/applications'
+import { getStatusMeta, isRevisionRequested } from '../../constants/applicationStatus'
 
 const { Title, Text } = Typography
-
-const STATUS_MAP = {
-  DRAFT:                { label: 'Taslak',                        color: 'default'  },
-  SUBMITTED:            { label: 'Gönderildi',                    color: 'blue'     },
-  OIDB_REVIEW:          { label: 'OIDB İncelemesinde',            color: 'orange'   },
-  YDYO_REVIEW:          { label: 'YDYO İncelemesinde',            color: 'orange'   },
-  EVALUATION_QUEUE:     { label: 'Değerlendirme Kuyruğunda',      color: 'cyan'     },
-  YGK_SCORED:           { label: 'YGK Puanlandı',                 color: 'geekblue' },
-  DEAN_REVIEW:          { label: 'Dekan İncelemesinde',           color: 'orange'   },
-  FACULTY_BOARD_REVIEW: { label: 'Fakülte Kurulu İncelemesinde',  color: 'orange'   },
-  FINAL_DEAN_REVIEW:    { label: 'Final Dekan İncelemesinde',     color: 'orange'   },
-  RESULT_PUBLISHED:     { label: 'Sonuç Yayınlandı',              color: 'green'    },
-  ACCEPTED:             { label: 'Kabul Edildi',                  color: 'success'  },
-  REJECTED:             { label: 'Reddedildi',                    color: 'error'    },
-}
 
 const ALERT_MAP = {
   DRAFT:                'Başvurunuz henüz gönderilmemiştir. Tamamlayarak gönderin.',
   SUBMITTED:            'Başvurunuz başarıyla gönderilmiştir. İnceleme sürecini bekliyorsunuz.',
   OIDB_REVIEW:          'Başvurunuz şu anda akademik kurul tarafından incelenmektedir. Karar verildiğinde e-posta ile bilgilendirileceksiniz.',
+  REVISION_REQUESTED:   'Başvurunuz düzeltme için iade edilmiştir. Aşağıdaki gerekçeyi inceleyip ilgili belgeleri güncelleyin.',
+  OIDB_REJECTED:        'Başvurunuz reddedilmiştir.',
+  APPROVED:             'Başvurunuz kabul edilmiştir. Tebrikler!',
   YDYO_REVIEW:          'Başvurunuz YDYO birimi tarafından incelenmektedir.',
   EVALUATION_QUEUE:     'Başvurunuz değerlendirme kuyruğuna alınmıştır.',
   YGK_SCORED:           'Başvurunuz puanlandı, üst birim onayı bekleniyor.',
@@ -46,7 +35,8 @@ const getStepCurrent = (status) => {
 
 const formatDate = (iso) => {
   if (!iso) return '—'
-  return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
+  // GG.AA.YYYY (tr-TR locale '.' ayırıcı kullanır → örn. 03.06.2026)
+  return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso))
 }
 
 const styles = {
@@ -103,6 +93,8 @@ const stepItems = [
 export default function ApplicationDetail() {
   const [loading, setLoading] = useState(true)
   const [application, setApplication] = useState(null)
+  const [reuploading, setReuploading] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState({}) // { [documentType]: File }
   const navigate = useNavigate()
   const { id } = useParams()
   const { message } = App.useApp()
@@ -142,18 +134,56 @@ export default function ApplicationDetail() {
     )
   }
 
-  const { applicationId, status, submittedAt, studentName, targetDepartment, documents = [], statusHistory = [] } = application
-  const lastHistory = statusHistory[statusHistory.length - 1]
+  const {
+    id: applicationId,            // DTO alanı 'id' (eski kodda 'applicationId' yoktu → undefined idi)
+    status,
+    submissionDate,               // DTO alanı 'submissionDate' (eski 'submittedAt' yanlıştı)
+    studentName,
+    email,                        // gerçek öğrenci e-postası (backend ApplicationResponse)
+    targetDepartment,
+    currentUniversity,            // YÖKSİS'ten (mock) — başvuru anında kaydedildi
+    currentDepartment,
+    gpa,
+    oidbNotes,                    // ← düzeltme gerekçesi BURADA (notes/revisionNotes yok)
+    ydyoNotes,
+    documents = [],
+  } = application
   const alertText = ALERT_MAP[status] ?? 'Başvurunuzun durumu güncellenmektedir.'
   const stepCurrent = getStepCurrent(status)
+  const statusMeta = getStatusMeta(status)
 
-  // TODO: backend'e bu alanlar eklenince güncellenecek
-  const HARDCODED_CURRENT_DEPT = 'Fen Bilimleri'
-  const HARDCODED_STUDENT_NO = 'STU-2024-12345'
-  const HARDCODED_GPA = '3.85'
-  const HARDCODED_EMAIL = 'ahmet.yilmaz@ogrenci.iyte.edu.tr'
-  const HARDCODED_UNIVERSITY = 'İzmir Yüksek Teknoloji Enstitüsü'
-  const HARDCODED_GRADE = '2. Sınıf'
+  const revisionMode = isRevisionRequested(status)
+  const revisionNote = oidbNotes || ydyoNotes || 'Düzeltme gerekçesi belirtilmemiştir. Lütfen birimle iletişime geçin.'
+
+  const beforeReupload = (documentType, file) => {
+    if (file.type !== 'application/pdf') { message.error('Sadece PDF yüklenebilir.'); return Upload.LIST_IGNORE }
+    if (file.size > 10 * 1024 * 1024) { message.error("Dosya 10MB'dan büyük olamaz."); return Upload.LIST_IGNORE }
+    setPendingFiles((prev) => ({ ...prev, [documentType]: file }))
+    return false // otomatik upload'ı engelle; gönderimi biz yapacağız
+  }
+
+  const handleReupload = async () => {
+    const entries = Object.entries(pendingFiles).filter(([, f]) => f)
+    if (entries.length === 0) {
+      message.warning('Lütfen güncellemek istediğiniz en az bir belgeyi seçin.')
+      return
+    }
+    setReuploading(true)
+    try {
+      for (const [documentType, file] of entries) {
+        await applicationsApi.uploadDocument(applicationId, file, documentType)
+      }
+      await applicationsApi.submitApplication(applicationId) // düzeltmeyi tekrar gönder
+      message.success('Belgeleriniz güncellendi ve başvurunuz yeniden gönderildi.')
+      const fresh = await applicationsApi.getApplicationById(applicationId)
+      setApplication(fresh)
+      setPendingFiles({})
+    } catch (err) {
+      message.error(err?.response?.data?.message || 'Belgeler güncellenirken bir hata oluştu.')
+    } finally {
+      setReuploading(false)
+    }
+  }
 
   const descriptionItems = [
     {
@@ -164,12 +194,12 @@ export default function ApplicationDetail() {
     {
       key: 'currentDept',
       label: 'Mevcut Bölüm',
-      children: <Tag>{HARDCODED_CURRENT_DEPT}</Tag>,
+      children: currentDepartment ? <Tag>{currentDepartment}</Tag> : '—',
     },
     {
-      key: 'studentNo',
-      label: 'Öğrenci Numarası',
-      children: HARDCODED_STUDENT_NO,
+      key: 'studentName',
+      label: 'Ad Soyad',
+      children: studentName ?? '—',
     },
     {
       key: 'targetDept',
@@ -181,39 +211,24 @@ export default function ApplicationDetail() {
       ),
     },
     {
-      key: 'studentName',
-      label: 'Ad Soyad',
-      children: studentName,
-    },
-    {
       key: 'gpa',
       label: 'Genel Not Ortalaması',
-      children: HARDCODED_GPA,
+      children: gpa != null ? Number(gpa).toFixed(2) : '—',
     },
     {
       key: 'email',
       label: 'E-posta',
-      children: HARDCODED_EMAIL,
-    },
-    {
-      key: 'submittedAt',
-      label: 'Başvuru Tarihi',
-      children: `📅 ${formatDate(submittedAt)}`,
+      children: email ?? '—',
     },
     {
       key: 'university',
       label: 'Üniversite',
-      children: HARDCODED_UNIVERSITY,
+      children: currentUniversity ?? '—',
     },
     {
-      key: 'lastUpdate',
-      label: 'Son Güncelleme',
-      children: `📅 ${formatDate(lastHistory?.changedAt)}`,
-    },
-    {
-      key: 'grade',
-      label: 'Sınıf',
-      children: HARDCODED_GRADE,
+      key: 'submittedAt',
+      label: 'Başvuru Tarihi',
+      children: `📅 ${formatDate(submissionDate)}`,
     },
   ]
 
@@ -228,9 +243,31 @@ export default function ApplicationDetail() {
         </Text>
       </div>
 
+      {/* Düzeltme / Evrak İadesi banner'ı — yalnızca REVISION_REQUESTED iken */}
+      {revisionMode && (
+        <Alert
+          type="warning"
+          showIcon
+          banner
+          style={{ marginBottom: 24, borderRadius: 8 }}
+          message={<strong>Düzeltme / Evrak İadesi Gerekiyor</strong>}
+          description={
+            <span>
+              Başvurunuz aşağıdaki gerekçeyle düzeltmeye gönderildi. İlgili belgeleri
+              güncelleyip yeniden gönderin:
+              <br />
+              <Text strong style={{ color: '#ad6800' }}>"{revisionNote}"</Text>
+            </span>
+          }
+        />
+      )}
+
       {/* Durum kartı */}
       <div style={styles.card}>
-        <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Başvuru Durumu</Title>
+        <Space align="center" style={{ marginBottom: 4 }}>
+          <Title level={5} style={{ margin: 0 }}>Başvuru Durumu</Title>
+          <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
+        </Space>
         <Text type="secondary" style={styles.cardSubtitle}>
           Geçiş talebinizin sürecini takip edin
         </Text>
@@ -275,7 +312,23 @@ export default function ApplicationDetail() {
         {documents.map((doc) => (
           <div key={doc.documentId} style={styles.documentRow}>
             <FileTextOutlined style={{ color: '#8B1A2B', fontSize: 16 }} />
-            <Text>{doc.fileName}</Text>
+            <Text style={{ flex: 1 }}>
+              {pendingFiles[doc.documentType]?.name ?? doc.fileName}
+            </Text>
+
+            {/* Yalnızca REVISION_REQUESTED iken yeniden yükleme kilidi açılır */}
+            {revisionMode && (
+              <Upload
+                accept=".pdf"
+                maxCount={1}
+                showUploadList={false}
+                beforeUpload={(file) => beforeReupload(doc.documentType, file)}
+              >
+                <Button size="small" icon={<UploadOutlined />}>
+                  {pendingFiles[doc.documentType] ? 'Değiştir' : 'Yeniden Yükle'}
+                </Button>
+              </Upload>
+            )}
           </div>
         ))}
       </div>
@@ -288,6 +341,16 @@ export default function ApplicationDetail() {
           <Button onClick={() => navigate('/student/applications')}>
             Başvurularımı Görüntüle
           </Button>
+          {revisionMode && (
+            <Button
+              type="primary"
+              loading={reuploading}
+              onClick={handleReupload}
+              style={{ background: '#8B1A2B', borderColor: '#8B1A2B', fontWeight: 600 }}
+            >
+              Belgeleri Güncelle ve Yeniden Gönder
+            </Button>
+          )}
         </Space>
       </div>
     </div>

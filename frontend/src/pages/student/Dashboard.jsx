@@ -101,20 +101,15 @@ export default function StudentDashboard() {
       })
   }, [])
 
+  // Sol kart yalnızca AKSİYON kartı: yeni başvuru oluştur veya taslağı tamamla.
+  // İkisi de başvuru formuna gider. Gönderilmiş başvuruyu "görüntüleme" işi sağ
+  // karta (Başvuru Durumu) bırakıldı; burada tekrar buton yok.
   const handleApplyClick = () => {
-    if (!application) {
-      navigate('/student/applications/new')
-      return
-    }
-
-    if (application.status === 'DRAFT') {
-      // Taslak başvuru → tamamlamak için form'a dön
-      navigate('/student/applications/new')
-      return
-    }
-    // Diğer tüm durumlar → detay sayfasına git (görüntüleme)
-    navigate(`/student/applications/${application.applicationId}`)
+    navigate('/student/applications/new')
   }
+
+  // Sol kartta aksiyon var mı? (yalnızca hiç başvuru yokken ya da taslakken)
+  const hasAction = !application || application.status === 'DRAFT'
 
   if (loading) {
     return (
@@ -160,24 +155,22 @@ export default function StudentDashboard() {
                   ? 'Yatay geçiş başvurunuzu başlatmak için tıklayın.'
                   : application.status === 'DRAFT'
                     ? 'Taslak halindeki başvurunuzu tamamlayın ve gönderin.'
-                    : 'Başvurunuzun durumunu ve detaylarını görüntüleyebilirsiniz. Düzeltme gerekirse ÖİDB tarafından bildirilecektir.'}
+                    : 'Bu dönem için başvurunuz alındı. Durumunu sağdaki "Başvuru Durumu" kartından takip edebilirsiniz.'}
               </Text>
             </div>
 
-            <div style={styles.cardFooter}>
-              <Button
-                type="primary"
-                block
-                style={{ background: '#8B1A2B', borderColor: '#8B1A2B', height: 40, fontWeight: 600 }}
-                onClick={handleApplyClick}
-              >
-                {!application 
-                  ? 'Yeni Başvuru Oluştur' 
-                  : application.status === 'DRAFT'
-                    ? 'Başvurumu Tamamla'
-                    : 'Başvurumu Görüntüle'}
-              </Button>
-            </div>
+            {hasAction && (
+              <div style={styles.cardFooter}>
+                <Button
+                  type="primary"
+                  block
+                  style={{ background: '#8B1A2B', borderColor: '#8B1A2B', height: 40, fontWeight: 600 }}
+                  onClick={handleApplyClick}
+                >
+                  {!application ? 'Yeni Başvuru Oluştur' : 'Başvurumu Tamamla'}
+                </Button>
+              </div>
+            )}
           </div>
         </Col>
 
@@ -203,7 +196,7 @@ export default function StudentDashboard() {
                       <Text style={{ fontSize: 14, fontWeight: 500 }}>Yatay Geçiş Başvurusu</Text>
                       <br />
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        Başvuru No: #YG-{application.applicationId}
+                        Başvuru No: #YG-{application.id}
                       </Text>
                     </div>
                   </div>
@@ -223,7 +216,7 @@ export default function StudentDashboard() {
                 <Button
                   block
                   style={{ height: 40, fontWeight: 600 }}
-                  onClick={() => navigate(`/student/applications/${application.applicationId}`)}
+                  onClick={() => navigate(`/student/applications/${application.id}`)}
                 >
                   Başvuru Detaylarını Görüntüle
                 </Button>

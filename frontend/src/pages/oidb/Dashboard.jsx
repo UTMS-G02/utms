@@ -30,6 +30,19 @@ const { Title, Text } = Typography
 const { Search } = Input
 const { Option } = Select
 
+// Yetkili (Bearer) bir GET ile alınan blob'u tarayıcıda indirmeye zorlar:
+// geçici obje URL'i → gizli <a download> → programatik click → URL'i temizle (revoke).
+const triggerBlobDownload = (blob, fileName) => {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
 const STATUS_MAP = {
   ALL: { label: 'Tümü' },
   OIDB_REVIEW: { label: 'İnceleniyor', color: 'blue' },
@@ -296,9 +309,25 @@ export default function OidbDashboard() {
     }
   }
 
-  const handleDownloadDocument = (documentId) => {
-    const downloadUrl = `/api/documents/${documentId}/download`
-    window.open(downloadUrl, '_blank')
+  // Tekli belge indirme — doğrudan link/window.open YERİNE axios ile yetkili GET.
+  // responseType: 'blob' API servisinde set edilir; dosya adı orijinal fileName.
+  const handleDownloadDocument = async (documentId, fileName) => {
+    try {
+      const res = await applicationsApi.downloadDocument(documentId)
+      triggerBlobDownload(res.data, fileName || `belge_${documentId}`)
+    } catch {
+      antdMessage.error('Belge indirilemedi. Lütfen tekrar deneyin.')
+    }
+  }
+
+  // Toplu (ZIP) indirme — başvuruya ait tüm belgeler tek arşivde, yetkili GET ile.
+  const handleDownloadAllZip = async (applicationId) => {
+    try {
+      const res = await applicationsApi.downloadAllDocumentsZip(applicationId)
+      triggerBlobDownload(res.data, `basvuru_${applicationId}_belgeler.zip`)
+    } catch {
+      antdMessage.error('Belgeler indirilemedi. Lütfen tekrar deneyin.')
+    }
   }
 
   const renderActionButtons = (status, applicationId) => {
@@ -505,7 +534,13 @@ export default function OidbDashboard() {
                                     <Title level={5} style={{ marginBottom: 0 }}>Dökümanlar</Title>
                                   </Col>
                                   <Col>
-                                    <Button icon={<DownloadOutlined />}>Tümünü İndir</Button>
+                                    <Button
+                                      icon={<DownloadOutlined />}
+                                      disabled={!documentCount}
+                                      onClick={() => handleDownloadAllZip(application.applicationId)}
+                                    >
+                                      Tümünü İndir
+                                    </Button>
                                   </Col>
                                 </Row>
 
@@ -519,7 +554,7 @@ export default function OidbDashboard() {
                                           {doc.size} • Yüklenme: {formatDate(doc.uploadedAt)}
                                         </Text>
                                       </div>
-                                      <Button icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(doc.documentId)}>
+                                      <Button icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}>
                                         İndir
                                       </Button>
                                     </div>

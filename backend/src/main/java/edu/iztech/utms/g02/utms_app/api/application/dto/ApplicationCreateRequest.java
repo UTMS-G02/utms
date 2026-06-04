@@ -41,14 +41,13 @@ public class ApplicationCreateRequest {
     //@NotNull(message = "KVKK onayı zorunludur.")
     private Boolean kvkkAccepted;
     
-    @NotNull(message = "SAY YKS puanı boş bırakılamaz.")
-    @Positive(message = "Geçerli bir YKS puanı giriniz.")
+    // YKS puanı/sıralaması artık ÖSYM'den (mock) backend tarafında çekilir; öğrenci
+    // formda elle giremez. Bu yüzden opsiyonel — gelirse de ApplicationService
+    // bunları yok sayıp ÖSYM verisini kullanır.
     private Double sayYksScore;
 
-    @NotNull(message = "SAY YKS sıralaması boş bırakılamaz.")
-    @Positive(message = "Geçerli bir sıralama giriniz.")
     private Integer sayYksRank;
-    
-    // Not: Belge yükleme işlemi ayrı bir endpoint (POST /documents) olduğu için 
+
+    // Not: Belge yükleme işlemi ayrı bir endpoint (POST /documents) olduğu için
     // belgeler bu create request'in içinde yer almaz.
 }

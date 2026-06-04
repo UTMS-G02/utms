@@ -22,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 import jakarta.persistence.EntityNotFoundException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
@@ -62,6 +63,7 @@ public class ApplicationService {
 
     private final StudentRepository studentRepository; // EKLENDİ
     private final YoksisIntegrationService yoksisIntegrationService; // EKLENDİ
+    private final edu.iztech.utms.g02.utms_app.integration.edevlet.EgovDocumentService egovDocumentService; // e-Devlet/ÖSYM mock belge üretimi
 
     //  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için --> en aşağıda manuel olarak yapıyoruz, toResponse() metodu ile
 
@@ -74,15 +76,34 @@ public class ApplicationService {
         Student currentStudent = studentRepository.findByEmail(currentStudentEmail)
             .orElseThrow(() -> new EntityNotFoundException("Öğrenci bulunamadı."));
 
-        // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla başvuru yapamaz
-        boolean alreadyApplied = applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
-                currentStudent.getUserId(), // Artık request'ten değil, güvenilir kaynaktan alıyoruz
-                req.getTargetDepartment(), 
-                req.getAcademicYear()
-        );
+        // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla "gerçek" başvuru yapamaz.
+        // DRAFT (yarım kalmış taslak) ve WITHDRAWN (geri çekilmiş) duplicate SAYILMAZ:
+        //   - yarım taslak tekrar denemeyi engellememeli (yeniden kullanılır),
+        //   - geri çekilen bir başvurudan sonra yeniden başvurulabilmeli.
+        Set<ApplicationStatus> notBlocking = EnumSet.of(ApplicationStatus.DRAFT, ApplicationStatus.WITHDRAWN);
+        boolean alreadyApplied = applicationRepository
+                .existsByStudent_UserIdAndTargetDepartmentAndAcademicYearAndStatusNotIn(
+                        currentStudent.getUserId(),
+                        req.getTargetDepartment(),
+                        req.getAcademicYear(),
+                        notBlocking
+                );
 
-        if (alreadyApplied) {                               
+        if (alreadyApplied) {
             throw new IllegalArgumentException("Bir öğrenci aynı bölüme, aynı akademik dönemde birden fazla başvuru yapamaz.");
+        }
+
+        // Aynı bölüm/dönem için yarım kalmış bir taslak varsa onu YENİDEN KULLAN (yeni taslak üretme).
+        // Böylece belge yükleme/iptal gibi sebeplerle yarıda kalan akış öğrenciyi kilitlemez.
+        Optional<Application> existingDraft = applicationRepository
+                .findFirstByStudent_UserIdAndTargetDepartmentAndAcademicYearAndStatus(
+                        currentStudent.getUserId(),
+                        req.getTargetDepartment(),
+                        req.getAcademicYear(),
+                        ApplicationStatus.DRAFT
+                );
+        if (existingDraft.isPresent()) {
+            return toResponse(existingDraft.get());
         }
 
         //2. Diğer geçerlilik kontrolleri // gerekli miiii?
@@ -125,9 +146,10 @@ public class ApplicationService {
                 .targetDepartment(req.getTargetDepartment())
                 .targetFaculty(req.getTargetFaculty())
 
-                // Front-end'den gelen YKS verileri
-                .sayYksScore(req.getSayYksScore())
-                .sayYksRank(req.getSayYksRank())
+                // YKS verileri artık ÖSYM'den (mock) otomatik gelir; request'ten değil.
+                // Öğrenci elle giremediği için kaynak tek ve güvenilir tutulur.
+                .sayYksScore(yoksisData.yksScore())
+                .sayYksRank(yoksisData.yksRank())
 
                 // YÖKSİS'ten otomatik gelen veriler
                 .currentUniversity(yoksisData.currentUniversity())
@@ -136,11 +158,15 @@ public class ApplicationService {
                 .gpa(yoksisData.gpa())
 
                 .build();
-        
+
         // 4. Veritabanına kaydet
         app = applicationRepository.save(app);
 
-        // 5. Response olarak dön
+        // 5. e-Devlet/ÖSYM belgelerini (öğrenci belgesi, transkript, YKS sonuç belgesi)
+        //    otomatik üret ve başvuruya iliştir — öğrenci bunları elle yüklemez.
+        egovDocumentService.generateAndAttach(app, currentStudent, yoksisData);
+
+        // 6. Response olarak dön
         return toResponse(app);
     }
 
@@ -158,6 +184,11 @@ public class ApplicationService {
         }
         
         app.setStatus(ApplicationStatus.SUBMITTED);
+        // Başvuru tarihi = öğrencinin başvuruyu İLK gönderdiği an. REVISION_REQUESTED'tan
+        // sonra tekrar gönderimde orijinal tarihi korumak için yalnızca boşken atanır.
+        if (app.getSubmissionDate() == null) {
+            app.setSubmissionDate(LocalDate.now());
+        }
         app = applicationRepository.save(app);
 
         return toResponse(app);
@@ -215,7 +246,8 @@ public class ApplicationService {
     // AŞAMA 2: YDYO Sonrası Karar
     private ApplicationResponse processOidbPostYdyoReview(Application app, boolean forwardToDean, OidbReviewRequest req) {
         if (forwardToDean && app.getStatus() == ApplicationStatus.YDYO_ACCEPTED) {
-            app.setStatus(ApplicationStatus.DEAN_OFFICE_REVIEW); 
+            // Pair 3 devir noktası: değerlendirme kuyruğuna alınır (frontend + spec ile uyumlu).
+            app.setStatus(ApplicationStatus.EVALUATION_QUEUE);
         } else {
             app.setStatus(ApplicationStatus.REJECTED); 
         }

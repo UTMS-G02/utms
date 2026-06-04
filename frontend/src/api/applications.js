@@ -35,6 +35,16 @@ const studentApi = {
       })
       .then((res) => res.data)
   },
+
+  // Belge indirme uçları — apiClient request interceptor'ı Authorization: Bearer
+  // başlığını otomatik eklediği için JWT korumalı bu uçlar 401 vermez. responseType
+  // 'blob' zorunlu: yanıt ikili dosya (PDF/ZIP) olarak alınır. Tam response döner
+  // (çağıran res.data = Blob'u ve gerekirse res.headers'ı okuyabilsin).
+  downloadDocument: (documentId) =>
+    apiClient.get(`/documents/${documentId}/download`, { responseType: 'blob' }),
+
+  downloadAllDocumentsZip: (applicationId) =>
+    apiClient.get(`/applications/${applicationId}/documents/download-zip`, { responseType: 'blob' }),
 }
 
 // ─── ÖİDB: statü & alan eşlemesi ─────────────────────────────────────────────
