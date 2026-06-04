@@ -41,6 +41,10 @@ public class CommitteeDecision {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    // Ret gerekçe kodu (UC-11) — yalnızca REJECTED kararlarında dolu olabilir.
+    @Column(length = 50)
+    private String rejectionCode;
+
     @CreationTimestamp
     private LocalDateTime decidedAt;
 }
