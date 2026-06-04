@@ -66,7 +66,7 @@ class ApplicationServiceTest {
         // ÖĞRENCİ 2. YARIYILDA VE ORTALAMASI 3.5 (Başvurusu KABUL EDİLMELİ)
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
                 .thenReturn(new YoksisStudentResponse(
-                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 3.5
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 3.5 , 320.0, 12345
                 ));
                 
         when(applicationRepository.save(any(Application.class))).thenAnswer(invocation -> {
@@ -138,7 +138,7 @@ class ApplicationServiceTest {
         // YÖKSİS'ten GPA'i bilerek 2.49 dönüyoruz
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
                 .thenReturn(new YoksisStudentResponse(
-                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 2.49 
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 2.49, 300.0, 11000
                 ));
 
         ApplicationCreateRequest request = buildCreateRequest(); // KVKK true geliyor
@@ -163,7 +163,7 @@ class ApplicationServiceTest {
         // ÖĞRENCİ 3. YARIYILDA (Yani başvurduğunda 4. yarıyıla geçecek, ki bu kurala aykırı!) Ortalaması 3.5 olsa bile REDDEDİLMELİ.
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
                 .thenReturn(new YoksisStudentResponse(
-                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 3, 3.5 
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 3, 3.5, 400.0, 7045
                 ));
 
         ApplicationCreateRequest request = buildCreateRequest(); // KVKK true geliyor
