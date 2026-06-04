@@ -16,6 +16,7 @@ import {
 import {
   FileTextOutlined,
   DownloadOutlined,
+  EyeOutlined,
   SafetyCertificateOutlined,
   FormOutlined,
   ExclamationCircleOutlined,
@@ -29,7 +30,19 @@ import {
   deriveExemptionStatus,
 } from '../../api/ydyo'
 
-const { Title, Text, Link } = Typography
+const { Title, Text } = Typography
+
+// Yetkili (Bearer) GET ile alınan blob'u tarayıcıda indirmeye zorlar.
+const triggerBlobDownload = (blob, fileName) => {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
 const { TextArea } = Input
 
 // ─── Badge config (soft tint) — mirrors the board ─────────────────────────────
@@ -316,6 +329,28 @@ function DetailBody({ application, onChange, locked = false }) {
     { key: 'year',    label: 'Akademik Yıl',      children: academicYear },
   ]
 
+  // ── Belge görüntüleme / indirme (öğrenci ve ÖİDB panelleriyle aynı yetkili blob yöntemi) ──
+  const handleViewDocument = async (documentId) => {
+    try {
+      const res = await ydyoApi.downloadDocument(documentId)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000)
+    } catch {
+      message.error('Belge görüntülenemedi. Lütfen tekrar deneyin.')
+    }
+  }
+
+  const handleDownloadDocument = async (documentId, fileName) => {
+    try {
+      const res = await ydyoApi.downloadDocument(documentId)
+      triggerBlobDownload(res.data, fileName || `belge_${documentId}.pdf`)
+    } catch {
+      message.error('Belge indirilemedi. Lütfen tekrar deneyin.')
+    }
+  }
+
   // ── Belge değerlendirmesini kaydet (mock; gerçek API TODO) ──
   const handleSave = async () => {
     if (!docStatus) {
@@ -396,10 +431,15 @@ function DetailBody({ application, onChange, locked = false }) {
               documents.map((doc) => (
                 <div key={doc.documentId} style={styles.documentRow}>
                   <FileTextOutlined style={{ color: '#8B1A2B', fontSize: 16 }} />
-                  <Link href={ydyoApi.getDocumentDownloadUrl(doc.documentId)} target="_blank" style={{ flex: 1 }}>
-                    {doc.fileName}
-                  </Link>
-                  <DownloadOutlined style={{ color: '#6B7280' }} />
+                  <Text style={{ flex: 1 }}>{doc.fileName}</Text>
+                  <Space>
+                    <Button size="small" icon={<EyeOutlined />} onClick={() => handleViewDocument(doc.documentId)}>
+                      Görüntüle
+                    </Button>
+                    <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}>
+                      İndir
+                    </Button>
+                  </Space>
                 </div>
               ))
             )}
@@ -413,10 +453,15 @@ function DetailBody({ application, onChange, locked = false }) {
               <>
                 <div style={styles.documentRow}>
                   <SafetyCertificateOutlined style={{ color: '#8B1A2B', fontSize: 16 }} />
-                  <Link href={ydyoApi.getDocumentDownloadUrl(englishCertificate.documentId)} target="_blank" style={{ flex: 1 }}>
-                    {englishCertificate.fileName}
-                  </Link>
-                  <DownloadOutlined style={{ color: '#6B7280' }} />
+                  <Text style={{ flex: 1 }}>{englishCertificate.fileName}</Text>
+                  <Space>
+                    <Button size="small" icon={<EyeOutlined />} onClick={() => handleViewDocument(englishCertificate.documentId)}>
+                      Görüntüle
+                    </Button>
+                    <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(englishCertificate.documentId, englishCertificate.fileName)}>
+                      İndir
+                    </Button>
+                  </Space>
                 </div>
                 {/* Sınav türü / puan her zaman makinece okunamayabilir → opsiyonel. */}
                 {(englishCertificate.examType || englishCertificate.score != null) && (

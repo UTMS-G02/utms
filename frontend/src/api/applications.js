@@ -93,6 +93,8 @@ const mapOidbApplication = (dto) => {
     targetDepartment: dto.targetDepartment,
     targetFaculty: dto.targetFaculty,
     status: mapStatus(dto.status),
+    rawStatus: dto.status,                                  // panel "Öğrenci Güncelledi" rozetini türetmek için
+    revisionRequestedBefore: dto.revisionRequestedBefore,   // bir kez düzeltme istendi mi? (buton + rozet)
     submittedAt: dto.submissionDate,
     createdAt: dto.submissionDate,
     documents: (dto.documents ?? []).map((d) => ({
@@ -153,13 +155,13 @@ const oidbReal = {
     apiClient.get(`/applications/${id}`).then((r) => mapOidbApplication(r.data)),
 
   // Güncelleme İste → REVISION_REQUESTED
-  // payload: { requestedDocumentType, revisionNotes } — memurun seçtiği hatalı belge + notu.
+  // payload: { requestedDocumentTypes, revisionNotes } — memurun seçtiği hatalı belge(ler) + notu.
   requestApplicationUpdate: (id, payload = {}) =>
     apiClient
       .patch(`/applications/${id}/oidb-review`, {
         approved: false,
         requestRevision: true,
-        requestedDocumentType: payload.requestedDocumentType,
+        requestedDocumentTypes: payload.requestedDocumentTypes,
         revisionNotes: payload.revisionNotes,
       })
       .then((r) => r.data),
