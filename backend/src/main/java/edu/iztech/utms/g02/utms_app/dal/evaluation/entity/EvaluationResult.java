@@ -35,6 +35,11 @@ public class EvaluationResult {
     // En yüksek skordan en düşüğe doğru sıralama (1 = en yüksek)
     private Integer ranking;
 
+    // YGK'nin başvuru bazında girdiği "Genel Değerlendirme Notu" — intibak tablosunun
+    // shortcoming (eksiklik) notundan (Application.ygkNotes) ayrıdır. UC-8 submit ile dolar.
+    @Column(columnDefinition = "TEXT")
+    private String generalNote;
+
     @CreationTimestamp
     private LocalDateTime calculatedAt;
 }

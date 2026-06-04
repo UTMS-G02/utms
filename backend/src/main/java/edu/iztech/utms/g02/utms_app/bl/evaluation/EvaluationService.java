@@ -1,14 +1,21 @@
 package edu.iztech.utms.g02.utms_app.bl.evaluation;
 
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.EvaluationResponse;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.YgkEvaluationRequest;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
+import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.CommitteeDecision;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.EvaluationResult;
+import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.CommitteeDecisionRepository;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.EvaluationResultRepository;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,11 +35,13 @@ import java.util.stream.Collectors;
  * </ul>
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class EvaluationService {
 
     private final ApplicationRepository applicationRepository;
     private final EvaluationResultRepository evaluationResultRepository;
+    private final CommitteeDecisionRepository committeeDecisionRepository;
 
     /**
      * Sıralama düzeni: yüksek compositeScore önce; eşit skorda tie-break uygulanır.
@@ -104,6 +113,67 @@ public class EvaluationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * YGK'nin tek bir başvuru için değerlendirmesini kaydeder ve Dekanlığa iletir (UC-8).
+     *
+     * <p>Skorlama (score-all) toplu yapılır; bu uç başvuru bazındadır: bölüm koşullarını ve
+     * ayrı bir "Genel Değerlendirme Notu"nu kaydeder, YGK değerlendirmesini tamamlar.
+     * Statü {@code YGK_SCORED} → {@code YGK_REVIEW_DONE} olur (kuyruktan çıkar); karar,
+     * ekle-only {@code committee_decisions} tablosuna {@code decisionBy="YGK"} olarak işlenir.
+     *
+     * @return güncellenmiş değerlendirme satırı
+     */
+    @Transactional
+    public EvaluationResponse submitEvaluation(Integer applicationId, YgkEvaluationRequest req) {
+        if (req.getConditionsMet() == null) {
+            throw new IllegalArgumentException("Karar (conditionsMet) zorunludur.");
+        }
+        if (req.getGeneralNote() == null || req.getGeneralNote().isBlank()) {
+            throw new IllegalArgumentException("Genel değerlendirme notu zorunludur.");
+        }
+
+        Application app = applicationRepository.findByApplicationId(applicationId)
+                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + applicationId));
+
+        if (app.getStatus() != ApplicationStatus.YGK_SCORED) {
+            throw new IllegalStateException(
+                    "Başvuru YGK değerlendirmesine uygun aşamada değil. Güncel statü: " + app.getStatus());
+        }
+
+        EvaluationResult result = evaluationResultRepository
+                .findByApplication_ApplicationId(applicationId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Skor kaydı bulunamadı; önce toplu skorlama yapılmalıdır. ID: " + applicationId));
+
+        result.setGeneralNote(req.getGeneralNote());
+        evaluationResultRepository.save(result);
+
+        ApplicationStatus previous = app.getStatus();
+        app.setYgkApproved(req.getConditionsMet());
+        app.setYgkReviewedDate(LocalDateTime.now());
+        app.setStatus(ApplicationStatus.YGK_REVIEW_DONE);
+        applicationRepository.save(app);
+
+        // Ekle-only denetim izi: YGK değerlendirmesi (kim/ne zaman/sonuç + genel not).
+        committeeDecisionRepository.save(CommitteeDecision.builder()
+                .application(app)
+                .decisionBy("YGK")
+                .decision(req.getConditionsMet() ? "CONDITIONS_MET" : "CONDITIONS_NOT_MET")
+                .notes(req.getGeneralNote())
+                .build());
+
+        log.info("YGK değerlendirmesi tamamlandı: applicationId={}, {} -> {}, conditionsMet={}, by={}",
+                applicationId, previous, ApplicationStatus.YGK_REVIEW_DONE, req.getConditionsMet(), currentUser());
+
+        return toResponse(result);
+    }
+
+    /** Denetim logu için aktif kullanıcının e-postası; güvenlik bağlamı yoksa "anonymous". */
+    private String currentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return (auth != null && auth.getName() != null) ? auth.getName() : "anonymous";
+    }
+
     private EvaluationResponse toResponse(EvaluationResult result) {
         Application app = result.getApplication();
         return EvaluationResponse.builder()
@@ -115,6 +185,8 @@ public class EvaluationService {
                 .ranking(result.getRanking())
                 .status(app.getStatus())
                 .calculatedAt(result.getCalculatedAt())
+                .conditionsMet(app.getYgkApproved())
+                .generalNote(result.getGeneralNote())
                 .build();
     }
 

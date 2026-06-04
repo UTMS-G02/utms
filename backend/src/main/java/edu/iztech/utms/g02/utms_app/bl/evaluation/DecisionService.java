@@ -35,7 +35,9 @@ public class DecisionService {
 
     @Transactional
     public ApplicationResponse recordDeanDecision(Integer applicationId, DecisionRequest req) {
-        return record(applicationId, "DEAN", req, EnumSet.of(YGK_SCORED, DEAN_REVIEW));
+        // YGK_REVIEW_DONE: YGK başvuru bazında değerlendirip Dekanlığa ilettiğinde (UC-8).
+        // YGK_SCORED: yalnızca toplu skorlama yapıldıysa (manuel değerlendirme atlanmışsa).
+        return record(applicationId, "DEAN", req, EnumSet.of(YGK_SCORED, YGK_REVIEW_DONE, DEAN_REVIEW));
     }
 
     @Transactional
