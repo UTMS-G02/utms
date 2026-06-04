@@ -27,6 +27,11 @@ public class MockYoksisIntegrationServiceImpl implements YoksisIntegrationServic
         double gpa = 2.50 + (seed % 141) / 100.0;   // 2.50 – 3.90 (always above the 2.50 threshold)
         int semester = (seed % 2 == 0) ? 2 : 4;      // only eligible semesters (2 -> apply for 3, 4 -> apply for 5)
 
-        return new YoksisStudentResponse(row[0], row[1], row[2], semester, gpa);
+        // ÖSYM (mock): YKS verileri de aynı TCKN'den deterministik türetilir; SAY puanı
+        // ~420.00–479.99 aralığında, sıralama ~1.000–50.999 arasında. Gerçek ÖSYM yok.
+        double yksScore = 420.0 + (seed % 6000) / 100.0;   // 420.00 – 479.99
+        int yksRank = 1000 + (seed % 50000);               // 1.000 – 50.999
+
+        return new YoksisStudentResponse(row[0], row[1], row[2], semester, gpa, yksScore, yksRank);
     }
 }
