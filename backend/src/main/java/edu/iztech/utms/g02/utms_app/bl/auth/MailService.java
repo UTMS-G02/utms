@@ -51,7 +51,7 @@ public class MailService {
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         Map<String, Object> body = Map.of(
-                "from", "UTMS <onboarding@resend.dev>",
+                "from", "UTMS <noreply@iyte-utms.xyz>",
                 "to", List.of(to),
                 "subject", subject,
                 "text", text
