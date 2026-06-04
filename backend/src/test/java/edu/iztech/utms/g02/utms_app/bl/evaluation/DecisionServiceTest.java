@@ -211,6 +211,64 @@ class DecisionServiceTest {
     }
 
     // ==========================================
+    // TC-10.6 — BORU HATTI BÜTÜNLÜĞÜ (Pipeline Integrity)
+    // Dekan, YGK adımını atlayarak doğrudan Fakülte Kuruluna yönlendiremez.
+    // Fakülte Kurulu, Dekan onayı olmadan karar veremez.
+    // ==========================================
+
+    @Test
+    void tc10_6_deanDecision_evaluationQueueStatus_throwsIllegalStateException() {
+        // ÖİDB'den yeni gelen başvuru henüz YGK tarafından puanlanmamış;
+        // Dekan bu aşamada karar veremez.
+        Application app = buildApp(30, ApplicationStatus.EVALUATION_QUEUE);
+        stubFindOnly(30, app);
+
+        assertThatThrownBy(() -> decisionService.recordDeanDecision(30, approve(null)))
+                .isInstanceOf(IllegalStateException.class);
+        verify(committeeDecisionRepository, never()).save(any());
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void tc10_6_facultyBoardDecision_skippingDean_ygkScoredStatus_throwsIllegalStateException() {
+        // YGK puanlamış ama Dekan henüz karar vermemiş;
+        // Fakülte Kurulu bu aşamayı atlayarak karar veremez.
+        Application app = buildApp(31, ApplicationStatus.YGK_SCORED);
+        stubFindOnly(31, app);
+
+        assertThatThrownBy(() -> decisionService.recordFacultyBoardDecision(31, approve(null)))
+                .isInstanceOf(IllegalStateException.class);
+        verify(committeeDecisionRepository, never()).save(any());
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void tc10_6_facultyBoardDecision_skippingDean_ygkReviewDoneStatus_throwsIllegalStateException() {
+        // YGK UC-8 değerlendirmesini tamamlamış ama Dekan henüz karar vermemiş;
+        // Fakülte Kurulu bu aşamayı da atlayarak karar veremez.
+        Application app = buildApp(32, ApplicationStatus.YGK_REVIEW_DONE);
+        stubFindOnly(32, app);
+
+        assertThatThrownBy(() -> decisionService.recordFacultyBoardDecision(32, approve(null)))
+                .isInstanceOf(IllegalStateException.class);
+        verify(committeeDecisionRepository, never()).save(any());
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void tc10_6_finalDeanDecision_skippingFacultyBoard_throwsIllegalStateException() {
+        // Dekan onaylamış ama Fakülte Kurulu henüz karar vermemiş;
+        // Nihai Dekan bu aşamayı atlayarak karar veremez.
+        Application app = buildApp(33, ApplicationStatus.FACULTY_BOARD_REVIEW);
+        stubFindOnly(33, app);
+
+        assertThatThrownBy(() -> decisionService.recordFinalDeanDecision(33, approve(null)))
+                .isInstanceOf(IllegalStateException.class);
+        verify(committeeDecisionRepository, never()).save(any());
+        verify(applicationRepository, never()).save(any());
+    }
+
+    // ==========================================
     // GİRİŞ DOĞRULAMA
     // ==========================================
 
