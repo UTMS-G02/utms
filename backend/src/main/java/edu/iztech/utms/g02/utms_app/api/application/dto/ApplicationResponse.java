@@ -49,11 +49,13 @@ public class ApplicationResponse {
     private Integer oidbReviewedBy;
     private LocalDateTime oidbReviewedDate;
 
-    // Düzeltme (revizyon) isteği detayları — öğrenci ekranı bu alanlara dayanır.
-    //  - requestedDocumentType: yalnızca bu belge tipinin yükleme alanı öğrencide açılır
+    // Düzeltme (revizyon) isteği detayları — öğrenci ve ÖİDB ekranları bu alanlara dayanır.
+    //  - requestedDocumentTypes: yalnızca bu belge tiplerinin yükleme alanı öğrencide açılır (çoklu)
     //  - revisionNotes: öğrenciye gösterilen düzeltme gerekçesi
-    private String requestedDocumentType;
+    //  - revisionRequestedBefore: bir kez düzeltme istendi mi? (ÖİDB butonu/öğrenci rozeti için)
+    private List<String> requestedDocumentTypes;
     private String revisionNotes;
+    private boolean revisionRequestedBefore;
 
     // YDYO İnceleme Detayları
     private Boolean ydyoApproved;

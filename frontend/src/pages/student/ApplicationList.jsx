@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Typography, Tag, Spin, Table, Empty, App } from 'antd'
 import { applicationsApi } from '../../api/applications'
-import { getStatusMeta } from '../../constants/applicationStatus'
+import { getStudentStatusMeta } from '../../constants/applicationStatus'
 
 const { Title, Text } = Typography
 
@@ -88,8 +88,8 @@ export default function ApplicationList() {
       title: 'Durum',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => {
-        const info = getStatusMeta(status)
+      render: (_, record) => {
+        const info = getStudentStatusMeta(record)
         return <Tag color={info.color}>{info.label}</Tag>
       },
     },

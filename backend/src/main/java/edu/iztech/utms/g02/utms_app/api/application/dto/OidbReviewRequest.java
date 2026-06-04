@@ -2,6 +2,7 @@ package edu.iztech.utms.g02.utms_app.api.application.dto;
 
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import jakarta.validation.constraints.NotNull;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -37,7 +38,11 @@ public class OidbReviewRequest {
 
     private boolean requestRevision; // YENİ: Eğer memur düzeltme istiyorsa burası true gelir
 
-    // YENİ: Hangi belge için düzeltme isteniyor (örn: "TRANSCRIPT"). requestRevision=true iken anlamlı.
+    // YENİ: Hangi belge(ler) için düzeltme isteniyor (örn: ["TRANSCRIPT", "LANGUAGE_CERT"]).
+    // requestRevision=true iken anlamlı. Memur birden fazla belge seçebilir.
+    private List<String> requestedDocumentTypes;
+
+    // Geriye dönük uyumluluk: tek belge gönderen eski istemciler için (opsiyonel).
     private String requestedDocumentType;
 
     // YENİ: Memurun öğrenciye ileteceği düzeltme notu (örn: "Belge okunamıyor, PDF olarak yükleyin").

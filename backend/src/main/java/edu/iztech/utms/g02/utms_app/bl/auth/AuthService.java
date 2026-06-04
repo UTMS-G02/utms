@@ -205,6 +205,26 @@ public class AuthService {
     }
 
     /**
+     * Changes the password of the currently authenticated user.
+     * Verifies the current password before setting the new one.
+     */
+    public void changePassword(String email, String currentPassword, String newPassword) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AuthException("Kullanıcı bulunamadı.", HttpStatus.BAD_REQUEST));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new AuthException("Mevcut şifreniz hatalı.", HttpStatus.BAD_REQUEST);
+        }
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new AuthException("Yeni şifre mevcut şifreden farklı olmalıdır.", HttpStatus.BAD_REQUEST);
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        log.info("Password changed for {}", email);
+    }
+
+    /**
      * Validates that the registration request meets all business rules.
      *
      * @throws AuthException if any validation rule is violated

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Typography, Tag, Spin, Steps, Alert, Descriptions, Divider, Space, Upload, Tooltip, App } from 'antd'
 import { FileTextOutlined, UploadOutlined, LockOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { applicationsApi } from '../../api/applications'
-import { getStatusMeta, isRevisionRequested } from '../../constants/applicationStatus'
+import { getStudentStatusMeta, isRevisionRequested } from '../../constants/applicationStatus'
 
 const { Title, Text } = Typography
 
@@ -181,21 +181,23 @@ export default function ApplicationDetail() {
     sayYksRank,
     oidbNotes,                    // geriye dönük ÖİDB notu (revisionNotes yoksa yedek gerekçe)
     ydyoNotes,
-    requestedDocumentType,        // OİDB'nin düzeltme istediği belge tipi (örn: TRANSCRIPT)
+    requestedDocumentTypes = [],  // OİDB'nin düzeltme istediği belge tip(ler)i (örn: ['TRANSCRIPT'])
     revisionNotes,                // OİDB'nin düzeltme notu (öncelikli gerekçe)
     documents = [],
   } = application
   const alertText = ALERT_MAP[status] ?? 'Başvurunuzun durumu güncellenmektedir.'
   const stepCurrent = getStepCurrent(status)
-  const statusMeta = getStatusMeta(status)
+  // Durum rozeti: düzeltme yapıp yeniden gönderilen başvuru "İncelemede" görünür (sonuç henüz belli değil).
+  const statusMeta = getStudentStatusMeta(application)
 
   const revisionMode = isRevisionRequested(status)
   const revisionNote = revisionNotes || oidbNotes || ydyoNotes || 'Düzeltme gerekçesi belirtilmemiştir. Lütfen birimle iletişime geçin.'
-  const requestedDocLabel = requestedDocumentType
-    ? (DOCUMENT_TYPE_LABEL[requestedDocumentType] ?? requestedDocumentType)
+  // İstenen belge tiplerinin okunabilir adları (birden fazla olabilir).
+  const requestedDocLabel = requestedDocumentTypes.length > 0
+    ? requestedDocumentTypes.map((t) => DOCUMENT_TYPE_LABEL[t] ?? t).join(', ')
     : null
-  // OİDB belirli bir belge seçtiyse yalnızca o belge düzenlenebilir; seçmediyse (geriye dönük) hepsi açık.
-  const isDocEditable = (docType) => !requestedDocumentType || docType === requestedDocumentType
+  // OİDB belirli belge(ler) seçtiyse yalnızca onlar düzenlenebilir; seçmediyse (geriye dönük) hepsi açık.
+  const isDocEditable = (docType) => requestedDocumentTypes.length === 0 || requestedDocumentTypes.includes(docType)
 
   const beforeReupload = (documentType, file) => {
     if (file.type !== 'application/pdf') { message.error('Sadece PDF yüklenebilir.'); return Upload.LIST_IGNORE }
@@ -343,8 +345,8 @@ export default function ApplicationDetail() {
             <span>
               {requestedDocLabel ? (
                 <>
-                  Başvurunuzda <Text strong style={{ color: '#ad6800' }}>{requestedDocLabel}</Text> belgesinin
-                  düzeltilmesi isteniyor. Yalnızca bu belgeyi yeniden yükleyip başvurunuzu tekrar gönderin:
+                  Başvurunuzda <Text strong style={{ color: '#ad6800' }}>{requestedDocLabel}</Text> belge(ler)inin
+                  düzeltilmesi isteniyor. Yalnızca bu belge(ler)i yeniden yükleyip başvurunuzu tekrar gönderin:
                 </>
               ) : (
                 <>Başvurunuz aşağıdaki gerekçeyle düzeltmeye gönderildi. İlgili belgeleri güncelleyip yeniden gönderin:</>

@@ -3,23 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { Row, Col, Button, Typography, Tag, Spin, App } from 'antd'
 import { FileTextOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import { applicationsApi } from '../../api/applications'
+import { getStudentStatusMeta } from '../../constants/applicationStatus'
 
 const { Title, Text } = Typography
-
-const STATUS_MAP = {
-  DRAFT:                { label: 'Taslak',                        color: 'default'  },
-  SUBMITTED:            { label: 'Gönderildi',                    color: 'blue'     },
-  OIDB_REVIEW:          { label: 'OIDB İncelemesinde',            color: 'orange'   },
-  YDYO_REVIEW:          { label: 'YDYO İncelemesinde',            color: 'orange'   },
-  EVALUATION_QUEUE:     { label: 'Değerlendirme Kuyruğunda',      color: 'cyan'     },
-  YGK_SCORED:           { label: 'YGK Puanlandı',                 color: 'geekblue' },
-  DEAN_REVIEW:          { label: 'Dekan İncelemesinde',           color: 'orange'   },
-  FACULTY_BOARD_REVIEW: { label: 'Fakülte Kurulu İncelemesinde',  color: 'orange'   },
-  FINAL_DEAN_REVIEW:    { label: 'Final Dekan İncelemesinde',     color: 'orange'   },
-  RESULT_PUBLISHED:     { label: 'Sonuç Yayınlandı',              color: 'green'    },
-  ACCEPTED:             { label: 'Kabul Edildi',                  color: 'success'  },
-  REJECTED:             { label: 'Reddedildi',                    color: 'error'    },
-}
 
 const styles = {
   page: {
@@ -120,9 +106,10 @@ export default function StudentDashboard() {
     )
   }
 
-  const statusInfo = application
-    ? (STATUS_MAP[application.status] ?? { label: application.status, color: 'default' })
-    : null
+  // Durum etiketi/rengi, Başvurularım sayfasıyla aynı ortak kaynaktan gelir
+  // (constants/applicationStatus) — böylece her statü (ör. REVISION_REQUESTED →
+  // "Düzeltme Bekliyor") tutarlı ve eksiksiz gösterilir.
+  const statusInfo = application ? getStudentStatusMeta(application) : null
 
   return (
     <div style={styles.page}>

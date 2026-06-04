@@ -16,6 +16,12 @@ const studentApi = {
   getMyYoksisData: () =>
     apiClient.get('/yoksis/me').then((res) => res.data),
 
+  // "Yeni Başvuru" formunda, başvuru henüz oluşturulmadan e-Devlet/ÖSYM belgesini
+  // önizlemek için: backend o anki öğrencinin YÖKSİS verisinden mock PDF üretir.
+  // type: STUDENT_CERTIFICATE | TRANSCRIPT | YKS_RESULT
+  previewEgovDocument: (type) =>
+    apiClient.get(`/yoksis/documents/${type}/preview`, { responseType: 'blob' }),
+
   createApplication: (payload) =>
     apiClient.post('/applications', payload).then((res) => res.data),
 
@@ -70,6 +76,14 @@ const OIDB_STATUS_MAP = {
   FACULTY_BOARD_REJECTED: 'FACULTY_REVIEW',
   FACULTY_BOARD_ACCEPTED: 'FACULTY_REVIEW',
   OIDB_FINAL_REVIEW: 'FACULTY_REVIEW',
+  // "Fakülteye Gönder" sonrası değerlendirme/dekan hattındaki statüler de "Fakültede" görünür
+  // (aksi halde panelde ham 'EVALUATION_QUEUE' vb. görünüyordu).
+  EVALUATION_QUEUE: 'FACULTY_REVIEW',
+  YGK_SCORED: 'FACULTY_REVIEW',
+  DEAN_REVIEW: 'FACULTY_REVIEW',
+  FINAL_DEAN_REVIEW: 'FACULTY_REVIEW',
+  RESULT_PUBLISHED: 'FACULTY_REVIEW',
+  DEAN_REJECTED: 'REJECTED',
   APPROVED: 'ACCEPTED',
   REJECTED: 'REJECTED',
 }
@@ -93,6 +107,8 @@ const mapOidbApplication = (dto) => {
     targetDepartment: dto.targetDepartment,
     targetFaculty: dto.targetFaculty,
     status: mapStatus(dto.status),
+    rawStatus: dto.status,                                  // panel "Öğrenci Güncelledi" rozetini türetmek için
+    revisionRequestedBefore: dto.revisionRequestedBefore,   // bir kez düzeltme istendi mi? (buton + rozet)
     submittedAt: dto.submissionDate,
     createdAt: dto.submissionDate,
     documents: (dto.documents ?? []).map((d) => ({
@@ -153,13 +169,13 @@ const oidbReal = {
     apiClient.get(`/applications/${id}`).then((r) => mapOidbApplication(r.data)),
 
   // Güncelleme İste → REVISION_REQUESTED
-  // payload: { requestedDocumentType, revisionNotes } — memurun seçtiği hatalı belge + notu.
+  // payload: { requestedDocumentTypes, revisionNotes } — memurun seçtiği hatalı belge(ler) + notu.
   requestApplicationUpdate: (id, payload = {}) =>
     apiClient
       .patch(`/applications/${id}/oidb-review`, {
         approved: false,
         requestRevision: true,
-        requestedDocumentType: payload.requestedDocumentType,
+        requestedDocumentTypes: payload.requestedDocumentTypes,
         revisionNotes: payload.revisionNotes,
       })
       .then((r) => r.data),

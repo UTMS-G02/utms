@@ -246,8 +246,9 @@ public class ApplicationService {
             }
             app.setStatus(ApplicationStatus.REVISION_REQUESTED);
             app.setRevisionRequestedBefore(true);
-            // Memurun seçtiği hatalı belge ve düzeltme notunu kaydet → öğrenci ekranı bunları kullanır.
-            app.setRequestedDocumentType(req.getRequestedDocumentType());
+            // Memurun seçtiği hatalı belge(ler) ve düzeltme notunu kaydet → öğrenci ekranı bunları kullanır.
+            // Birden fazla belge tek kolonda CSV olarak saklanır ("TRANSCRIPT,LANGUAGE_CERT").
+            app.setRequestedDocumentType(joinRequestedDocumentTypes(req));
             app.setRevisionNotes(req.getRevisionNotes());
         } else if (Boolean.TRUE.equals(req.isApproved())) {
             app.setStatus(ApplicationStatus.YDYO_REVIEW); 
@@ -650,9 +651,10 @@ public class ApplicationService {
         response.setOidbReviewedBy(app.getOidbReviewedBy() != null ? app.getOidbReviewedBy().getUserId() : null);
         response.setOidbReviewedDate(app.getOidbReviewedDate());
 
-        // Düzeltme isteği detayları (hangi belge + not) → öğrenci ekranı kullanır
-        response.setRequestedDocumentType(app.getRequestedDocumentType());
+        // Düzeltme isteği detayları (hangi belge(ler) + not) → öğrenci ve ÖİDB ekranları kullanır
+        response.setRequestedDocumentTypes(splitRequestedDocumentTypes(app.getRequestedDocumentType()));
         response.setRevisionNotes(app.getRevisionNotes());
+        response.setRevisionRequestedBefore(app.isRevisionRequestedBefore());
 
         // YDYO inceleme detayları
         response.setYdyoApproved(app.getYdyoApproved());
@@ -696,6 +698,28 @@ public class ApplicationService {
         }
 
         return response;
+    }
+
+    // Düzeltme istenen belge tiplerini CSV'ye çevir. Yeni istemci listeyi (requestedDocumentTypes)
+    // gönderir; eski istemci tek alanı (requestedDocumentType) gönderebilir — ikisini de destekleriz.
+    private String joinRequestedDocumentTypes(OidbReviewRequest req) {
+        List<String> types = req.getRequestedDocumentTypes();
+        if (types != null && !types.isEmpty()) {
+            return types.stream()
+                    .filter(t -> t != null && !t.isBlank())
+                    .map(String::trim)
+                    .collect(Collectors.joining(","));
+        }
+        return req.getRequestedDocumentType(); // geriye dönük tek belge
+    }
+
+    // CSV olarak saklanan belge tiplerini listeye ayır (boşsa boş liste).
+    private List<String> splitRequestedDocumentTypes(String csv) {
+        if (csv == null || csv.isBlank()) return List.of();
+        return java.util.Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
     }
 
     // Ad + (varsa) ikinci ad + soyad → tek görünen ad

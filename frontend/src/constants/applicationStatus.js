@@ -33,3 +33,19 @@ export const getStatusMeta = (status) =>
   STATUS_META[status] ?? { label: status ?? 'Bilinmiyor', color: 'default' }
 
 export const isRevisionRequested = (status) => status === 'REVISION_REQUESTED'
+
+// Öğrenci, istenen düzeltmeyi yapıp başvuruyu YENİDEN gönderdi mi?
+// (bir kez düzeltme istendi VE başvuru tekrar OİDB incelemesine döndü)
+export const isResubmittedAfterRevision = (app) =>
+  Boolean(app?.revisionRequestedBefore) &&
+  (app?.status === 'SUBMITTED' || app?.status === 'OIDB_REVIEW')
+
+// Öğrenci panelleri için durum etiketi. Düzeltme sonrası yeniden gönderilen başvuru,
+// sonucu henüz belli olmadığı için "İncelemede" gösterilir; aksi halde standart META.
+export const getStudentStatusMeta = (app) => {
+  if (!app) return getStatusMeta(undefined)
+  if (isResubmittedAfterRevision(app)) {
+    return { label: 'İncelemede', color: 'processing' }
+  }
+  return getStatusMeta(app.status)
+}

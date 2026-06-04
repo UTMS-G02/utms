@@ -56,6 +56,15 @@ const STATUS_MAP = {
   REJECTED: { label: 'Reddedildi', color: 'error' },
 }
 
+// Öğrenci, istenen düzeltmeyi yapıp başvuruyu yeniden gönderdiyse memura ayırt edici bir
+// rozet gösterilir ("Öğrenci Güncelledi") — aksi halde standart STATUS_MAP kullanılır.
+const getOidbStatusInfo = (application) => {
+  const resubmitted = application.revisionRequestedBefore &&
+    (application.rawStatus === 'SUBMITTED' || application.rawStatus === 'OIDB_REVIEW')
+  if (resubmitted) return { label: 'Öğrenci Güncelledi', color: 'gold' }
+  return STATUS_MAP[application.status] ?? { label: application.status, color: 'default' }
+}
+
 const STATUS_OPTIONS = [
   { value: 'ALL', label: 'Tümü' },
   { value: 'OIDB_REVIEW', label: 'İnceleniyor' },
@@ -221,11 +230,11 @@ export default function OidbDashboard() {
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTabs, setActiveTabs] = useState({})
 
-  // "Güncelleme İste" modalı durumu: hangi başvuru, seçilen belge tipi ve not.
+  // "Güncelleme İste" modalı durumu: hangi başvuru, seçilen belge tip(ler)i ve not.
   const [revisionModal, setRevisionModal] = useState({
     open: false,
     applicationId: null,
-    documentType: undefined,
+    documentTypes: [],
     notes: '',
   })
   const [revisionSubmitting, setRevisionSubmitting] = useState(false)
@@ -287,7 +296,7 @@ export default function OidbDashboard() {
         const detail = await applicationsApi.getOidbApplicationById(applicationId)
         setDetails((prev) => ({ ...prev, [applicationId]: detail }))
         antdMessage.destroy(`loading-${applicationId}`)
-      } catch (error) {
+      } catch {
         antdMessage.error('Başvuru detayları alınamadı.')
       }
     }
@@ -319,13 +328,12 @@ export default function OidbDashboard() {
   }
 
   const handleAction = (applicationId, actionKey) => {
-    // Güncelleme İste → doğrudan istek atma; hangi belge + not seçimi için modal aç.
+    // Güncelleme İste → doğrudan istek atma; hangi belge(ler) + not seçimi için modal aç.
     if (actionKey === 'request_update') {
-      const docs = details[applicationId]?.documents ?? []
       setRevisionModal({
         open: true,
         applicationId,
-        documentType: docs[0]?.docType, // varsa ilk belgeyi ön seçili getir
+        documentTypes: [], // memur düzeltilecek belgeleri kendi seçer (birden fazla olabilir)
         notes: '',
       })
       return
@@ -349,8 +357,8 @@ export default function OidbDashboard() {
   const closeRevisionModal = () => setRevisionModal((prev) => ({ ...prev, open: false }))
 
   const handleRevisionSubmit = async () => {
-    if (!revisionModal.documentType) {
-      antdMessage.warning('Lütfen düzeltilmesi gereken belgeyi seçin.')
+    if (!revisionModal.documentTypes || revisionModal.documentTypes.length === 0) {
+      antdMessage.warning('Lütfen düzeltilmesi gereken en az bir belge seçin.')
       return
     }
     if (!revisionModal.notes.trim()) {
@@ -360,7 +368,7 @@ export default function OidbDashboard() {
     setRevisionSubmitting(true)
     try {
       await applicationsApi.requestApplicationUpdate(revisionModal.applicationId, {
-        requestedDocumentType: revisionModal.documentType,
+        requestedDocumentTypes: revisionModal.documentTypes,
         revisionNotes: revisionModal.notes.trim(),
       })
       antdMessage.success('Güncelleme isteği öğrenciye iletildi.')
@@ -419,12 +427,18 @@ export default function OidbDashboard() {
     }
   }
 
-  const renderActionButtons = (status, applicationId) => {
-    const actions = ACTION_CONFIG[status] ?? []
+  const renderActionButtons = (application) => {
+    let actions = ACTION_CONFIG[application.status] ?? []
+    // Bir kez düzeltme istendiyse "Güncelleme İste" artık kullanılamaz; memur yalnızca
+    // YDYO'ya gönderebilir veya reddedebilir (backend de ikinci isteği reddeder).
+    if (application.revisionRequestedBefore) {
+      actions = actions.filter((a) => a.key !== 'request_update')
+    }
     if (actions.length === 0) {
       return <Text type="secondary">Bu durumda yapılacak işlem yok.</Text>
     }
 
+    const applicationId = application.applicationId
     return (
       <Space wrap>
         {actions.map((action) => (
@@ -534,7 +548,7 @@ export default function OidbDashboard() {
           const isExpanded = expandedIds.includes(application.applicationId)
           const detail = details[application.applicationId]
           const activeKey = activeTabs[application.applicationId] ?? 'general'
-          const statusInfo = STATUS_MAP[application.status] ?? { label: application.status, color: 'default' }
+          const statusInfo = getOidbStatusInfo(application)
           const documentCount = detail?.documents?.length ?? 0
 
           return (
@@ -609,7 +623,7 @@ export default function OidbDashboard() {
                             children: (
                               <div style={styles.actionBox}>
                                 <Title level={5}>İşlemler</Title>
-                                {renderActionButtons(application.status, application.applicationId)}
+                                {renderActionButtons(application)}
                               </div>
                             ),
                           },
@@ -700,16 +714,18 @@ export default function OidbDashboard() {
         destroyOnClose
       >
         <Text type="secondary">
-          Öğrenciden hangi belgeyi düzeltmesini istediğinizi seçin ve bir not ekleyin.
-          Öğrenci yalnızca seçtiğiniz belgeyi yeniden yükleyebilecek.
+          Öğrenciden hangi belge(ler)i düzeltmesini istediğinizi seçin ve bir not ekleyin.
+          Öğrenci yalnızca seçtiğiniz belgeleri yeniden yükleyebilecek.
         </Text>
         <div style={{ marginTop: 16 }}>
-          <Text strong>Düzeltilecek Belge</Text>
+          <Text strong>Düzeltilecek Belge(ler)</Text>
           <Select
+            mode="multiple"
+            allowClear
             style={{ width: '100%', marginTop: 6 }}
-            placeholder="Belge seçin"
-            value={revisionModal.documentType}
-            onChange={(value) => setRevisionModal((prev) => ({ ...prev, documentType: value }))}
+            placeholder="Bir veya daha fazla belge seçin"
+            value={revisionModal.documentTypes}
+            onChange={(value) => setRevisionModal((prev) => ({ ...prev, documentTypes: value }))}
             options={revisionDocOptions}
           />
         </div>

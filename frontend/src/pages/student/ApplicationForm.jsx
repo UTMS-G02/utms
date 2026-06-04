@@ -4,7 +4,7 @@ import {
   Form, Input, Button, Typography, Row, Col, Select,
   InputNumber, DatePicker, Checkbox, Space, App, Upload, Alert,
 } from 'antd'
-import { InboxOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { UploadOutlined, CheckCircleOutlined, EyeOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useAuth } from '../../contexts/AuthContext'
 import { applicationsApi } from '../../api/applications'
@@ -50,6 +50,14 @@ const ACADEMIC_YEAR_OPTIONS = [ACTIVE_ACADEMIC_YEAR]
 const SEMESTER_OPTIONS = [
   { value: '3', label: '3. Yarıyıl' },
   { value: '5', label: '5. Yarıyıl' },
+]
+
+// e-Devlet/ÖSYM'den "otomatik alınan" belgeler. Başvuru oluşturulmadan önce
+// önizleme ucu (GET /yoksis/documents/{type}/preview) ile görüntülenebilir.
+const EGOV_DOCUMENTS = [
+  { type: 'STUDENT_CERTIFICATE', label: 'Öğrenci Belgesi — e-Devlet' },
+  { type: 'TRANSCRIPT', label: 'Transkript (Not Dökümü) — e-Devlet' },
+  { type: 'YKS_RESULT', label: 'YKS Sonuç Belgesi — ÖSYM' },
 ]
 
 const styles = {
@@ -167,6 +175,20 @@ export default function ApplicationForm() {
       active = false
     }
   }, [form, message])
+
+  // e-Devlet/ÖSYM belgesini yeni sekmede önizle — başvuru henüz oluşturulmadan,
+  // o anki öğrencinin YÖKSİS verisinden backend mock PDF üretir (öğrenci işleri panelindeki gibi).
+  const handleViewEgovDoc = async (type) => {
+    try {
+      const res = await applicationsApi.previewEgovDocument(type)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000)
+    } catch {
+      message.error('Belge görüntülenemedi. Lütfen tekrar deneyin.')
+    }
+  }
 
   const beforeUpload = (file) => {
     if (file.type !== 'application/pdf') {
@@ -519,11 +541,30 @@ export default function ApplicationForm() {
             style={{ marginBottom: 20 }}
             message="e-Devlet / ÖSYM'den otomatik alınan belgeler"
             description={
-              <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-                <li>Öğrenci Belgesi — e-Devlet</li>
-                <li>Transkript (Not Dökümü) — e-Devlet</li>
-                <li>YKS Sonuç Belgesi — ÖSYM</li>
-              </ul>
+              <div style={{ marginTop: 8 }}>
+                {EGOV_DOCUMENTS.map((d) => (
+                  <div
+                    key={d.type}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      padding: '4px 0',
+                    }}
+                  >
+                    <Text>• {d.label}</Text>
+                    <Button
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={() => handleViewEgovDoc(d.type)}
+                      disabled={yoksisLoading}
+                    >
+                      Görüntüle
+                    </Button>
+                  </div>
+                ))}
+              </div>
             }
           />
 
@@ -533,12 +574,11 @@ export default function ApplicationForm() {
             valuePropName="fileList"
             getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
             rules={[{ required: true, message: 'Ders içerikleri belgesi zorunludur.' }]}
+            extra="Yalnızca PDF, max 10MB"
           >
-            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-              <p className="ant-upload-hint">Yalnızca PDF, max 10MB</p>
-            </Upload.Dragger>
+            <Upload accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+              <Button icon={<UploadOutlined />}>PDF Seç</Button>
+            </Upload>
           </Form.Item>
 
           <Form.Item
@@ -546,12 +586,11 @@ export default function ApplicationForm() {
             name="languageCert"
             valuePropName="fileList"
             getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+            extra="Yalnızca PDF, max 10MB (opsiyonel)"
           >
-            <Upload.Dragger accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-              <p className="ant-upload-hint">Yalnızca PDF, max 10MB (opsiyonel)</p>
-            </Upload.Dragger>
+            <Upload accept=".pdf" maxCount={1} beforeUpload={beforeUpload} multiple={false}>
+              <Button icon={<UploadOutlined />}>PDF Seç</Button>
+            </Upload>
           </Form.Item>
 
           <Form.Item
@@ -559,12 +598,11 @@ export default function ApplicationForm() {
             name="additionalDocs"
             valuePropName="fileList"
             getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+            extra="Yalnızca PDF, max 10MB, en fazla 5 dosya (opsiyonel)"
           >
-            <Upload.Dragger accept=".pdf" maxCount={5} beforeUpload={beforeUpload} multiple>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Tıklayın veya sürükleyin</p>
-              <p className="ant-upload-hint">Yalnızca PDF, max 10MB, en fazla 5 dosya (opsiyonel)</p>
-            </Upload.Dragger>
+            <Upload accept=".pdf" maxCount={5} beforeUpload={beforeUpload} multiple>
+              <Button icon={<UploadOutlined />}>PDF Seç</Button>
+            </Upload>
           </Form.Item>
         </div>
 

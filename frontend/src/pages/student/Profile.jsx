@@ -45,8 +45,10 @@ export default function Profile() {
     return () => { active = false }
   }, [])
 
-  const displayName = user?.name
-    ?? ([user?.firstName, user?.lastName].filter(Boolean).join(' ') || '—')
+  // Ad + (varsa) ikinci ad + soyad — ikinci ad profilde de görünsün diye parçalardan kurulur.
+  // (user.name / fullName ikinci adı içermeyebilir, bu yüzden önce parçalar denenir.)
+  const displayName = [user?.firstName, user?.middleName, user?.lastName]
+    .filter(Boolean).join(' ') || user?.name || '—'
 
   const handleChangePassword = async ({ currentPassword, newPassword }) => {
     setLoading(true)
@@ -55,7 +57,10 @@ export default function Profile() {
       message.success('Şifreniz başarıyla güncellendi.')
       form.resetFields()
     } catch (error) {
-      message.error(error.message ?? 'Şifre güncellenirken bir hata oluştu.')
+      // Backend iş kuralı hatalarını { message } olarak döndürür (örn. "Mevcut şifreniz hatalı.").
+      message.error(
+        error?.response?.data?.message ?? 'Şifre güncellenirken bir hata oluştu.'
+      )
     } finally {
       setLoading(false)
     }
