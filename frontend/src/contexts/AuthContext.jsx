@@ -116,7 +116,7 @@ export function AuthProvider({ children }) {
           lower.includes('oidb')    ? ROLES.OIDB :
           lower.includes('ygk')     ? ROLES.YGK :
           lower.includes('faculty') ? ROLES.FACULTY_BOARD :
-          lower.includes('admin') || lower.includes('dean') ? ROLES.DEAN_OFFICE :
+          lower.includes('admin') || lower.includes('dean') ? ROLES.DEAN_OFFICE_OFFICE :
           ROLES.STUDENT;
         const userData = { id: 1, name: email.split('@')[0].toUpperCase(), email, role };
         const jwt = 'mock-jwt-token-123';

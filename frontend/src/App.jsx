@@ -10,6 +10,9 @@ import Profile from './pages/student/Profile';
 import OidbDashboard from './pages/oidb/Dashboard';
 import YdyoDashboard from './pages/ydyo/YdyoDashboard';
 import YdyoApplicationDetail from './pages/ydyo/YdyoApplicationDetail';
+import DekanlikOfisi from './pages/dean/DekanlikOfisi';
+import FakulteKurulu from './pages/dean/FakulteKurulu';
+import YGK from './pages/dean/YGK';
 import AppLayout from './components/Layout/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROLES } from './contexts/AuthContext';
@@ -82,6 +85,9 @@ export default function App() {
         }
       >
         <Route path="dashboard" element={<div style={{ padding: 24 }}><h2>Dean Dashboard</h2></div>} />
+        <Route path="dekanlık-ofisi" element={<DekanlikOfisi />} />
+        <Route path="faculty-board" element={<FakulteKurulu />} />
+        <Route path="ygk" element={<YGK />} />
       </Route>
 
       {/* Yanlış URL girilirse Login'e at */}
