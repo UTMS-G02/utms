@@ -22,4 +22,8 @@ public class EvaluationResponse {
     private Integer ranking;
     private ApplicationStatus status;
     private LocalDateTime calculatedAt;
+
+    // UC-8 YGK değerlendirmesi — submit sonrası dolar
+    private Boolean conditionsMet;   // Application.ygkApproved
+    private String generalNote;      // EvaluationResult.generalNote
 }

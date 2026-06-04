@@ -74,6 +74,18 @@ class DecisionServiceTest {
     }
 
     @Test
+    void deanApproves_ygkReviewDone_alsoAllowed() {
+        // UC-8: YGK başvuruyu değerlendirip Dekanlığa iletince statü YGK_REVIEW_DONE olur;
+        // Dekanlık bu aşamadaki başvuruyu da inceleyebilmeli.
+        Application app = buildApp(16, ApplicationStatus.YGK_REVIEW_DONE);
+        stubFind(16, app);
+
+        decisionService.recordDeanDecision(16, approve(null));
+
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REVIEW);
+    }
+
+    @Test
     void deanDecision_wrongStatus_throwsIllegalStateException_andSavesNothing() {
         Application app = buildApp(4, ApplicationStatus.SUBMITTED);
         stubFindOnly(4, app);
