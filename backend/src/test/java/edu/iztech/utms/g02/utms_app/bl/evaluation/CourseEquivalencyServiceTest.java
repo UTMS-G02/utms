@@ -168,6 +168,69 @@ class CourseEquivalencyServiceTest {
     }
 
     // ==========================================
+    // SAVE TABLE — satır doğrulama (EX-2: "tablo eksik")
+    // ==========================================
+
+    @Test
+    void saveTable_conditionsMet_noRows_throwsIllegalArgumentException() {
+        Application app = buildApp(8);
+        IntibakTableRequest req = new IntibakTableRequest(true, null, List.of());
+
+        when(applicationRepository.findByApplicationId(8)).thenReturn(Optional.of(app));
+
+        assertThatThrownBy(() -> courseEquivalencyService.saveTable(8, req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("en az bir ders satırı");
+        verify(courseEquivalencyRepository, never()).deleteByApplication_ApplicationId(anyInt());
+        verify(courseEquivalencyRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void saveTable_conditionsMet_blankSourceCode_throwsIllegalArgumentException() {
+        Application app = buildApp(9);
+        IntibakTableRequest req = new IntibakTableRequest(true, null, List.of(
+                buildRow("   ", "Calculus", 3, "MAT101", "Matematik", 3, EquivalencyStatus.TAM_DENKLIK)
+        ));
+
+        when(applicationRepository.findByApplicationId(9)).thenReturn(Optional.of(app));
+
+        assertThatThrownBy(() -> courseEquivalencyService.saveTable(9, req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("1. satırda");
+        verify(courseEquivalencyRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void saveTable_conditionsMet_nonPositiveCredit_throwsIllegalArgumentException() {
+        Application app = buildApp(10);
+        IntibakTableRequest req = new IntibakTableRequest(true, null, List.of(
+                buildRow("MAT101", "Calculus", 3, "MAT101", "Matematik", 0, EquivalencyStatus.TAM_DENKLIK)
+        ));
+
+        when(applicationRepository.findByApplicationId(10)).thenReturn(Optional.of(app));
+
+        assertThatThrownBy(() -> courseEquivalencyService.saveTable(10, req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("pozitif");
+        verify(courseEquivalencyRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void saveTable_conditionsMet_nullEquivalencyStatus_throwsIllegalArgumentException() {
+        Application app = buildApp(11);
+        IntibakTableRequest req = new IntibakTableRequest(true, null, List.of(
+                buildRow("MAT101", "Calculus", 3, "MAT101", "Matematik", 3, null)
+        ));
+
+        when(applicationRepository.findByApplicationId(11)).thenReturn(Optional.of(app));
+
+        assertThatThrownBy(() -> courseEquivalencyService.saveTable(11, req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("denklik durumu");
+        verify(courseEquivalencyRepository, never()).saveAll(any());
+    }
+
+    // ==========================================
     // SAVE TABLE — koşullar karşılanmıyor
     // ==========================================
 
