@@ -10,6 +10,9 @@ import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.CommitteeDecision;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.CommitteeDecisionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +29,7 @@ import static edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationSta
  * mevcut satırlar güncellenmez. Statü geçişleri {@link #nextStatus} ile yönetilir.
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class DecisionService {
 
@@ -62,18 +66,35 @@ public class DecisionService {
 
         boolean approved = resolveApproved(req);
 
+        // Ret gerekçe kodu yalnızca ret kararında saklanır; onayda anlamsızdır.
+        String rejectionCode = approved ? null : req.getRejectionCode();
+
         // EKLE-ONLY: her karar yeni satır. Makam role olarak saklanır: DEAN / FACULTY_BOARD / FINAL_DEAN.
         committeeDecisionRepository.save(CommitteeDecision.builder()
                 .application(app)
-                .decisionBy("FINAL_DEAN".equals(role) ? "FINAL_DEAN" : role)
+                .decisionBy(role)
                 .decision(approved ? "APPROVED" : "REJECTED")
                 .notes(req.getNotes())
+                .rejectionCode(rejectionCode)
                 .build());
 
-        app.setStatus(nextStatus(role, approved));
+        ApplicationStatus previous = app.getStatus();
+        ApplicationStatus next = nextStatus(role, approved);
+        app.setStatus(next);
         applicationRepository.save(app);
 
+        // Denetim izi: karar veren makam / kullanıcı, statü geçişi, karar ve ret kodu.
+        log.info("Komisyon kararı: applicationId={}, role={}, {} -> {}, decision={}, rejectionCode={}, by={}",
+                applicationId, role, previous, next, approved ? "APPROVED" : "REJECTED",
+                rejectionCode, currentUser());
+
         return applicationService.getApplicationById(applicationId);
+    }
+
+    /** Denetim logu için aktif kullanıcının e-postası; güvenlik bağlamı yoksa "anonymous". */
+    private String currentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return (auth != null && auth.getName() != null) ? auth.getName() : "anonymous";
     }
 
     private boolean resolveApproved(DecisionRequest req) {

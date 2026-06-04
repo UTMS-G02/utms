@@ -97,6 +97,34 @@ class DecisionServiceTest {
     }
 
     @Test
+    void deanRejects_rejectionCodeIsSaved_onlyOnReject() {
+        // UC-11: ret kararında gerekçe kodu saklanır.
+        Application app = buildApp(20, ApplicationStatus.YGK_SCORED);
+        stubFind(20, app);
+
+        decisionService.recordDeanDecision(20, new DecisionRequest(false, "Eksik denklik.", "EX-2"));
+
+        ArgumentCaptor<CommitteeDecision> captor = ArgumentCaptor.forClass(CommitteeDecision.class);
+        verify(committeeDecisionRepository).save(captor.capture());
+        assertThat(captor.getValue().getDecision()).isEqualTo("REJECTED");
+        assertThat(captor.getValue().getRejectionCode()).isEqualTo("EX-2");
+    }
+
+    @Test
+    void deanApproves_rejectionCodeIsIgnored_storedAsNull() {
+        // Onayda gönderilen ret kodu anlamsızdır; saklanmaz.
+        Application app = buildApp(21, ApplicationStatus.YGK_SCORED);
+        stubFind(21, app);
+
+        decisionService.recordDeanDecision(21, new DecisionRequest(true, "Onay.", "EX-2"));
+
+        ArgumentCaptor<CommitteeDecision> captor = ArgumentCaptor.forClass(CommitteeDecision.class);
+        verify(committeeDecisionRepository).save(captor.capture());
+        assertThat(captor.getValue().getDecision()).isEqualTo("APPROVED");
+        assertThat(captor.getValue().getRejectionCode()).isNull();
+    }
+
+    @Test
     void deanDecision_notesAreSaved() {
         Application app = buildApp(5, ApplicationStatus.YGK_SCORED);
         stubFind(5, app);

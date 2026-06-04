@@ -17,4 +17,14 @@ public class DecisionRequest {
     private Boolean approved;
 
     private String notes;
+
+    // UC-11: ret gerekçe kodu. Opsiyoneldir ve yalnızca ret (approved=false)
+    // kararlarında anlamlıdır; onayda yok sayılır.
+    private String rejectionCode;
+
+    /** Geriye dönük uyumluluk: rejectionCode olmadan (approved + notes) oluşturma. */
+    public DecisionRequest(Boolean approved, String notes) {
+        this.approved = approved;
+        this.notes = notes;
+    }
 }
