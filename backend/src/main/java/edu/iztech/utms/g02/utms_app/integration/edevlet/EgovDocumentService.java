@@ -41,43 +41,82 @@ public class EgovDocumentService {
      * create() sonrası, başvuru DRAFT durumundayken çağrılır.
      */
     public void generateAndAttach(Application app, Student student, YoksisStudentResponse yoksis) {
-        String fullName = asciify(buildFullName(student));
-        String tckn = student.getTckn() == null ? "-" : student.getTckn();
+        attach(app, "STUDENT_CERTIFICATE", "ogrenci_belgesi.pdf", studentCertificateLines(student, yoksis));
+        attach(app, "TRANSCRIPT", "transkript.pdf", transcriptLines(student, yoksis));
+        attach(app, "YKS_RESULT", "yks_sonuc_belgesi.pdf", yksResultLines(student, yoksis));
+    }
 
-        attach(app, "STUDENT_CERTIFICATE", "ogrenci_belgesi.pdf", List.of(
+    /**
+     * Başvuru OLUŞTURULMADAN önce, "Yeni Başvuru" formunda öğrencinin e-Devlet/ÖSYM
+     * belgesini ÖNİZLEMESİ için aynı mock PDF'i bellekte üretir (diske yazmaz, kaydetmez).
+     * Tip: STUDENT_CERTIFICATE | TRANSCRIPT | YKS_RESULT.
+     */
+    public byte[] buildPreview(Student student, YoksisStudentResponse yoksis, String type) {
+        return buildPdf(linesFor(type, student, yoksis));
+    }
+
+    /** Önizleme/indirme için belge tipine karşılık gelen dosya adı. */
+    public String previewFileName(String type) {
+        switch (type) {
+            case "STUDENT_CERTIFICATE": return "ogrenci_belgesi.pdf";
+            case "TRANSCRIPT":          return "transkript.pdf";
+            case "YKS_RESULT":          return "yks_sonuc_belgesi.pdf";
+            default: throw new IllegalArgumentException("Geçersiz belge tipi: " + type);
+        }
+    }
+
+    private List<String> linesFor(String type, Student student, YoksisStudentResponse yoksis) {
+        switch (type) {
+            case "STUDENT_CERTIFICATE": return studentCertificateLines(student, yoksis);
+            case "TRANSCRIPT":          return transcriptLines(student, yoksis);
+            case "YKS_RESULT":          return yksResultLines(student, yoksis);
+            default: throw new IllegalArgumentException("Geçersiz belge tipi: " + type);
+        }
+    }
+
+    private List<String> studentCertificateLines(Student student, YoksisStudentResponse yoksis) {
+        return List.of(
                 "T.C. e-Devlet Kapisi - Ogrenci Belgesi (Mock)",
                 "",
-                "Ad Soyad : " + fullName,
-                "TCKN     : " + tckn,
+                "Ad Soyad : " + asciify(buildFullName(student)),
+                "TCKN     : " + safeTckn(student),
                 "Universite: " + asciify(safe(yoksis.currentUniversity())),
                 "Fakulte  : " + asciify(safe(yoksis.currentFaculty())),
                 "Bolum    : " + asciify(safe(yoksis.currentDepartment())),
                 "Yariyil  : " + safe(yoksis.semester()),
                 "",
                 "Bu belge e-Devlet uzerinden otomatik olusturulmustur (simulasyon)."
-        ));
+        );
+    }
 
-        attach(app, "TRANSCRIPT", "transkript.pdf", List.of(
+    private List<String> transcriptLines(Student student, YoksisStudentResponse yoksis) {
+        return List.of(
                 "T.C. e-Devlet Kapisi - Not Dokumu / Transkript (Mock)",
                 "",
-                "Ad Soyad : " + fullName,
-                "TCKN     : " + tckn,
+                "Ad Soyad : " + asciify(buildFullName(student)),
+                "TCKN     : " + safeTckn(student),
                 "Bolum    : " + asciify(safe(yoksis.currentDepartment())),
                 "Genel Not Ortalamasi (GNO): " + safe(yoksis.gpa()),
                 "",
                 "Bu belge e-Devlet uzerinden otomatik olusturulmustur (simulasyon)."
-        ));
+        );
+    }
 
-        attach(app, "YKS_RESULT", "yks_sonuc_belgesi.pdf", List.of(
+    private List<String> yksResultLines(Student student, YoksisStudentResponse yoksis) {
+        return List.of(
                 "OSYM - YKS Sonuc Belgesi (Mock)",
                 "",
-                "Ad Soyad : " + fullName,
-                "TCKN     : " + tckn,
+                "Ad Soyad : " + asciify(buildFullName(student)),
+                "TCKN     : " + safeTckn(student),
                 "SAY Puani     : " + safe(yoksis.yksScore()),
                 "SAY Siralamasi: " + safe(yoksis.yksRank()),
                 "",
                 "Bu belge OSYM uzerinden otomatik olusturulmustur (simulasyon)."
-        ));
+        );
+    }
+
+    private String safeTckn(Student student) {
+        return student.getTckn() == null ? "-" : student.getTckn();
     }
 
     private void attach(Application app, String type, String fileName, List<String> lines) {
