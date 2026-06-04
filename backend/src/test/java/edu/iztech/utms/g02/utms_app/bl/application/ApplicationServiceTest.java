@@ -41,6 +41,7 @@ class ApplicationServiceTest {
     @Mock private ApplicationRepository applicationRepository;
     @Mock private StudentRepository studentRepository;
     @Mock private YoksisIntegrationService yoksisIntegrationService;
+    @Mock private edu.iztech.utms.g02.utms_app.integration.edevlet.EgovDocumentService egovDocumentService;
 
     @InjectMocks private ApplicationService applicationService;
 
@@ -59,10 +60,10 @@ class ApplicationServiceTest {
         setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
-                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
-        )).thenReturn(false);
-        
+        // Öğrencinin aktif başvurusu yok (tek-program kuralı engellemiyor) ve taslağı da yok.
+        // existsByStudent_UserIdAndStatusNotIn / findFirstByStudent_UserIdAndStatus için
+        // Mockito varsayılanları (false / Optional.empty) yeterli, ayrıca stub gerekmez.
+
         // ÖĞRENCİ 2. YARIYILDA VE ORTALAMASI 3.5 (Başvurusu KABUL EDİLMELİ)
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
                 .thenReturn(new YoksisStudentResponse(
@@ -93,13 +94,13 @@ class ApplicationServiceTest {
         setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
-                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
-        )).thenReturn(true);
+        // Öğrencinin zaten AKTİF bir başvurusu var → tek-program kuralı yeni başvuruyu engeller.
+        when(applicationRepository.existsByStudent_UserIdAndStatusNotIn(any(), any()))
+                .thenReturn(true);
 
         assertThatThrownBy(() -> applicationService.create(buildCreateRequest()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("birden fazla başvuru yapamaz");
+                .hasMessageContaining("bir program");
 
         verify(applicationRepository, never()).save(any(Application.class));
     }
@@ -110,9 +111,6 @@ class ApplicationServiceTest {
         setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
-                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
-        )).thenReturn(false);
 
         ApplicationCreateRequest request = buildCreateRequest();
         request.setKvkkAccepted(false); // Bilerek KVKK'yı reddediyoruz
@@ -131,9 +129,6 @@ class ApplicationServiceTest {
         setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
-                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
-        )).thenReturn(false);
 
         // YÖKSİS'ten GPA'i bilerek 2.49 dönüyoruz
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
@@ -156,9 +151,6 @@ class ApplicationServiceTest {
         setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
 
         when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
-        when(applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
-                student.getUserId(), "Bilgisayar Mühendisliği", "2026-2027"
-        )).thenReturn(false);
 
         // ÖĞRENCİ 3. YARIYILDA (Yani başvurduğunda 4. yarıyıla geçecek, ki bu kurala aykırı!) Ortalaması 3.5 olsa bile REDDEDİLMELİ.
         when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
@@ -633,6 +625,8 @@ class ApplicationServiceTest {
         request.setAcademicYear("2026-2027");
         request.setTargetFaculty("Mühendislik Fakültesi");
         request.setTargetDepartment("Bilgisayar Mühendisliği");
+        // YÖKSİS'te 2. yarıyılı tamamlayan öğrenci yalnızca 3. yarıyıla başvurabilir (tutarlılık kuralı).
+        request.setSemester(3);
         request.setKvkkAccepted(true); // Testin geçmesi için onaylıyoruz
         request.setSayYksScore(320.0);
         request.setSayYksRank(12345);

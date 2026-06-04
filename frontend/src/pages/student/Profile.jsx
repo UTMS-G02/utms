@@ -73,6 +73,16 @@ export default function Profile() {
       children: user?.email ?? '—',
     },
     {
+      key: 'university',
+      label: 'Kayıtlı Olduğu Üniversite',
+      children: academic?.currentUniversity ?? '—',
+    },
+    {
+      key: 'faculty',
+      label: 'Fakülte',
+      children: academic?.currentFaculty ?? '—',
+    },
+    {
       key: 'department',
       label: 'Bölüm',
       children: academic?.currentDepartment ?? '—',

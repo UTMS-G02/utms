@@ -41,9 +41,12 @@ const FACULTY_DEPARTMENTS = {
 
 const TARGET_FACULTY_OPTIONS = Object.keys(FACULTY_DEPARTMENTS)
 
-const ACADEMIC_YEAR_OPTIONS = ['2025-2026', '2026-2027', '2027-2028']
+// Başvurular yalnızca içinde bulunulan akademik yıla (2026-2027) yapılabilir.
+const ACTIVE_ACADEMIC_YEAR = '2026-2027'
+const ACADEMIC_YEAR_OPTIONS = [ACTIVE_ACADEMIC_YEAR]
 
-// Yatay geçiş yalnızca belirli yarıyıllara (3. / 5.) yapılabilir.
+// Yatay geçiş yalnızca belirli yarıyıllara (3. / 5.) yapılabilir. Hedef yarıyıl
+// öğrencinin YÖKSİS'teki mevcut sınıfından türetilir (1. sınıf → 3, 2. sınıf → 5).
 const SEMESTER_OPTIONS = [
   { value: '3', label: '3. Yarıyıl' },
   { value: '5', label: '5. Yarıyıl' },
@@ -139,7 +142,12 @@ export default function ApplicationForm() {
       .getMyYoksisData()
       .then((data) => {
         if (!active) return
+        // Hedef yarıyıl YÖKSİS'teki mevcut yarıyıldan türetilir ve değiştirilemez:
+        // 2. yarıyılı (1. sınıf) tamamlayan → 3., 4. yarıyılı (2. sınıf) tamamlayan → 5.
+        const targetSemester = data.semester != null ? String(data.semester + 1) : undefined
         form.setFieldsValue({
+          academicYear: ACTIVE_ACADEMIC_YEAR,
+          semester: targetSemester,
           currentUniversity: data.currentUniversity,
           currentDept: data.currentDepartment,
           currentYear: data.currentClass != null ? `${data.currentClass}. Sınıf` : '',
@@ -366,9 +374,11 @@ export default function ApplicationForm() {
               <Form.Item
                 label="Akademik Yıl"
                 name="academicYear"
+                initialValue={ACTIVE_ACADEMIC_YEAR}
                 rules={[{ required: true, message: 'Akademik yıl zorunludur.' }]}
+                extra="Başvurular yalnızca içinde bulunulan akademik yıla yapılabilir."
               >
-                <Select placeholder="Seçiniz">
+                <Select disabled>
                   {ACADEMIC_YEAR_OPTIONS.map((y) => (
                     <Option key={y} value={y}>{y}</Option>
                   ))}
@@ -380,8 +390,9 @@ export default function ApplicationForm() {
                 label="Başvurulan Yarıyıl"
                 name="semester"
                 rules={[{ required: true, message: 'Yarıyıl zorunludur.' }]}
+                extra="Sınıfınıza göre YÖKSİS'ten otomatik belirlenir: 1. sınıf → 3. yarıyıl, 2. sınıf → 5. yarıyıl. Yalnızca bu geçişler kabul edilir."
               >
-                <Select placeholder="Seçiniz">
+                <Select disabled placeholder={yoksisLoading ? 'YÖKSİS\'ten belirleniyor...' : 'Seçiniz'}>
                   {SEMESTER_OPTIONS.map((s) => (
                     <Option key={s.value} value={s.value}>{s.label}</Option>
                   ))}

@@ -46,4 +46,13 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
     // Aynı bölüm/dönem için yarım kalmış taslağı bulup yeniden kullanmak (yeni taslak üretmemek) için.
     Optional<Application> findFirstByStudent_UserIdAndTargetDepartmentAndAcademicYearAndStatus(
             Integer userId, String targetDept, String academicYear, ApplicationStatus status);
+
+    // Öğrencinin "devam eden" (terminal olmayan) herhangi bir başvurusu var mı?
+    // statuses parametresine taslak/geri-çekilmiş/reddedilmiş durumlar verilerek
+    // yalnızca AKTİF (incelemede/onaylı) bir başvuru yeni başvuruyu engeller.
+    // İş kuralı: bir öğrenci yalnızca TEK bir programa yatay geçiş başvurusu yapabilir.
+    boolean existsByStudent_UserIdAndStatusNotIn(Integer userId, Collection<ApplicationStatus> statuses);
+
+    // Öğrencinin yarım kalmış taslağını (bölümden bağımsız) bulup yeniden kullanmak için.
+    Optional<Application> findFirstByStudent_UserIdAndStatus(Integer userId, ApplicationStatus status);
 }

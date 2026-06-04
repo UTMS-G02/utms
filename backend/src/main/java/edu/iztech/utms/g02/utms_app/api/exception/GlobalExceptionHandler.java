@@ -2,6 +2,7 @@ package edu.iztech.utms.g02.utms_app.api.exception;
 
 import edu.iztech.utms.g02.utms_app.bl.auth.AuthException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.dao.DataIntegrityViolationException;
 import jakarta.persistence.EntityNotFoundException;
 
 import org.springframework.http.HttpStatus;
@@ -73,6 +74,23 @@ public class GlobalExceptionHandler {
         body.put("message", ex.getMessage());
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * Veritabanı bütünlük ihlalleri (409 Conflict).
+     * Örn: applications tablosundaki (user_id, academic_year, semester) unique kısıtı —
+     * öğrenci aynı akademik yıla ikinci bir başvuru yapmaya çalışınca ham SQL hatası
+     * yerine anlaşılır bir mesaj döneriz.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now().toString());
+        body.put("status", HttpStatus.CONFLICT.value());
+        body.put("error", HttpStatus.CONFLICT.getReasonPhrase());
+        body.put("message", "Aynı akademik yıla birden fazla başvuru yapılamaz.");
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     /**

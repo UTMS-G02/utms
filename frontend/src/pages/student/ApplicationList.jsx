@@ -66,6 +66,12 @@ export default function ApplicationList() {
       render: (id) => <Text style={{ fontWeight: 500 }}>#YG-{id}</Text>,
     },
     {
+      title: 'Akademik Yıl',
+      dataIndex: 'academicYear',
+      key: 'academicYear',
+      render: (val) => val ?? '—',
+    },
+    {
       title: 'Hedef Bölüm',
       dataIndex: 'targetDepartment',
       key: 'targetDepartment',
