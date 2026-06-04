@@ -31,6 +31,7 @@ public class ApplicationResponse {
     //private Integer studentId;
     private ApplicationStatus status;
     private String academicYear;
+    private String semester;          // hedef yarıyıl (3/5) — başvuru takibi detayında gösterilir
     private String targetFaculty;
     private String targetDepartment;
 
@@ -39,6 +40,7 @@ public class ApplicationResponse {
     private String tckn;
     private String email;
     private String phoneNumber;
+    private LocalDate dateOfBirth;    // başvuru takibi detayında kişisel bilgiler için
     private LocalDate submissionDate;
 
     // ÖİDB İnceleme Detayları
@@ -72,6 +74,8 @@ public class ApplicationResponse {
     private String currentFaculty;
     private String currentDepartment;
     private Double gpa;
+    private Double sayYksScore;       // ÖSYM (mock) SAY YKS puanı
+    private Integer sayYksRank;       // ÖSYM (mock) SAY YKS sıralaması
 
     // Belgeler — YDYO detay ekranı için hafif özet (indirme linki documentId ile kurulur)
     private List<DocumentSummary> documents;
