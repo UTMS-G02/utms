@@ -12,6 +12,10 @@ import org.springframework.web.bind.annotation.*;
  * İntibak tablosu uçları.
  *   GET /api/applications/{id}/intibak  → mevcut tabloyu getir
  *   PUT /api/applications/{id}/intibak  → tabloyu kaydet (replace-all)
+ *
+ * <p>Tabloyu YALNIZCA YGK düzenler (PUT). Okuma (GET) ise YGK'ye ek olarak
+ * Fakülte Kurulu (FACULTY_BOARD) ve Dekanlığa (DEAN_OFFICE) açıktır; bu makamlar
+ * UC-11 incelemesinde intibak tablosunu salt-okunur görür.
  */
 @RestController
 @RequiredArgsConstructor
@@ -20,7 +24,7 @@ public class CourseEquivalencyController {
 
     private final CourseEquivalencyService courseEquivalencyService;
 
-    @PreAuthorize("hasRole('YGK')")
+    @PreAuthorize("hasAnyRole('YGK', 'FACULTY_BOARD', 'DEAN_OFFICE')")
     @GetMapping("/{id}/intibak")
     public ResponseEntity<IntibakTableResponse> getTable(@PathVariable Integer id) {
         return ResponseEntity.ok(courseEquivalencyService.getTable(id));

@@ -54,6 +54,15 @@ public class CourseEquivalencyService {
         }
 
         Application app = findApp(applicationId);
+
+        // Koşullar karşılanıyorsa tablo eksiksiz olmalı: durumu/satırları DEĞİŞTİRMEDEN
+        // önce doğrula ki hatalı istek mevcut tabloyu silmesin (EX-2).
+        List<CourseEquivalencyRow> rows = null;
+        if (Boolean.TRUE.equals(req.getConditionsMet())) {
+            rows = req.getRows();
+            validateRows(rows);
+        }
+
         app.setYgkApproved(req.getConditionsMet());
         app.setYgkNotes(req.getShortcomingNote());
         applicationRepository.save(app);
@@ -62,9 +71,10 @@ public class CourseEquivalencyService {
         courseEquivalencyRepository.deleteByApplication_ApplicationId(applicationId);
 
         List<CourseEquivalency> newRows = Collections.emptyList();
-        if (Boolean.TRUE.equals(req.getConditionsMet()) && req.getRows() != null) {
-            newRows = IntStream.range(0, req.getRows().size())
-                    .mapToObj(i -> toEntity(req.getRows().get(i), app, i))
+        if (rows != null) {
+            final List<CourseEquivalencyRow> validRows = rows;
+            newRows = IntStream.range(0, validRows.size())
+                    .mapToObj(i -> toEntity(validRows.get(i), app, i))
                     .collect(Collectors.toList());
             courseEquivalencyRepository.saveAll(newRows);
         }
@@ -75,6 +85,47 @@ public class CourseEquivalencyService {
                 .shortcomingNote(req.getShortcomingNote())
                 .rows(newRows.stream().map(this::toRow).collect(Collectors.toList()))
                 .build();
+    }
+
+    /**
+     * Koşullar karşılanıyorken intibak tablosunun eksiksizliğini doğrular (EX-2).
+     * En az bir ders satırı gerekir; her satırda ders kodu/adı dolu, krediler pozitif
+     * ve denklik durumu seçili olmalıdır. Hata mesajları kullanıcı dostudur ve
+     * 1 tabanlı satır numarasını içerir.
+     */
+    private void validateRows(List<CourseEquivalencyRow> rows) {
+        if (rows == null || rows.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "İntibak tablosu eksik: koşullar karşılanıyorsa en az bir ders satırı girilmelidir.");
+        }
+        for (int i = 0; i < rows.size(); i++) {
+            CourseEquivalencyRow row = rows.get(i);
+            int rowNo = i + 1;
+            requireText(row.getSourceCode(), rowNo, "kaynak ders kodu");
+            requireText(row.getSourceName(), rowNo, "kaynak ders adı");
+            requirePositive(row.getSourceCredit(), rowNo, "kaynak kredi");
+            requireText(row.getTargetCode(), rowNo, "hedef ders kodu");
+            requireText(row.getTargetName(), rowNo, "hedef ders adı");
+            requirePositive(row.getTargetCredit(), rowNo, "hedef kredi");
+            if (row.getEquivalencyStatus() == null) {
+                throw new IllegalArgumentException(
+                        "İntibak tablosu eksik: " + rowNo + ". satırda denklik durumu seçilmelidir.");
+            }
+        }
+    }
+
+    private void requireText(String value, int rowNo, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(
+                    "İntibak tablosu eksik: " + rowNo + ". satırda " + field + " zorunludur.");
+        }
+    }
+
+    private void requirePositive(Integer value, int rowNo, String field) {
+        if (value == null || value <= 0) {
+            throw new IllegalArgumentException(
+                    "İntibak tablosu eksik: " + rowNo + ". satırda " + field + " pozitif olmalıdır.");
+        }
     }
 
     private CourseEquivalency toEntity(CourseEquivalencyRow row, Application app, int order) {
