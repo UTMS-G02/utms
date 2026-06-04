@@ -7,6 +7,7 @@ import {
   Divider,
   Empty,
   Input,
+  Modal,
   Row,
   Select,
   Space,
@@ -77,15 +78,23 @@ const FACULTY_OPTIONS = [
 const ANNOUNCEABLE_STATUSES = ['ACCEPTED', 'REJECTED']
 
 const DOCUMENT_TYPE_LABEL = {
+  STUDENT_CERTIFICATE: 'Öğrenci Belgesi',
   TRANSCRIPT: 'Transkript Belgesi',
-  ID_CARD: 'Kimlik Belgesi',
+  YKS_RESULT: 'YKS Sonuç Belgesi',
   LANGUAGE_CERT: 'Yabancı Dil Belgesi',
+  ID_CARD: 'Kimlik Belgesi',
   OTHER: 'Diğer Belge',
 }
+
+// Modal dropdown'u için, başvuruda belge yoksa kullanılacak genel yedek liste.
+const FALLBACK_DOCUMENT_OPTIONS = Object.entries(DOCUMENT_TYPE_LABEL).map(
+  ([value, label]) => ({ value, label }),
+)
 
 const ACTION_CONFIG = {
   OIDB_REVIEW: [
     { key: 'request_update', label: 'Güncelleme İste', type: 'default' },
+    { key: 'reject_application', label: 'Reddet', type: 'default', danger: true },
     { key: 'send_ydyo', label: "YDYO'ya Gönder", type: 'primary' },
   ],
   YDYO_APPROVED: [
@@ -197,7 +206,7 @@ const formatSearchMatch = (application, searchQuery) => {
 }
 
 export default function OidbDashboard() {
-  const { message: antdMessage } = App.useApp()
+  const { message: antdMessage, modal } = App.useApp()
   const { logout } = useAuth()
   const location = useLocation()
   const isPendingRoute = location.pathname === '/oidb/pending'
@@ -211,6 +220,15 @@ export default function OidbDashboard() {
   const [facultyFilter, setFacultyFilter] = useState('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTabs, setActiveTabs] = useState({})
+
+  // "Güncelleme İste" modalı durumu: hangi başvuru, seçilen belge tipi ve not.
+  const [revisionModal, setRevisionModal] = useState({
+    open: false,
+    applicationId: null,
+    documentType: undefined,
+    notes: '',
+  })
+  const [revisionSubmitting, setRevisionSubmitting] = useState(false)
 
   useEffect(() => {
     setStatusFilter(isPendingRoute ? 'OIDB_REVIEW' : 'ALL')
@@ -277,7 +295,7 @@ export default function OidbDashboard() {
     setExpandedIds([...expandedIds, applicationId])
   }
 
-  const handleAction = async (applicationId, actionKey) => {
+  const executeAction = async (applicationId, actionKey) => {
     try {
       let result = null
       if (actionKey === 'request_update') result = await applicationsApi.requestApplicationUpdate(applicationId)
@@ -292,10 +310,81 @@ export default function OidbDashboard() {
       } else {
         throw new Error('Action failed')
       }
-    } catch {
-      antdMessage.error('İşlem gerçekleştirilirken bir hata oluştu.')
+    } catch (err) {
+      // Varsa backend'in döndürdüğü anlamlı iş kuralı mesajını göster.
+      antdMessage.error(
+        err?.response?.data?.message || 'İşlem gerçekleştirilirken bir hata oluştu.',
+      )
     }
   }
+
+  const handleAction = (applicationId, actionKey) => {
+    // Güncelleme İste → doğrudan istek atma; hangi belge + not seçimi için modal aç.
+    if (actionKey === 'request_update') {
+      const docs = details[applicationId]?.documents ?? []
+      setRevisionModal({
+        open: true,
+        applicationId,
+        documentType: docs[0]?.docType, // varsa ilk belgeyi ön seçili getir
+        notes: '',
+      })
+      return
+    }
+
+    // Reddetme geri alınamaz bir işlem; önce onay penceresi göster.
+    if (actionKey === 'reject_application') {
+      modal.confirm({
+        title: 'Başvuruyu Reddet',
+        content: 'Bu başvuruyu reddetmek istediğinize emin misiniz? Başvurunun durumu "Reddedildi" olarak güncellenecektir.',
+        okText: 'Evet, Reddet',
+        okButtonProps: { danger: true },
+        cancelText: 'Vazgeç',
+        onOk: () => executeAction(applicationId, actionKey),
+      })
+      return
+    }
+    executeAction(applicationId, actionKey)
+  }
+
+  const closeRevisionModal = () => setRevisionModal((prev) => ({ ...prev, open: false }))
+
+  const handleRevisionSubmit = async () => {
+    if (!revisionModal.documentType) {
+      antdMessage.warning('Lütfen düzeltilmesi gereken belgeyi seçin.')
+      return
+    }
+    if (!revisionModal.notes.trim()) {
+      antdMessage.warning('Lütfen öğrenciye iletilecek bir düzeltme notu yazın.')
+      return
+    }
+    setRevisionSubmitting(true)
+    try {
+      await applicationsApi.requestApplicationUpdate(revisionModal.applicationId, {
+        requestedDocumentType: revisionModal.documentType,
+        revisionNotes: revisionModal.notes.trim(),
+      })
+      antdMessage.success('Güncelleme isteği öğrenciye iletildi.')
+      closeRevisionModal()
+      await loadApplications()
+    } catch (err) {
+      // Backend anlamlı bir iş kuralı mesajı döndürdüyse (örn. "sadece bir kez...") onu göster.
+      antdMessage.error(
+        err?.response?.data?.message || 'Güncelleme isteği gönderilirken bir hata oluştu.',
+      )
+    } finally {
+      setRevisionSubmitting(false)
+    }
+  }
+
+  // Modal dropdown'u: seçili başvuruya yüklü belgelerden türetilir; yoksa genel listeye düşer.
+  const revisionDocOptions = (() => {
+    const docs = details[revisionModal.applicationId]?.documents ?? []
+    if (docs.length === 0) return FALLBACK_DOCUMENT_OPTIONS
+    return docs.map((doc) => ({
+      value: doc.docType,
+      label: DOCUMENT_TYPE_LABEL[doc.docType] ?? doc.docType,
+    }))
+  })()
 
   const handleBulkShare = async () => {
     if (selectedIds.length === 0) return
@@ -599,6 +688,44 @@ export default function OidbDashboard() {
           )
         })
       )}
+
+      <Modal
+        title="Güncelleme İste"
+        open={revisionModal.open}
+        onOk={handleRevisionSubmit}
+        onCancel={closeRevisionModal}
+        confirmLoading={revisionSubmitting}
+        okText="Gönder"
+        cancelText="Vazgeç"
+        destroyOnClose
+      >
+        <Text type="secondary">
+          Öğrenciden hangi belgeyi düzeltmesini istediğinizi seçin ve bir not ekleyin.
+          Öğrenci yalnızca seçtiğiniz belgeyi yeniden yükleyebilecek.
+        </Text>
+        <div style={{ marginTop: 16 }}>
+          <Text strong>Düzeltilecek Belge</Text>
+          <Select
+            style={{ width: '100%', marginTop: 6 }}
+            placeholder="Belge seçin"
+            value={revisionModal.documentType}
+            onChange={(value) => setRevisionModal((prev) => ({ ...prev, documentType: value }))}
+            options={revisionDocOptions}
+          />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <Text strong>Düzeltme Notu</Text>
+          <Input.TextArea
+            style={{ marginTop: 6 }}
+            rows={4}
+            maxLength={500}
+            showCount
+            placeholder="Örn: Belge okunamıyor, lütfen PDF olarak yeniden yükleyin."
+            value={revisionModal.notes}
+            onChange={(e) => setRevisionModal((prev) => ({ ...prev, notes: e.target.value }))}
+          />
+        </div>
+      </Modal>
     </div>
   )
 }

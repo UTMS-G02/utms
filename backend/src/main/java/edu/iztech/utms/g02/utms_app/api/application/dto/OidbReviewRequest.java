@@ -36,7 +36,13 @@ public class OidbReviewRequest {
     private String notes; // Red veya onay sebebi (İsteğe bağlı veya reddedildiyse zorunlu yapılabilir)
 
     private boolean requestRevision; // YENİ: Eğer memur düzeltme istiyorsa burası true gelir
-    
+
+    // YENİ: Hangi belge için düzeltme isteniyor (örn: "TRANSCRIPT"). requestRevision=true iken anlamlı.
+    private String requestedDocumentType;
+
+    // YENİ: Memurun öğrenciye ileteceği düzeltme notu (örn: "Belge okunamıyor, PDF olarak yükleyin").
+    private String revisionNotes;
+
     // TODO: Long kısımları kontrol edilecek.
 
     private Long reviewerId; // İnceleyen personelin ID'si (Eğer token üzerinden alacaksanız bu alana gerek kalmaz)

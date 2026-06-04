@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Typography, Tag, Spin, Steps, Alert, Descriptions, Divider, Space, Upload, App } from 'antd'
-import { FileTextOutlined, UploadOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
+import { Button, Typography, Tag, Spin, Steps, Alert, Descriptions, Divider, Space, Upload, Tooltip, App } from 'antd'
+import { FileTextOutlined, UploadOutlined, LockOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { applicationsApi } from '../../api/applications'
 import { getStatusMeta, isRevisionRequested } from '../../constants/applicationStatus'
 
@@ -14,6 +14,8 @@ const DOCUMENT_TYPE_LABEL = {
   YKS_RESULT: 'YKS Sonuç Belgesi (ÖSYM)',
   COURSE_CONTENTS: 'Ders İçerikleri',
   LANGUAGE_CERT: 'İngilizce Yeterlilik Belgesi',
+  ID_CARD: 'Kimlik Belgesi',
+  OTHER: 'Diğer Belge',
 }
 
 const docTypeLabel = (type) =>
@@ -177,8 +179,10 @@ export default function ApplicationDetail() {
     gpa,
     sayYksScore,
     sayYksRank,
-    oidbNotes,                    // ← düzeltme gerekçesi BURADA (notes/revisionNotes yok)
+    oidbNotes,                    // geriye dönük ÖİDB notu (revisionNotes yoksa yedek gerekçe)
     ydyoNotes,
+    requestedDocumentType,        // OİDB'nin düzeltme istediği belge tipi (örn: TRANSCRIPT)
+    revisionNotes,                // OİDB'nin düzeltme notu (öncelikli gerekçe)
     documents = [],
   } = application
   const alertText = ALERT_MAP[status] ?? 'Başvurunuzun durumu güncellenmektedir.'
@@ -186,7 +190,12 @@ export default function ApplicationDetail() {
   const statusMeta = getStatusMeta(status)
 
   const revisionMode = isRevisionRequested(status)
-  const revisionNote = oidbNotes || ydyoNotes || 'Düzeltme gerekçesi belirtilmemiştir. Lütfen birimle iletişime geçin.'
+  const revisionNote = revisionNotes || oidbNotes || ydyoNotes || 'Düzeltme gerekçesi belirtilmemiştir. Lütfen birimle iletişime geçin.'
+  const requestedDocLabel = requestedDocumentType
+    ? (DOCUMENT_TYPE_LABEL[requestedDocumentType] ?? requestedDocumentType)
+    : null
+  // OİDB belirli bir belge seçtiyse yalnızca o belge düzenlenebilir; seçmediyse (geriye dönük) hepsi açık.
+  const isDocEditable = (docType) => !requestedDocumentType || docType === requestedDocumentType
 
   const beforeReupload = (documentType, file) => {
     if (file.type !== 'application/pdf') { message.error('Sadece PDF yüklenebilir.'); return Upload.LIST_IGNORE }
@@ -332,8 +341,14 @@ export default function ApplicationDetail() {
           message={<strong>Düzeltme / Evrak İadesi Gerekiyor</strong>}
           description={
             <span>
-              Başvurunuz aşağıdaki gerekçeyle düzeltmeye gönderildi. İlgili belgeleri
-              güncelleyip yeniden gönderin:
+              {requestedDocLabel ? (
+                <>
+                  Başvurunuzda <Text strong style={{ color: '#ad6800' }}>{requestedDocLabel}</Text> belgesinin
+                  düzeltilmesi isteniyor. Yalnızca bu belgeyi yeniden yükleyip başvurunuzu tekrar gönderin:
+                </>
+              ) : (
+                <>Başvurunuz aşağıdaki gerekçeyle düzeltmeye gönderildi. İlgili belgeleri güncelleyip yeniden gönderin:</>
+              )}
               <br />
               <Text strong style={{ color: '#ad6800' }}>"{revisionNote}"</Text>
             </span>
@@ -404,46 +419,66 @@ export default function ApplicationDetail() {
           <Text type="secondary">Henüz belge bulunmuyor.</Text>
         )}
 
-        {documents.map((doc) => (
-          <div key={doc.documentId} style={styles.documentRow}>
-            <FileTextOutlined style={{ color: '#8B1A2B', fontSize: 16 }} />
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <Text>{pendingFiles[doc.documentType]?.name ?? doc.fileName}</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>{docTypeLabel(doc.documentType)}</Text>
-            </div>
+        {documents.map((doc) => {
+          const editable = isDocEditable(doc.documentType)
+          return (
+            <div
+              key={doc.documentId}
+              style={{
+                ...styles.documentRow,
+                // Düzeltme modunda OİDB'nin istediği belgeyi görsel olarak öne çıkar
+                ...(revisionMode && editable
+                  ? { borderColor: '#ad6800', background: '#fffbe6' }
+                  : {}),
+              }}
+            >
+              <FileTextOutlined style={{ color: '#8B1A2B', fontSize: 16 }} />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Text>{pendingFiles[doc.documentType]?.name ?? doc.fileName}</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>{docTypeLabel(doc.documentType)}</Text>
+              </div>
 
-            <Space>
-              <Button
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={() => handleViewDocument(doc.documentId)}
-              >
-                Görüntüle
-              </Button>
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}
-              >
-                İndir
-              </Button>
-
-              {/* Yalnızca REVISION_REQUESTED iken yeniden yükleme kilidi açılır */}
-              {revisionMode && (
-                <Upload
-                  accept=".pdf"
-                  maxCount={1}
-                  showUploadList={false}
-                  beforeUpload={(file) => beforeReupload(doc.documentType, file)}
+              <Space>
+                <Button
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => handleViewDocument(doc.documentId)}
                 >
-                  <Button size="small" icon={<UploadOutlined />}>
-                    {pendingFiles[doc.documentType] ? 'Değiştir' : 'Yeniden Yükle'}
-                  </Button>
-                </Upload>
-              )}
-            </Space>
-          </div>
-        ))}
+                  Görüntüle
+                </Button>
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}
+                >
+                  İndir
+                </Button>
+
+                {/* Yalnızca REVISION_REQUESTED iken ve OİDB'nin seçtiği belge için kilit açılır */}
+                {revisionMode && (
+                  editable ? (
+                    <Upload
+                      accept=".pdf"
+                      maxCount={1}
+                      showUploadList={false}
+                      beforeUpload={(file) => beforeReupload(doc.documentType, file)}
+                    >
+                      <Button size="small" icon={<UploadOutlined />}>
+                        {pendingFiles[doc.documentType] ? 'Değiştir' : 'Yeniden Yükle'}
+                      </Button>
+                    </Upload>
+                  ) : (
+                    <Tooltip title="Bu belge için düzeltme istenmedi, yeniden yüklenemez.">
+                      <Button size="small" icon={<LockOutlined />} disabled>
+                        Kilitli
+                      </Button>
+                    </Tooltip>
+                  )
+                )}
+              </Space>
+            </div>
+          )
+        })}
       </div>
 
       <div style={styles.footer}>
