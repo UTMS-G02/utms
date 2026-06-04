@@ -225,10 +225,13 @@ public class ApplicationService {
     private ApplicationResponse processOidbReviewAfterSubmission(Application app, OidbReviewRequest req) {
         if (req.isRequestRevision()) {
             if (app.isRevisionRequestedBefore()) {
-                throw new IllegalStateException("Öğrenciye zaten bir kez düzeltme hakkı tanınmış.");
+                throw new IllegalStateException("Bir başvuru için sadece bir kez belge güncellemesi istenebilir.");
             }
             app.setStatus(ApplicationStatus.REVISION_REQUESTED);
             app.setRevisionRequestedBefore(true);
+            // Memurun seçtiği hatalı belge ve düzeltme notunu kaydet → öğrenci ekranı bunları kullanır.
+            app.setRequestedDocumentType(req.getRequestedDocumentType());
+            app.setRevisionNotes(req.getRevisionNotes());
         } else if (Boolean.TRUE.equals(req.isApproved())) {
             app.setStatus(ApplicationStatus.YDYO_REVIEW); 
         } else {
@@ -515,6 +518,33 @@ public class ApplicationService {
     }
 
 
+    // --------------------------------------------------------
+    // ÖİDB: DOĞRUDAN RED
+    // --------------------------------------------------------
+    // Memur, kriterleri sağlamayan veya evrakları hâlâ geçersiz olan bir başvuruyu
+    // güncelleme/YDYO akışına sokmadan doğrudan REJECTED yapabilir. (POST /{id}/reject)
+    @Transactional
+    public ApplicationResponse rejectApplication(Integer applicationId) {
+        Application app = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + applicationId));
+
+        // Nihai karara bağlanmış ya da geri çekilmiş başvurular tekrar reddedilemez.
+        Set<ApplicationStatus> notRejectable = EnumSet.of(
+                ApplicationStatus.APPROVED,
+                ApplicationStatus.ACCEPTED,
+                ApplicationStatus.REJECTED,
+                ApplicationStatus.WITHDRAWN);
+        if (notRejectable.contains(app.getStatus())) {
+            throw new IllegalStateException("Bu başvuru mevcut statüsünde reddedilemez. Güncel Statü: " + app.getStatus());
+        }
+
+        app.setStatus(ApplicationStatus.REJECTED);
+        app.setOidbReviewedDate(LocalDateTime.now());
+
+        return toResponse(applicationRepository.save(app));
+    }
+
+
     // --- ZAMAN KONTROLÜ İÇİN YARDIMCI METOT ---
     private boolean isApplicationPeriodActive() {
         // Veritabanından "aktif" olarak işaretlenmiş başvuru dönemini çek
@@ -598,6 +628,10 @@ public class ApplicationService {
         response.setOidbNotes(app.getOidbNotes());
         response.setOidbReviewedBy(app.getOidbReviewedBy() != null ? app.getOidbReviewedBy().getUserId() : null);
         response.setOidbReviewedDate(app.getOidbReviewedDate());
+
+        // Düzeltme isteği detayları (hangi belge + not) → öğrenci ekranı kullanır
+        response.setRequestedDocumentType(app.getRequestedDocumentType());
+        response.setRevisionNotes(app.getRevisionNotes());
 
         // YDYO inceleme detayları
         response.setYdyoApproved(app.getYdyoApproved());

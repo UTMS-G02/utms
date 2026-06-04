@@ -153,9 +153,15 @@ const oidbReal = {
     apiClient.get(`/applications/${id}`).then((r) => mapOidbApplication(r.data)),
 
   // Güncelleme İste → REVISION_REQUESTED
-  requestApplicationUpdate: (id) =>
+  // payload: { requestedDocumentType, revisionNotes } — memurun seçtiği hatalı belge + notu.
+  requestApplicationUpdate: (id, payload = {}) =>
     apiClient
-      .patch(`/applications/${id}/oidb-review`, { approved: false, requestRevision: true })
+      .patch(`/applications/${id}/oidb-review`, {
+        approved: false,
+        requestRevision: true,
+        requestedDocumentType: payload.requestedDocumentType,
+        revisionNotes: payload.revisionNotes,
+      })
       .then((r) => r.data),
 
   // YDYO'ya Gönder (1. aşama onayı) → YDYO_REVIEW
@@ -170,10 +176,11 @@ const oidbReal = {
       .patch(`/applications/${id}/oidb-review`, { approved: true, requestRevision: false })
       .then((r) => r.data),
 
-  // Reddet (1. aşamada OIDB_REJECTED, YDYO sonrasında REJECTED)
+  // Reddet → doğrudan REJECTED (POST /{id}/reject)
+  // Memur, güncelleme/YDYO akışına sokmadan başvuruyu doğrudan reddeder.
   rejectApplication: (id) =>
     apiClient
-      .patch(`/applications/${id}/oidb-review`, { approved: false, requestRevision: false })
+      .post(`/applications/${id}/reject`)
       .then((r) => r.data),
 }
 
