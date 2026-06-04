@@ -116,7 +116,7 @@ class CourseEquivalencyServiceTest {
         Application app = buildApp(4);
         IntibakTableRequest req = new IntibakTableRequest(true, null, List.of(
                 buildRow("A101", "CourseA", 3, "A101", "DersA", 3, EquivalencyStatus.TAM_DENKLIK),
-                buildRow("B101", "CourseB", 2, "B101", "DersB", 2, EquivalencyStatus.DENKDEGIL),
+                buildRow("B101", "CourseB", 2, "B101", "DersB", 2, EquivalencyStatus.DENK_DEGIL),
                 buildRow("C101", "CourseC", 4, "C101", "DersC", 4, EquivalencyStatus.KISMI_DENKLIK)
         ));
 
