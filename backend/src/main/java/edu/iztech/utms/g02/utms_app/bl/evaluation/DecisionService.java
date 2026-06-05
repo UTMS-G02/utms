@@ -2,6 +2,7 @@ package edu.iztech.utms.g02.utms_app.bl.evaluation;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.DecisionRequest;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.FacultyBoardDecisionResponse;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
@@ -16,50 +17,38 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.EnumSet;
-import java.util.Set;
-
-import static edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus.*;
+import static edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus.FACULTY_BOARD_ACCEPTED;
+import static edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus.FACULTY_BOARD_REJECTED;
+import static edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus.FACULTY_BOARD_REVIEW;
 
 /**
- * Komisyon kararları: Dekanlık → Fakülte Kurulu → Nihai Dekanlık.
+ * Komisyon kararı. Router modelinde TEK karar makamı Fakülte Kurulu'dur.
  *
- * <p>İstek gövdesi Pair 2 ile tutarlı: {@code approved} (boolean) + {@code notes}.
- * committee_decisions tablosu EKLE-ONLY'dir: her karar yeni bir satır olarak eklenir,
- * mevcut satırlar güncellenmez. Statü geçişleri {@link #nextStatus} ile yönetilir.
+ * <p>Dekanlık Ofisi karar VERMEZ (yalnızca iletir → {@link DeanForwardService}); eski dekan/
+ * nihai-dekan akışları kaldırıldı. committee_decisions EKLE-ONLY'dir. Geçiş:
+ * {@code FACULTY_BOARD_REVIEW} → onay: {@code FACULTY_BOARD_ACCEPTED} | ret: {@code FACULTY_BOARD_REJECTED}.
+ *
+ * <p>İntibak redesign (dev) ile uyum: onay sonrası denklik oranı hesaplanır; %80 altındaysa
+ * yumuşak uyarı (belowThreshold) döndürülür — karar ENGELLENMEZ, yalnızca bilgilendirir.
  */
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class DecisionService {
 
+    private static final double EQUIVALENCY_THRESHOLD = 0.80;
+
     private final ApplicationRepository applicationRepository;
     private final CommitteeDecisionRepository committeeDecisionRepository;
-    private final ApplicationService applicationService; // ApplicationResponse üretimi için (Pair 2 public API)
+    private final ApplicationService applicationService;       // ApplicationResponse üretimi (Pair 2 public API)
+    private final CourseEquivalencyService courseEquivalencyService; // denklik oranı (intibak redesign)
 
     @Transactional
-    public ApplicationResponse recordDeanDecision(Integer applicationId, DecisionRequest req) {
-        // YGK_REVIEW_DONE: YGK başvuru bazında değerlendirip Dekanlığa ilettiğinde (UC-8).
-        // YGK_SCORED: yalnızca toplu skorlama yapıldıysa (manuel değerlendirme atlanmışsa).
-        return record(applicationId, "DEAN", req, EnumSet.of(YGK_SCORED, YGK_REVIEW_DONE, DEAN_REVIEW));
-    }
-
-    @Transactional
-    public ApplicationResponse recordFacultyBoardDecision(Integer applicationId, DecisionRequest req) {
-        return record(applicationId, "FACULTY_BOARD", req, EnumSet.of(FACULTY_BOARD_REVIEW));
-    }
-
-    @Transactional
-    public ApplicationResponse recordFinalDeanDecision(Integer applicationId, DecisionRequest req) {
-        return record(applicationId, "FINAL_DEAN", req, EnumSet.of(FINAL_DEAN_REVIEW));
-    }
-
-    private ApplicationResponse record(Integer applicationId, String role,
-                                       DecisionRequest req, Set<ApplicationStatus> allowedStatuses) {
+    public FacultyBoardDecisionResponse recordFacultyBoardDecision(Integer applicationId, DecisionRequest req) {
         Application app = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + applicationId));
 
-        if (!allowedStatuses.contains(app.getStatus())) {
+        if (app.getStatus() != FACULTY_BOARD_REVIEW) {
             throw new IllegalStateException(
                     "Başvuru bu karar için uygun aşamada değil. Güncel Statü: " + app.getStatus());
         }
@@ -69,26 +58,34 @@ public class DecisionService {
         // Ret gerekçe kodu yalnızca ret kararında saklanır; onayda anlamsızdır.
         String rejectionCode = approved ? null : req.getRejectionCode();
 
-        // EKLE-ONLY: her karar yeni satır. Makam role olarak saklanır: DEAN / FACULTY_BOARD / FINAL_DEAN.
+        // EKLE-ONLY: her karar yeni satır.
         committeeDecisionRepository.save(CommitteeDecision.builder()
                 .application(app)
-                .decisionBy(role)
+                .decisionBy("FACULTY_BOARD")
                 .decision(approved ? "APPROVED" : "REJECTED")
                 .notes(req.getNotes())
                 .rejectionCode(rejectionCode)
                 .build());
 
         ApplicationStatus previous = app.getStatus();
-        ApplicationStatus next = nextStatus(role, approved);
+        ApplicationStatus next = approved ? FACULTY_BOARD_ACCEPTED : FACULTY_BOARD_REJECTED;
         app.setStatus(next);
         applicationRepository.save(app);
 
-        // Denetim izi: karar veren makam / kullanıcı, statü geçişi, karar ve ret kodu.
-        log.info("Komisyon kararı: applicationId={}, role={}, {} -> {}, decision={}, rejectionCode={}, by={}",
-                applicationId, role, previous, next, approved ? "APPROVED" : "REJECTED",
-                rejectionCode, currentUser());
+        log.info("Fakülte Kurulu kararı: applicationId={}, {} -> {}, decision={}, rejectionCode={}, by={}",
+                applicationId, previous, next, approved ? "APPROVED" : "REJECTED", rejectionCode, currentUser());
 
-        return applicationService.getApplicationById(applicationId);
+        ApplicationResponse application = applicationService.getApplicationById(applicationId);
+
+        // İntibak redesign (dev): denklik oranı + %80 yumuşak uyarı (yalnızca onayda anlamlı).
+        Double ratio = courseEquivalencyService.calculateEquivalencyRatio(applicationId);
+        boolean belowThreshold = approved && ratio != null && ratio < EQUIVALENCY_THRESHOLD;
+
+        return FacultyBoardDecisionResponse.builder()
+                .application(application)
+                .equivalencyRatio(ratio)
+                .belowThreshold(belowThreshold)
+                .build();
     }
 
     /** Denetim logu için aktif kullanıcının e-postası; güvenlik bağlamı yoksa "anonymous". */
@@ -102,15 +99,5 @@ public class DecisionService {
             throw new IllegalArgumentException("Karar (approved) belirtilmelidir: true (onay) veya false (ret).");
         }
         return req.getApproved();
-    }
-
-    /** PDF §6'daki geçiş tablosu. */
-    private ApplicationStatus nextStatus(String role, boolean approved) {
-        return switch (role) {
-            case "DEAN"          -> approved ? FACULTY_BOARD_REVIEW : DEAN_REJECTED;
-            case "FACULTY_BOARD" -> approved ? FINAL_DEAN_REVIEW    : FACULTY_BOARD_REJECTED;
-            case "FINAL_DEAN"    -> approved ? RESULT_PUBLISHED     : REJECTED;
-            default -> throw new IllegalArgumentException("Tanınmayan rol: " + role);
-        };
     }
 }

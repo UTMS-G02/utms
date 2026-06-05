@@ -1,5 +1,7 @@
 package edu.iztech.utms.g02.utms_app.dal.application.entity;
 
+import edu.iztech.utms.g02.utms_app.dal.department.entity.Department;
+import edu.iztech.utms.g02.utms_app.dal.department.entity.Faculty;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import jakarta.persistence.*;
@@ -40,6 +42,17 @@ public class Application {
 
     @Column(nullable = false)
     private String targetFaculty;
+
+    // Pair 3: hedef fakülte/bölümün gerçek FK karşılığı. targetFaculty/targetDepartment
+    // metinlerinden "en iyi çaba" ile doldurulur (eşleşmezse null) — DOĞRULAMA YOK.
+    // Fakülte/bölüm kapsamlı sorgular (dekan listesi, YGK skorlama) bu FK'lar üzerinden çalışır.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "faculty_id")
+    private Faculty faculty;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_id")
+    private Department department;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

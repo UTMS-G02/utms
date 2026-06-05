@@ -48,11 +48,13 @@ const FakulteKuruluDashboard = () => {
   const [evalNote, setEvalNote] = useState('')
   const [decision, setDecision] = useState('approve')
   const [expandedApproved, setExpandedApproved] = useState({})
+  const [intibakExpanded, setIntibakExpanded] = useState(false)
 
   const openDecisionModal = (record) => {
     setSelectedStudent(record)
     setEvalNote('')
     setDecision('approve')
+    setIntibakExpanded(false)
     setDecisionModal(true)
   }
 
@@ -267,7 +269,33 @@ const FakulteKuruluDashboard = () => {
                 </div>
               </Col>
               <Col span={24}>
-                <Button type="link" icon={<DownloadOutlined />} style={{ paddingLeft: 0 }}>{selectedStudent.intibakRaporu}</Button>
+                <Button
+                  type="link"
+                  icon={intibakExpanded ? <UpOutlined /> : <DownOutlined />}
+                  style={{ paddingLeft: 0 }}
+                  onClick={() => setIntibakExpanded(prev => !prev)}
+                >
+                  {selectedStudent.intibakRaporu}
+                </Button>
+                {intibakExpanded && (
+                  <div style={{ marginTop: 12 }}>
+                    <Table
+                      columns={[
+                        { title: 'Mevcut Ders Kodu', dataIndex: 'mevcutDersKodu', key: 'mevcutDersKodu' },
+                        { title: 'Mevcut Ders Adı', dataIndex: 'mevcutDersAdi', key: 'mevcutDersAdi' },
+                        { title: 'Kredi', dataIndex: 'kredi', key: 'kredi' },
+                        { title: 'İYTE Ders Kodu', dataIndex: 'iyeteDersKodu', key: 'iyeteDersKodu' },
+                        { title: 'İYTE Ders Adı', dataIndex: 'iyeteDersAdi', key: 'iyeteDersAdi' },
+                        { title: 'Kredi', dataIndex: 'iyteKredi', key: 'iyteKredi' },
+                        { title: 'Denklik', dataIndex: 'denklik', key: 'denklik' },
+                      ]}
+                      dataSource={INTIBAK_DATA}
+                      pagination={false}
+                      size="small"
+                      bordered
+                    />
+                  </div>
+                )}
               </Col>
             </Row>
 
@@ -280,8 +308,8 @@ const FakulteKuruluDashboard = () => {
               <Col span={24}>
                 <Radio.Group value={decision} onChange={(e) => setDecision(e.target.value)}>
                   <Space direction="vertical">
-                    <Radio value="approve">Başvuruyu Onayla</Radio>
-                    <Radio value="reject">Başvuruyu Reddet</Radio>
+                    <Radio value="approve">Değerlendirmeyi Onayla</Radio>
+                    <Radio value="reject">Değerlendirmeyi Reddet</Radio>
                   </Space>
                 </Radio.Group>
               </Col>
@@ -303,33 +331,6 @@ const FakulteKuruluDashboard = () => {
               </Col>
             </Row>
 
-            <Divider />
-
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Title level={4}>İntibak Tablosu (Ders Denklik Tablosu)</Title>
-              </Col>
-              <Col span={24}>
-                <Table
-                  columns={[
-                    { title: 'Mevcut Ders Kodu', dataIndex: 'mevcutDersKodu', key: 'mevcutDersKodu' },
-                    { title: 'Mevcut Ders Adı', dataIndex: 'mevcutDersAdi', key: 'mevcutDersAdi' },
-                    { title: 'Kredi', dataIndex: 'kredi', key: 'kredi' },
-                    { title: 'İYTE Ders Kodu', dataIndex: 'iyeteDersKodu', key: 'iyeteDersKodu' },
-                    { title: 'İYTE Ders Adı', dataIndex: 'iyeteDersAdi', key: 'iyeteDersAdi' },
-                    { title: 'Kredi', dataIndex: 'iyteKredi', key: 'iyteKredi' },
-                    { title: 'Denklik', dataIndex: 'denklik', key: 'denklik' },
-                  ]}
-                  dataSource={INTIBAK_DATA}
-                  pagination={false}
-                  size="small"
-                  bordered
-                />
-              </Col>
-              <Col span={24} style={{ marginTop: 8 }}>
-                <Button type="primary" danger>+ Ders Ekle</Button>
-              </Col>
-            </Row>
           </div>
         )}
       </Modal>

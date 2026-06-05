@@ -18,26 +18,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * ÖİDB sonuç yayınlama ve sonuç görüntüleme.
  *
  * <p>Sonuçlar yayınlanana (published_results satırı oluşana) kadar öğrenciye görünmez.
- * Yayınlama nihai aşamadaki başvuruları kapsar:
- * RESULT_PUBLISHED → ACCEPTED; reddedilen terminal statüler → REJECTED kaydı.
+ * Dekan, Fakülte Kurulu kararını ÖİDB'ye iletince: kabul → {@code OIDB_FINAL_REVIEW}, red → {@code REJECTED}.
+ * ÖİDB yayınlayınca: {@code OIDB_FINAL_REVIEW → ACCEPTED} ve {@code REJECTED} → red kaydı
+ * (öğrenci her iki durumda da bilgilendirilir — TC-10.4).
  */
 @Service
 @RequiredArgsConstructor
 public class ResultService {
-
-    private static final Set<ApplicationStatus> REJECTED_TERMINAL = EnumSet.of(
-            ApplicationStatus.DEAN_REJECTED,
-            ApplicationStatus.FACULTY_BOARD_REJECTED,
-            ApplicationStatus.REJECTED);
 
     private final ApplicationRepository applicationRepository;
     private final PublishedResultRepository publishedResultRepository;
@@ -54,8 +48,9 @@ public class ResultService {
         User publisher = resolveCurrentUser();
         int count = 0;
 
-        // Kabul edilenler: final dekanlık onayı sonrası RESULT_PUBLISHED → ACCEPTED
-        for (Application app : findByStatus(ApplicationStatus.RESULT_PUBLISHED)) {
+        // Kabul edilenler: Dekanlık, Fakülte Kurulu'nca kabul edilen başvuruyu ÖİDB'ye iletince
+        // statü OIDB_FINAL_REVIEW olur; ÖİDB yayınlayınca OIDB_FINAL_REVIEW → ACCEPTED.
+        for (Application app : findByStatus(ApplicationStatus.OIDB_FINAL_REVIEW)) {
             if (publishedResultRepository.existsByApplication_ApplicationId(app.getApplicationId())) {
                 continue;
             }
@@ -69,19 +64,18 @@ public class ResultService {
             count++;
         }
 
-        // Reddedilenler: terminal red statülerini de öğrenciye görünür kıl
-        for (ApplicationStatus status : REJECTED_TERMINAL) {
-            for (Application app : findByStatus(status)) {
-                if (publishedResultRepository.existsByApplication_ApplicationId(app.getApplicationId())) {
-                    continue;
-                }
-                publishedResultRepository.save(PublishedResult.builder()
-                        .application(app)
-                        .finalDecision("REJECTED")
-                        .publishedBy(publisher)
-                        .build());
-                count++;
+        // Reddedilenler: Dekan, Fakülte Kurulu reddini ÖİDB'ye iletince statü REJECTED olur;
+        // ÖİDB yayınlayınca red kaydı oluşur (öğrenci bilgilendirilir). Statü REJECTED kalır.
+        for (Application app : findByStatus(ApplicationStatus.REJECTED)) {
+            if (publishedResultRepository.existsByApplication_ApplicationId(app.getApplicationId())) {
+                continue;
             }
+            publishedResultRepository.save(PublishedResult.builder()
+                    .application(app)
+                    .finalDecision("REJECTED")
+                    .publishedBy(publisher)
+                    .build());
+            count++;
         }
 
         return count;
