@@ -40,12 +40,71 @@ export const isResubmittedAfterRevision = (app) =>
   Boolean(app?.revisionRequestedBefore) &&
   (app?.status === 'SUBMITTED' || app?.status === 'OIDB_REVIEW')
 
-// Öğrenci panelleri için durum etiketi. Düzeltme sonrası yeniden gönderilen başvuru,
-// sonucu henüz belli olmadığı için "İncelemede" gösterilir; aksi halde standart META.
-export const getStudentStatusMeta = (app) => {
-  if (!app) return getStatusMeta(undefined)
+// ─── Öğrenci milestone modeli ─────────────────────────────────────────────────
+// Öğrenciye gösterilen durum YALNIZCA ÖİDB aksiyonlarını yansıtır. YDYO / YGK /
+// Dekanlık / Fakülte gibi iç aşamalar jenerik "Değerlendiriliyor" altında gizlenir.
+// YDYO sonucu (yabancı dilden muaf / sınavı geçti), ancak ÖİDB başvuruyu
+// değerlendirmeye ilerlettikten (EVALUATION_QUEUE ve sonrası) sonra yüzeye çıkar.
+
+const STUDENT_UNDER_OIDB = ['SUBMITTED', 'OIDB_REVIEW']
+// ÖİDB onayladı ama post-YDYO işlemini henüz yapmadı → sonuç gizli, jenerik değerlendiriliyor
+const STUDENT_PRE_OIDB_FORWARD = ['YDYO_REVIEW', 'YDYO_EXAM_PENDING', 'YDYO_ACCEPTED', 'YDYO_REJECTED']
+// ÖİDB post-YDYO işlemini yaptı → değerlendirme sürecinde (muaf/geçti yüzeye çıktı)
+const STUDENT_IN_EVALUATION = [
+  'EVALUATION_QUEUE', 'YGK_REVIEW', 'YGK_REVIEW_DONE', 'YGK_SCORED',
+  'DEAN_OFFICE_REVIEW', 'DEAN_REVIEW', 'DEAN_REJECTED',
+  'FACULTY_BOARD_REVIEW', 'FACULTY_BOARD_ACCEPTED', 'FACULTY_BOARD_REJECTED',
+  'OIDB_FINAL_REVIEW', 'FINAL_DEAN_REVIEW',
+]
+const STUDENT_APPROVED = ['APPROVED', 'ACCEPTED', 'RESULT_PUBLISHED']
+const STUDENT_REJECTED = ['OIDB_REJECTED', 'REJECTED'] // yalnızca ÖİDB'nin verdiği red
+
+// Öğrenci için tam milestone: etiket + renk + Güncel Durum alert tipi/metni.
+export const getStudentMilestone = (app) => {
+  const fallback = { label: 'Bilinmiyor', color: 'default', alertType: 'info', alertText: 'Başvurunuzun durumu güncellenmektedir.' }
+  if (!app) return fallback
+  const status = app.status
+
+  // Düzeltme yapıp yeniden gönderilen başvuru → sonucu belli değil, "İncelemede"
   if (isResubmittedAfterRevision(app)) {
-    return { label: 'İncelemede', color: 'processing' }
+    return { label: 'İncelemede', color: 'processing', alertType: 'info',
+      alertText: 'Başvurunuz Öğrenci İşleri (ÖİDB) tarafından yeniden inceleniyor. Sonuç belirlendiğinde bilgilendirileceksiniz.' }
   }
-  return getStatusMeta(app.status)
+
+  if (status === 'DRAFT')
+    return { label: 'Taslak', color: 'default', alertType: 'info', alertText: 'Başvurunuz henüz gönderilmemiştir. Tamamlayarak gönderin.' }
+  if (status === 'WITHDRAWN')
+    return { label: 'Geri Çekildi', color: 'default', alertType: 'info', alertText: 'Başvurunuzu geri çektiniz.' }
+  if (status === 'REVISION_REQUESTED')
+    return { label: 'Düzeltme Bekliyor', color: 'warning', alertType: 'warning',
+      alertText: 'Başvurunuz düzeltme için iade edilmiştir. Yukarıdaki gerekçeyi inceleyip ilgili belgeleri güncelleyin.' }
+  if (STUDENT_UNDER_OIDB.includes(status))
+    return { label: 'İncelemede', color: 'processing', alertType: 'info',
+      alertText: 'Başvurunuz Öğrenci İşleri (ÖİDB) tarafından inceleniyor. Sonuç belirlendiğinde bilgilendirileceksiniz.' }
+  if (STUDENT_REJECTED.includes(status))
+    return { label: 'Reddedildi', color: 'error', alertType: 'error',
+      alertText: app.oidbNotes ? `Başvurunuz reddedilmiştir. Gerekçe: ${app.oidbNotes}` : 'Başvurunuz reddedilmiştir.' }
+  if (STUDENT_APPROVED.includes(status))
+    return { label: 'Onaylandı', color: 'success', alertType: 'success', alertText: 'Başvurunuz kabul edilmiştir. Tebrikler!' }
+  if (STUDENT_PRE_OIDB_FORWARD.includes(status))
+    return { label: 'Değerlendiriliyor', color: 'processing', alertType: 'info', alertText: 'Başvurunuz değerlendirme sürecindedir.' }
+  if (STUDENT_IN_EVALUATION.includes(status)) {
+    const langText =
+      app.ydyoApproved === true ? 'Yabancı dil şartından muaf tutuldunuz. '
+      : app.ydyoApproved === false ? 'Yabancı dil sınavını başarıyla geçtiniz. '
+      : ''
+    return { label: 'Değerlendiriliyor', color: 'processing', alertType: 'info',
+      alertText: `${langText}Başvurunuz değerlendirme sürecindedir.` }
+  }
+
+  // Bilinmeyen statü → güvenli varsayılan
+  const meta = getStatusMeta(status)
+  return { ...fallback, label: meta.label, color: meta.color }
+}
+
+// Öğrenci panelleri için durum etiketi (Tag). Detay + Başvurularım + Ana Sayfa
+// hepsi bunu kullanır → tek noktadan ÖİDB-bazlı tutarlı görünüm.
+export const getStudentStatusMeta = (app) => {
+  const m = getStudentMilestone(app)
+  return { label: m.label, color: m.color }
 }

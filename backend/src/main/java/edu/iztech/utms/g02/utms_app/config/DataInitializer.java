@@ -3,6 +3,8 @@ package edu.iztech.utms.g02.utms_app.config;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
+import edu.iztech.utms.g02.utms_app.dal.notification.entity.Notification;
+import edu.iztech.utms.g02.utms_app.dal.notification.repository.NotificationRepository;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.UserRole;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -25,6 +28,7 @@ public class DataInitializer implements CommandLineRunner {
     private final StaffRepository staffRepository;
     private final StudentRepository studentRepository;
     private final ApplicationRepository applicationRepository;
+    private final NotificationRepository notificationRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -56,6 +60,44 @@ public class DataInitializer implements CommandLineRunner {
         // listesinde geçmiş kayıt + akademik yıl kolonu görünür olsun. Reddedilmiş statü
         // olduğu için tek-program kuralını ihlal etmez; öğrenci 2026-2027'ye başvurabilir.
         seedPastRejectedApplication("ogrenci@iyte.edu.tr");
+
+        // UC-15: Her kullanıcıya örnek bildirimler (idempotent — bir kısmı okunmamış).
+        seedNotifications();
+    }
+
+    // Dev seed: bildirimler artık canlı ÖİDB aksiyonlarından üretiliyor; burada yalnızca
+    // test öğrencisine kutu boş kalmasın diye ÖİDB-tarzı örnekler eklenir (idempotent).
+    // Personel hesaplarına seed yok — bildirimleri kendi işlemlerinden doğar.
+    private void seedNotifications() {
+        userRepository.findByEmail("ogrenci@iyte.edu.tr").ifPresent(user -> {
+            if (notificationRepository.existsByUserId(user.getUserId())) return;
+
+            LocalDateTime now = LocalDateTime.now();
+            notificationRepository.saveAll(List.of(
+                    Notification.builder()
+                            .userId(user.getUserId())
+                            .title("Başvurunuz Reddedildi")
+                            .message("Önceki dönem başvurunuz eksik belgeler nedeniyle reddedilmiştir.")
+                            .isRead(true)
+                            .createdAt(now.minusDays(3))
+                            .build(),
+                    Notification.builder()
+                            .userId(user.getUserId())
+                            .title("Ön İnceleme Tamamlandı")
+                            .message("Başvurunuz Öğrenci İşleri ön incelemesinden başarıyla geçti ve değerlendirme sürecine alındı.")
+                            .isRead(false)
+                            .createdAt(now.minusDays(1))
+                            .build(),
+                    Notification.builder()
+                            .userId(user.getUserId())
+                            .title("Belge Güncellemesi Gerekiyor")
+                            .message("Başvurunuzdaki transkript belgesinin güncellenmesi istenmektedir. Lütfen başvuru detayından yeniden yükleyin.")
+                            .isRead(false)
+                            .createdAt(now.minusHours(4))
+                            .build()
+            ));
+            System.out.println("UC-15: Test öğrencisi için örnek bildirimler eklendi.");
+        });
     }
 
     private void seedPastRejectedApplication(String studentEmail) {
