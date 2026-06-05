@@ -39,24 +39,12 @@ public class CommitteeReviewController {
         return ResponseEntity.ok(boardReviewService.getReview(id));
     }
 
-    @PreAuthorize("hasRole('DEAN_OFFICE')")
-    @PatchMapping("/{id}/dean-review")
-    public ResponseEntity<ApplicationResponse> deanReview(@PathVariable Integer id,
-                                                          @RequestBody DecisionRequest req) {
-        return ResponseEntity.ok(decisionService.recordDeanDecision(id, req));
-    }
-
+    // Router modeli: Dekanlık karar vermez (dean-review / final-dean-review kaldırıldı).
+    // Dekan iletimleri DeanController altındadır; Fakülte Kurulu kararı tek karar makamıdır.
     @PreAuthorize("hasRole('FACULTY_BOARD')")
     @PatchMapping("/{id}/faculty-board-review")
     public ResponseEntity<ApplicationResponse> facultyBoardReview(@PathVariable Integer id,
                                                                   @RequestBody DecisionRequest req) {
         return ResponseEntity.ok(decisionService.recordFacultyBoardDecision(id, req));
-    }
-
-    @PreAuthorize("hasRole('DEAN_OFFICE')")
-    @PatchMapping("/{id}/final-dean-review")
-    public ResponseEntity<ApplicationResponse> finalDeanReview(@PathVariable Integer id,
-                                                               @RequestBody DecisionRequest req) {
-        return ResponseEntity.ok(decisionService.recordFinalDeanDecision(id, req));
     }
 }

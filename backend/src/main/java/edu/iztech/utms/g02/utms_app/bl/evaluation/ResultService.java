@@ -54,8 +54,9 @@ public class ResultService {
         User publisher = resolveCurrentUser();
         int count = 0;
 
-        // Kabul edilenler: final dekanlık onayı sonrası RESULT_PUBLISHED → ACCEPTED
-        for (Application app : findByStatus(ApplicationStatus.RESULT_PUBLISHED)) {
+        // Kabul edilenler: Dekanlık, Fakülte Kurulu'nca kabul edilen başvuruyu ÖİDB'ye iletince
+        // statü OIDB_FINAL_REVIEW olur; ÖİDB yayınlayınca OIDB_FINAL_REVIEW → ACCEPTED.
+        for (Application app : findByStatus(ApplicationStatus.OIDB_FINAL_REVIEW)) {
             if (publishedResultRepository.existsByApplication_ApplicationId(app.getApplicationId())) {
                 continue;
             }

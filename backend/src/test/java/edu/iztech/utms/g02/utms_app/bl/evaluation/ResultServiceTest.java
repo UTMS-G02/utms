@@ -53,9 +53,9 @@ class ResultServiceTest {
     @Test
     void publish_resultPublishedApp_createsAcceptedRowAndSetsAccepted() {
         loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
-        Application app = buildApp(1, ApplicationStatus.RESULT_PUBLISHED);
+        Application app = buildApp(1, ApplicationStatus.OIDB_FINAL_REVIEW);
         when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
-        when(applicationRepository.findByStatus(eq(ApplicationStatus.RESULT_PUBLISHED), any(Pageable.class)))
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(app)));
         when(publishedResultRepository.existsByApplication_ApplicationId(1)).thenReturn(false);
         when(publishedResultRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -72,9 +72,9 @@ class ResultServiceTest {
     @Test
     void publish_idempotent_alreadyPublishedAppIsSkipped() {
         loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
-        Application app = buildApp(2, ApplicationStatus.RESULT_PUBLISHED);
+        Application app = buildApp(2, ApplicationStatus.OIDB_FINAL_REVIEW);
         when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
-        when(applicationRepository.findByStatus(eq(ApplicationStatus.RESULT_PUBLISHED), any(Pageable.class)))
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(app)));
         when(publishedResultRepository.existsByApplication_ApplicationId(2)).thenReturn(true);
         stubRejectedTerminalsEmpty();
@@ -83,7 +83,7 @@ class ResultServiceTest {
 
         assertThat(count).isEqualTo(0);
         verify(publishedResultRepository, never()).save(any());
-        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.RESULT_PUBLISHED);
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.OIDB_FINAL_REVIEW);
     }
 
     @Test
@@ -91,7 +91,7 @@ class ResultServiceTest {
         loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
         Application app = buildApp(3, ApplicationStatus.DEAN_REJECTED);
         when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
-        when(applicationRepository.findByStatus(eq(ApplicationStatus.RESULT_PUBLISHED), any(Pageable.class)))
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
         when(applicationRepository.findByStatus(eq(ApplicationStatus.DEAN_REJECTED), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(app)));
@@ -113,7 +113,7 @@ class ResultServiceTest {
         loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
         Application app = buildApp(4, ApplicationStatus.FACULTY_BOARD_REJECTED);
         when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
-        when(applicationRepository.findByStatus(eq(ApplicationStatus.RESULT_PUBLISHED), any(Pageable.class)))
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
         when(applicationRepository.findByStatus(eq(ApplicationStatus.DEAN_REJECTED), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
@@ -133,10 +133,10 @@ class ResultServiceTest {
     @Test
     void publish_mixedBatch_returnsCorrectTotalCount() {
         loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
-        Application accepted = buildApp(5, ApplicationStatus.RESULT_PUBLISHED);
+        Application accepted = buildApp(5, ApplicationStatus.OIDB_FINAL_REVIEW);
         Application rejected = buildApp(6, ApplicationStatus.REJECTED);
         when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
-        when(applicationRepository.findByStatus(eq(ApplicationStatus.RESULT_PUBLISHED), any(Pageable.class)))
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(accepted)));
         when(applicationRepository.findByStatus(eq(ApplicationStatus.DEAN_REJECTED), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));

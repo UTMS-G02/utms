@@ -31,19 +31,6 @@ class CommitteeReviewControllerTest {
     // ==========================================
 
     @Test
-    void deanReview_delegatesToDecisionService() {
-        DecisionRequest req = new DecisionRequest(true, "ok");
-        ApplicationResponse expected = ApplicationResponse.builder().id(1).build();
-        when(decisionService.recordDeanDecision(eq(1), eq(req))).thenReturn(expected);
-
-        ResponseEntity<ApplicationResponse> response = controller.deanReview(1, req);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().getId()).isEqualTo(1);
-        verify(decisionService).recordDeanDecision(1, req);
-    }
-
-    @Test
     void facultyBoardReview_delegatesToDecisionService() {
         DecisionRequest req = new DecisionRequest(false, "ret", "EX-2");
         ApplicationResponse expected = ApplicationResponse.builder().id(2).build();
@@ -53,18 +40,6 @@ class CommitteeReviewControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(decisionService).recordFacultyBoardDecision(2, req);
-    }
-
-    @Test
-    void finalDeanReview_delegatesToDecisionService() {
-        DecisionRequest req = new DecisionRequest(true, null);
-        ApplicationResponse expected = ApplicationResponse.builder().id(3).build();
-        when(decisionService.recordFinalDeanDecision(eq(3), eq(req))).thenReturn(expected);
-
-        ResponseEntity<ApplicationResponse> response = controller.finalDeanReview(3, req);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(decisionService).recordFinalDeanDecision(3, req);
     }
 
     // ==========================================
