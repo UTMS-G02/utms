@@ -56,6 +56,39 @@ const STATUS_MAP = {
   REJECTED: { label: 'Reddedildi', color: 'error' },
 }
 
+// Color tinting system matching YDYO design
+const TINT = {
+  amber: { background: '#FEF3C7', color: '#B45309' },
+  green: { background: '#D1FAE5', color: '#047857' },
+  red: { background: '#FEE2E2', color: '#B91C1C' },
+  blue: { background: '#DBEAFE', color: '#1E40AF' },
+  purple: { background: '#E9D5FF', color: '#7E22CE' },
+  gray: { background: '#F3F4F6', color: '#6B7280' },
+}
+
+const getStatusTint = (status) => {
+  switch (status) {
+    case 'OIDB_REVIEW':
+      return TINT.blue
+    case 'REQUEST_UPDATE':
+      return TINT.amber
+    case 'YDYO_REVIEW':
+      return TINT.purple
+    case 'YDYO_APPROVED':
+      return TINT.green
+    case 'YDYO_REJECTED':
+      return TINT.red
+    case 'FACULTY_REVIEW':
+      return TINT.purple
+    case 'ACCEPTED':
+      return TINT.green
+    case 'REJECTED':
+      return TINT.red
+    default:
+      return TINT.gray
+  }
+}
+
 // Öğrenci, istenen düzeltmeyi yapıp başvuruyu yeniden gönderdiyse memura ayırt edici bir
 // rozet gösterilir ("Öğrenci Güncelledi") — aksi halde standart STATUS_MAP kullanılır.
 const getOidbStatusInfo = (application) => {
@@ -126,17 +159,19 @@ const styles = {
   },
   headerBar: {
     background: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 24,
-    boxShadow: '0 10px 18px rgba(0, 0, 0, 0.05)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
     marginBottom: 24,
+    border: '1px solid #f0f0f0',
   },
   filterBar: {
     background: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 24,
-    boxShadow: '0 10px 18px rgba(0, 0, 0, 0.05)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
     marginBottom: 24,
+    border: '1px solid #f0f0f0',
   },
   selectBox: {
     width: '100%',
@@ -144,10 +179,10 @@ const styles = {
   },
   card: {
     background: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 24,
     marginBottom: 16,
-    boxShadow: '0 8px 18px rgba(0, 0, 0, 0.04)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
     border: '1px solid #f0f0f0',
   },
   sectionRow: {
@@ -169,7 +204,7 @@ const styles = {
   },
   actionBox: {
     border: '1px dashed #d9d9d9',
-    borderRadius: 16,
+    borderRadius: 10,
     padding: 18,
     marginTop: 16,
   },
@@ -222,13 +257,16 @@ export default function OidbDashboard() {
 
   const [loading, setLoading] = useState(true)
   const [applications, setApplications] = useState([])
-  const [expandedIds, setExpandedIds] = useState([])
   const [details, setDetails] = useState({})
   const [selectedIds, setSelectedIds] = useState([])
   const [statusFilter, setStatusFilter] = useState(isPendingRoute ? 'OIDB_REVIEW' : 'ALL')
   const [facultyFilter, setFacultyFilter] = useState('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTabs, setActiveTabs] = useState({})
+  const [detailsModal, setDetailsModal] = useState({
+    open: false,
+    applicationId: null,
+  })
 
   // "Güncelleme İste" modalı durumu: hangi başvuru, seçilen belge tip(ler)i ve not.
   const [revisionModal, setRevisionModal] = useState({
@@ -284,12 +322,7 @@ export default function OidbDashboard() {
   }
 
   const handleToggleExpand = async (applicationId) => {
-    const isExpanded = expandedIds.includes(applicationId)
-    if (isExpanded) {
-      setExpandedIds(expandedIds.filter((id) => id !== applicationId))
-      return
-    }
-
+    // Open modal instead of expand
     if (!details[applicationId]) {
       antdMessage.loading({ content: 'Detaylar yükleniyor...', key: `loading-${applicationId}` })
       try {
@@ -298,10 +331,14 @@ export default function OidbDashboard() {
         antdMessage.destroy(`loading-${applicationId}`)
       } catch {
         antdMessage.error('Başvuru detayları alınamadı.')
+        return
       }
     }
 
-    setExpandedIds([...expandedIds, applicationId])
+    setDetailsModal({
+      open: true,
+      applicationId,
+    })
   }
 
   const executeAction = async (applicationId, actionKey) => {
@@ -480,32 +517,36 @@ export default function OidbDashboard() {
             </Space>
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <Text strong>Başvuru Durumu:</Text>
-            <Select
-              value={statusFilter}
-              onChange={setStatusFilter}
-              style={styles.selectBox}
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <Option key={option.value} value={option.value}>{option.label}</Option>
-              ))}
-            </Select>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>Başvuru Durumu:</Text>
+              <Select
+                value={statusFilter}
+                onChange={setStatusFilter}
+                style={styles.selectBox}
+              >
+                {STATUS_OPTIONS.map((option) => (
+                  <Option key={option.value} value={option.value}>{option.label}</Option>
+                ))}
+              </Select>
+            </Space>
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <Text strong>Fakülte:</Text>
-            <Select
-              value={facultyFilter}
-              onChange={setFacultyFilter}
-              style={styles.selectBox}
-            >
-              {FACULTY_OPTIONS.map((option) => (
-                <Option key={option.value} value={option.value}>{option.label}</Option>
-              ))}
-            </Select>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>Fakülte:</Text>
+              <Select
+                value={facultyFilter}
+                onChange={setFacultyFilter}
+                style={styles.selectBox}
+              >
+                {FACULTY_OPTIONS.map((option) => (
+                  <Option key={option.value} value={option.value}>{option.label}</Option>
+                ))}
+              </Select>
+            </Space>
           </Col>
-          <Row xs={24} sm={24} lg={2} style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <Col xs={24} sm={24} lg={2} style={{ display: 'flex', alignItems: 'flex-end' }}>
             <Text style={{ display: 'block', fontWeight: 600 }}>{filteredApplications.length} başvuru gösteriliyor</Text>
-          </Row>
+          </Col>
         </Row>
       </div>
 
@@ -545,11 +586,8 @@ export default function OidbDashboard() {
         <Empty description="Herhangi bir başvuru bulunamadı." style={{ marginTop: 64 }} />
       ) : (
         filteredApplications.map((application) => {
-          const isExpanded = expandedIds.includes(application.applicationId)
           const detail = details[application.applicationId]
-          const activeKey = activeTabs[application.applicationId] ?? 'general'
           const statusInfo = getOidbStatusInfo(application)
-          const documentCount = detail?.documents?.length ?? 0
 
           return (
             <div key={application.applicationId} style={styles.card}>
@@ -574,7 +612,9 @@ export default function OidbDashboard() {
                     </Col>
                     <Col xs={24} sm={12} md={8}>
                       <Text style={styles.summaryDetail}>Durum</Text>
-                      <Tag color={statusInfo.color}>{statusInfo.label}</Tag>
+                      <Tag style={{ ...getStatusTint(application.status), border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 500 }}>
+                        {statusInfo.label}
+                      </Tag>
                     </Col>
                     <Col xs={24} sm={12} md={8}>
                       <Text style={styles.summaryDetail}>Başvuru Tarihi</Text>
@@ -583,121 +623,11 @@ export default function OidbDashboard() {
                   </Row>
                 </Col>
                 <Col>
-                  <Button type="text" onClick={() => handleToggleExpand(application.applicationId)} icon={isExpanded ? <UpOutlined /> : <DownOutlined />}>
-                    {isExpanded ? 'Küçült' : 'Detay' }
+                  <Button type="primary" onClick={() => handleToggleExpand(application.applicationId)}>
+                    Detayları Gör
                   </Button>
                 </Col>
               </Row>
-
-              {isExpanded && (
-                <div style={{ marginTop: 24 }}>
-                  <Divider />
-                  <Row gutter={[16, 16]}>
-                    <Col xs={24} sm={12} lg={6}>
-                      <Text style={styles.summaryDetail}>Mevcut Üniversite</Text>
-                      <Text style={styles.summaryValue}>{detail?.currentUniversity ?? application.currentUniversity}</Text>
-                    </Col>
-                    <Col xs={24} sm={12} lg={6}>
-                      <Text style={styles.summaryDetail}>Mevcut Bölüm</Text>
-                      <Text style={styles.summaryValue}>{detail?.currentDepartment ?? application.currentDepartment}</Text>
-                    </Col>
-                    <Col xs={24} sm={12} lg={6}>
-                      <Text style={styles.summaryDetail}>Hedef Bölüm</Text>
-                      <Text style={styles.summaryValue}>{application.targetDepartment}</Text>
-                    </Col>
-                    <Col xs={24} sm={12} lg={6}>
-                      <Text style={styles.summaryDetail}>Dönem</Text>
-                      <Text style={styles.summaryValue}>{detail?.semester ?? application.semester}</Text>
-                    </Col>
-                  </Row>
-
-                  <div style={styles.sectionRow}>
-                    <div>
-                      <Tabs
-                        activeKey={activeKey}
-                        onChange={(key) => setActiveTabs((prev) => ({ ...prev, [application.applicationId]: key }))}
-                        items={[
-                          {
-                            key: 'general',
-                            label: 'Genel Bakış',
-                            children: (
-                              <div style={styles.actionBox}>
-                                <Title level={5}>İşlemler</Title>
-                                {renderActionButtons(application)}
-                              </div>
-                            ),
-                          },
-                          {
-                            key: 'documents',
-                            label: `Dökümanlar (${documentCount})`,
-                            children: (
-                              <div style={styles.actionBox}>
-                                <Row align="middle" justify="space-between">
-                                  <Col>
-                                    <Title level={5} style={{ marginBottom: 0 }}>Dökümanlar</Title>
-                                  </Col>
-                                  <Col>
-                                    <Button
-                                      icon={<DownloadOutlined />}
-                                      disabled={!documentCount}
-                                      onClick={() => handleDownloadAllZip(application.applicationId)}
-                                    >
-                                      Tümünü İndir
-                                    </Button>
-                                  </Col>
-                                </Row>
-
-                                {detail?.documents?.length ? (
-                                  detail.documents.map((doc) => (
-                                    <div key={doc.documentId} style={styles.documentRow}>
-                                      <div style={styles.documentMeta}>
-                                        <Text strong>{doc.fileName}</Text>
-                                        <Text type="secondary">{DOCUMENT_TYPE_LABEL[doc.docType] ?? 'Belge'}</Text>
-                                        <Text type="secondary" style={{ fontSize: 12 }}>
-                                          {doc.size} • Yüklenme: {formatDate(doc.uploadedAt)}
-                                        </Text>
-                                      </div>
-                                      <Button icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}>
-                                        İndir
-                                      </Button>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <Empty description="Döküman bulunmuyor." />
-                                )}
-                              </div>
-                            ),
-                          },
-                          {
-                            key: 'history',
-                            label: 'Geçmiş',
-                            children: (
-                              <div style={styles.actionBox}>
-                                <Title level={5}>Geçmiş</Title>
-                                {detail?.statusHistory?.length ? (
-                                  <Timeline mode="left">
-                                    {detail.statusHistory.map((entry) => {
-                                      const info = STATUS_MAP[entry.status] ?? { label: entry.status, color: 'default' }
-                                      return (
-                                        <Timeline.Item key={entry.status + entry.changedAt} color={info.color}>
-                                          <Text strong>{info.label}</Text>
-                                          <div>{formatDate(entry.changedAt)}</div>
-                                        </Timeline.Item>
-                                      )
-                                    })}
-                                  </Timeline>
-                                ) : (
-                                  <Empty description="Henüz geçmiş kaydı yok." />
-                                )}
-                              </div>
-                            ),
-                          },
-                        ]}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )
         })
@@ -741,6 +671,120 @@ export default function OidbDashboard() {
             onChange={(e) => setRevisionModal((prev) => ({ ...prev, notes: e.target.value }))}
           />
         </div>
+      </Modal>
+
+      {/* Details Modal */}
+      <Modal
+        title={detailsModal.applicationId && details[detailsModal.applicationId] ? `Başvuru Detayları - ${details[detailsModal.applicationId].studentName}` : 'Başvuru Detayları'}
+        open={detailsModal.open}
+        onCancel={() => setDetailsModal({ open: false, applicationId: null })}
+        footer={null}
+        width={1000}
+        destroyOnClose
+        bodyStyle={{ maxHeight: '70vh', overflowY: 'auto', padding: '24px' }}
+      >
+        {details[detailsModal.applicationId] && (
+          <Tabs
+            defaultActiveKey="general"
+            items={[
+              {
+                key: 'general',
+                label: 'Genel Bilgiler',
+                children: (
+                  <div style={{ marginTop: 16 }}>
+                    <Row gutter={[16, 16]}>
+                      <Col xs={24} sm={12}>
+                        <Text style={styles.summaryDetail}>Mevcut Üniversite</Text>
+                        <Text style={styles.summaryValue}>{details[detailsModal.applicationId]?.currentUniversity}</Text>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Text style={styles.summaryDetail}>Mevcut Bölüm</Text>
+                        <Text style={styles.summaryValue}>{details[detailsModal.applicationId]?.currentDepartment}</Text>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Text style={styles.summaryDetail}>Hedef Bölüm</Text>
+                        <Text style={styles.summaryValue}>{details[detailsModal.applicationId]?.targetDepartment}</Text>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Text style={styles.summaryDetail}>Dönem</Text>
+                        <Text style={styles.summaryValue}>{details[detailsModal.applicationId]?.semester}</Text>
+                      </Col>
+                    </Row>
+                    <Divider />
+                    <Title level={5}>İşlemler</Title>
+                    {renderActionButtons(applications.find(a => a.applicationId === detailsModal.applicationId))}
+                  </div>
+                ),
+              },
+              {
+                key: 'documents',
+                label: `Dökümanlar (${details[detailsModal.applicationId]?.documents?.length ?? 0})`,
+                children: (
+                  <div style={{ marginTop: 16 }}>
+                    <Row align="middle" justify="space-between" style={{ marginBottom: 16 }}>
+                      <Col>
+                        <Title level={5} style={{ marginBottom: 0 }}>Dökümanlar</Title>
+                      </Col>
+                      <Col>
+                        <Button
+                          icon={<DownloadOutlined />}
+                          disabled={!details[detailsModal.applicationId]?.documents?.length}
+                          onClick={() => handleDownloadAllZip(detailsModal.applicationId)}
+                        >
+                          Tümünü İndir
+                        </Button>
+                      </Col>
+                    </Row>
+
+                    {details[detailsModal.applicationId]?.documents?.length ? (
+                      details[detailsModal.applicationId].documents.map((doc) => (
+                        <div key={doc.documentId} style={styles.documentRow}>
+                          <div style={styles.documentMeta}>
+                            <Text strong>{doc.fileName}</Text>
+                            <Text type="secondary">{DOCUMENT_TYPE_LABEL[doc.docType] ?? 'Belge'}</Text>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {doc.size} • Yüklenme: {formatDate(doc.uploadedAt)}
+                            </Text>
+                          </div>
+                          <Button icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}>
+                            İndir
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <Empty description="Döküman bulunmuyor." />
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'history',
+                label: 'Geçmiş',
+                children: (
+                  <div style={{ marginTop: 16 }}>
+                    <Title level={5}>Geçmiş</Title>
+                    {details[detailsModal.applicationId]?.statusHistory && details[detailsModal.applicationId].statusHistory.length > 0 ? (
+                      <Timeline mode="left">
+                        {details[detailsModal.applicationId].statusHistory.map((entry, index) => {
+                          const info = STATUS_MAP[entry.status] ?? { label: entry.status, color: 'default' }
+                          const date = entry.changedAt ? formatDate(entry.changedAt) : '-'
+                          return (
+                            <Timeline.Item key={`history-${index}`} color={info.color}>
+                              <Text strong>{info.label}</Text>
+                              <div style={{ marginTop: 4, color: '#999' }}>{date}</div>
+                            </Timeline.Item>
+                          )
+                        })}
+                      </Timeline>
+                    ) : (
+                      <Empty description="Henüz geçmiş kaydı yok." />
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        )}
       </Modal>
     </div>
   )
