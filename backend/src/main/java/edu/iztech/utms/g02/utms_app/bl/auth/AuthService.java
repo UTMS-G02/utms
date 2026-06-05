@@ -8,6 +8,7 @@ import edu.iztech.utms.g02.utms_app.api.auth.dto.RegisterRequest;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.ResetPasswordRequest;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.User;
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.UserRole;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.UserRepository;
@@ -127,20 +128,22 @@ public class AuthService {
 
         String fullName = user.getFirstName() + " " + user.getLastName();
 
-        // Öğrenciye özel bilgileri başlangıçta null olarak tanımlıyoruz (Personel giriş yaparsa null dönecek)
         String tckn = null;
         LocalDate dateOfBirth = null;
         String phoneNumber = null;
+        Integer departmentId = null;
+        Integer facultyId = null;
 
-        // EĞER bu user objesi arka planda aslında bir Student ise:
-        if (user instanceof Student) {
-            Student student = (Student) user; // User'ı Student'a cast ediyoruz
+        if (user instanceof Student student) {
             tckn = student.getTckn();
             dateOfBirth = student.getDateOfBirth();
             phoneNumber = student.getPhoneNumber();
+        } else if (user instanceof Staff staff) {
+            departmentId = staff.getDepartmentId();
+            facultyId = staff.getFacultyId();
         }
 
-        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, tckn, dateOfBirth, phoneNumber);
+        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, tckn, dateOfBirth, phoneNumber, departmentId, facultyId);
     }
 
     /**

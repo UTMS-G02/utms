@@ -15,6 +15,9 @@ public class MeResponse {
     private String fullName;
 
     private String tckn;
-    private LocalDate dateOfBirth;   // YENİ EKLENDİ
-    private String phoneNumber;   // YENİ EKLENDİ
+    private LocalDate dateOfBirth;
+    private String phoneNumber;
+
+    private Integer departmentId;
+    private Integer facultyId;
 }
