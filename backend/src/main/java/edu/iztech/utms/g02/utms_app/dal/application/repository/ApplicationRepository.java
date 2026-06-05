@@ -16,8 +16,9 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
 
     Page<Application> findByStatus(ApplicationStatus status, Pageable pageable);
 
-    // Pair 3: Dekanlık fakülte-kapsamlı liste — yalnızca dekanın fakültesindeki başvurular.
-    Page<Application> findByStatusAndFaculty_FacultyId(ApplicationStatus status, Integer facultyId, Pageable pageable);
+    // Pair 3: Dekanlık fakülte-kapsamlı liste — yalnızca dekanın fakültesindeki başvurular
+    // (sekme başına bir veya birden çok statü; ör. Fakülte Kurulundan Gelen = KABUL + RED).
+    Page<Application> findByStatusInAndFaculty_FacultyId(Collection<ApplicationStatus> statuses, Integer facultyId, Pageable pageable);
 
     // Pair 3: YGK bölüm-kapsamlı skorlama — yalnızca YGK üyesinin bölümündeki başvurular.
     Page<Application> findByStatusAndDepartment_DepartmentId(ApplicationStatus status, Integer departmentId, Pageable pageable);

@@ -25,8 +25,9 @@ import java.util.stream.Collectors;
  * ÖİDB sonuç yayınlama ve sonuç görüntüleme.
  *
  * <p>Sonuçlar yayınlanana (published_results satırı oluşana) kadar öğrenciye görünmez.
- * YALNIZCA kabul edilen başvurular yayınlanır: OIDB_FINAL_REVIEW → ACCEPTED.
- * Reddedilenler yayınlanmaz (Fakülte Kurulu reddi YGK'ya geri döner, terminal değildir).
+ * Dekan, Fakülte Kurulu kararını ÖİDB'ye iletince: kabul → {@code OIDB_FINAL_REVIEW}, red → {@code REJECTED}.
+ * ÖİDB yayınlayınca: {@code OIDB_FINAL_REVIEW → ACCEPTED} ve {@code REJECTED} → red kaydı
+ * (öğrenci her iki durumda da bilgilendirilir — TC-10.4).
  */
 @Service
 @RequiredArgsConstructor
@@ -60,6 +61,20 @@ public class ResultService {
                     .build());
             app.setStatus(ApplicationStatus.ACCEPTED);
             applicationRepository.save(app);
+            count++;
+        }
+
+        // Reddedilenler: Dekan, Fakülte Kurulu reddini ÖİDB'ye iletince statü REJECTED olur;
+        // ÖİDB yayınlayınca red kaydı oluşur (öğrenci bilgilendirilir). Statü REJECTED kalır.
+        for (Application app : findByStatus(ApplicationStatus.REJECTED)) {
+            if (publishedResultRepository.existsByApplication_ApplicationId(app.getApplicationId())) {
+                continue;
+            }
+            publishedResultRepository.save(PublishedResult.builder()
+                    .application(app)
+                    .finalDecision("REJECTED")
+                    .publishedBy(publisher)
+                    .build());
             count++;
         }
 

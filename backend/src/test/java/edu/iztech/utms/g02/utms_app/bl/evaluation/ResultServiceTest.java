@@ -57,6 +57,8 @@ class ResultServiceTest {
         when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
         when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(app)));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.REJECTED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(publishedResultRepository.existsByApplication_ApplicationId(1)).thenReturn(false);
         when(publishedResultRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -75,6 +77,8 @@ class ResultServiceTest {
         when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
         when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(app)));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.REJECTED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         when(publishedResultRepository.existsByApplication_ApplicationId(2)).thenReturn(true);
 
         int count = resultService.publishResults();
@@ -85,21 +89,23 @@ class ResultServiceTest {
     }
 
     @Test
-    void publish_rejectedApps_areNotPublished() {
-        // Yeni kural: ÖİDB YALNIZCA kabul edilenleri yayınlar; red statüleri hiç sorgulanmaz/yayınlanmaz.
+    void publish_rejectedApp_createsRejectedRow_andKeepsStatus() {
+        // TC-10.4: Dekan, Fakülte Kurulu reddini ÖİDB'ye iletince statü REJECTED olur; ÖİDB yayınlar.
         loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
+        Application app = buildApp(3, ApplicationStatus.REJECTED);
         when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
         when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.REJECTED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(app)));
+        when(publishedResultRepository.existsByApplication_ApplicationId(3)).thenReturn(false);
+        when(publishedResultRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         int count = resultService.publishResults();
 
-        assertThat(count).isEqualTo(0);
-        verify(publishedResultRepository, never()).save(any());
-        verify(applicationRepository, never())
-                .findByStatus(eq(ApplicationStatus.FACULTY_BOARD_REJECTED), any(Pageable.class));
-        verify(applicationRepository, never())
-                .findByStatus(eq(ApplicationStatus.REJECTED), any(Pageable.class));
+        assertThat(count).isEqualTo(1);
+        verify(publishedResultRepository).save(argThat(r -> "REJECTED".equals(r.getFinalDecision())));
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.REJECTED); // statü değişmez, yalnızca yayın kaydı
     }
 
     // ==========================================

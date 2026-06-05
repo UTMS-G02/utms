@@ -43,17 +43,10 @@ public class DeanController {
         return ResponseEntity.ok(deanForwardService.forwardToFacultyBoard(id));
     }
 
-    /** Fakülte Kurulu'nca kabul edilen başvuruyu ÖİDB'ye iletir (yalnızca FACULTY_BOARD_ACCEPTED). */
+    /** Fakülte Kurulu kararını (kabul VEYA red) ÖİDB'ye iletir (TC-10.3 / TC-10.4). */
     @PreAuthorize("hasRole('DEAN_OFFICE')")
     @PatchMapping("/applications/{id}/forward-to-oidb")
     public ResponseEntity<ApplicationResponse> forwardToOidb(@PathVariable Integer id) {
         return ResponseEntity.ok(deanForwardService.forwardToOidb(id));
-    }
-
-    /** Fakülte Kurulu'nca reddedilen başvuruyu YGK'ya geri iletir (yalnızca FACULTY_BOARD_REJECTED). */
-    @PreAuthorize("hasRole('DEAN_OFFICE')")
-    @PatchMapping("/applications/{id}/forward-to-ygk")
-    public ResponseEntity<ApplicationResponse> forwardToYgk(@PathVariable Integer id) {
-        return ResponseEntity.ok(deanForwardService.forwardToYgk(id));
     }
 }
