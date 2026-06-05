@@ -18,26 +18,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * ÖİDB sonuç yayınlama ve sonuç görüntüleme.
  *
  * <p>Sonuçlar yayınlanana (published_results satırı oluşana) kadar öğrenciye görünmez.
- * Yayınlama nihai aşamadaki başvuruları kapsar:
- * RESULT_PUBLISHED → ACCEPTED; reddedilen terminal statüler → REJECTED kaydı.
+ * YALNIZCA kabul edilen başvurular yayınlanır: OIDB_FINAL_REVIEW → ACCEPTED.
+ * Reddedilenler yayınlanmaz (Fakülte Kurulu reddi YGK'ya geri döner, terminal değildir).
  */
 @Service
 @RequiredArgsConstructor
 public class ResultService {
-
-    private static final Set<ApplicationStatus> REJECTED_TERMINAL = EnumSet.of(
-            ApplicationStatus.DEAN_REJECTED,
-            ApplicationStatus.FACULTY_BOARD_REJECTED,
-            ApplicationStatus.REJECTED);
 
     private final ApplicationRepository applicationRepository;
     private final PublishedResultRepository publishedResultRepository;
@@ -68,21 +61,6 @@ public class ResultService {
             app.setStatus(ApplicationStatus.ACCEPTED);
             applicationRepository.save(app);
             count++;
-        }
-
-        // Reddedilenler: terminal red statülerini de öğrenciye görünür kıl
-        for (ApplicationStatus status : REJECTED_TERMINAL) {
-            for (Application app : findByStatus(status)) {
-                if (publishedResultRepository.existsByApplication_ApplicationId(app.getApplicationId())) {
-                    continue;
-                }
-                publishedResultRepository.save(PublishedResult.builder()
-                        .application(app)
-                        .finalDecision("REJECTED")
-                        .publishedBy(publisher)
-                        .build());
-                count++;
-            }
         }
 
         return count;
