@@ -3,23 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { Row, Col, Button, Typography, Tag, Spin, App } from 'antd'
 import { FileTextOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import { applicationsApi } from '../../api/applications'
+import { getStudentStatusMeta } from '../../constants/applicationStatus'
 
 const { Title, Text } = Typography
-
-const STATUS_MAP = {
-  DRAFT:                { label: 'Taslak',                        color: 'default'  },
-  SUBMITTED:            { label: 'Gönderildi',                    color: 'blue'     },
-  OIDB_REVIEW:          { label: 'OIDB İncelemesinde',            color: 'orange'   },
-  YDYO_REVIEW:          { label: 'YDYO İncelemesinde',            color: 'orange'   },
-  EVALUATION_QUEUE:     { label: 'Değerlendirme Kuyruğunda',      color: 'cyan'     },
-  YGK_SCORED:           { label: 'YGK Puanlandı',                 color: 'geekblue' },
-  DEAN_REVIEW:          { label: 'Dekan İncelemesinde',           color: 'orange'   },
-  FACULTY_BOARD_REVIEW: { label: 'Fakülte Kurulu İncelemesinde',  color: 'orange'   },
-  FINAL_DEAN_REVIEW:    { label: 'Final Dekan İncelemesinde',     color: 'orange'   },
-  RESULT_PUBLISHED:     { label: 'Sonuç Yayınlandı',              color: 'green'    },
-  ACCEPTED:             { label: 'Kabul Edildi',                  color: 'success'  },
-  REJECTED:             { label: 'Reddedildi',                    color: 'error'    },
-}
 
 const styles = {
   page: {
@@ -101,20 +87,15 @@ export default function StudentDashboard() {
       })
   }, [])
 
+  // Sol kart yalnızca AKSİYON kartı: yeni başvuru oluştur veya taslağı tamamla.
+  // İkisi de başvuru formuna gider. Gönderilmiş başvuruyu "görüntüleme" işi sağ
+  // karta (Başvuru Durumu) bırakıldı; burada tekrar buton yok.
   const handleApplyClick = () => {
-    if (!application) {
-      navigate('/student/applications/new')
-      return
-    }
-
-    if (application.status === 'DRAFT') {
-      // Taslak başvuru → tamamlamak için form'a dön
-      navigate('/student/applications/new')
-      return
-    }
-    // Diğer tüm durumlar → detay sayfasına git (görüntüleme)
-    navigate(`/student/applications/${application.applicationId}`)
+    navigate('/student/applications/new')
   }
+
+  // Sol kartta aksiyon var mı? (yalnızca hiç başvuru yokken ya da taslakken)
+  const hasAction = !application || application.status === 'DRAFT'
 
   if (loading) {
     return (
@@ -125,9 +106,10 @@ export default function StudentDashboard() {
     )
   }
 
-  const statusInfo = application
-    ? (STATUS_MAP[application.status] ?? { label: application.status, color: 'default' })
-    : null
+  // Durum etiketi/rengi, Başvurularım sayfasıyla aynı ortak kaynaktan gelir
+  // (constants/applicationStatus) — böylece her statü (ör. REVISION_REQUESTED →
+  // "Düzeltme Bekliyor") tutarlı ve eksiksiz gösterilir.
+  const statusInfo = application ? getStudentStatusMeta(application) : null
 
   return (
     <div style={styles.page}>
@@ -160,24 +142,22 @@ export default function StudentDashboard() {
                   ? 'Yatay geçiş başvurunuzu başlatmak için tıklayın.'
                   : application.status === 'DRAFT'
                     ? 'Taslak halindeki başvurunuzu tamamlayın ve gönderin.'
-                    : 'Başvurunuzun durumunu ve detaylarını görüntüleyebilirsiniz. Düzeltme gerekirse ÖİDB tarafından bildirilecektir.'}
+                    : 'Bu dönem için başvurunuz alındı. Durumunu sağdaki "Başvuru Durumu" kartından takip edebilirsiniz.'}
               </Text>
             </div>
 
-            <div style={styles.cardFooter}>
-              <Button
-                type="primary"
-                block
-                style={{ background: '#8B1A2B', borderColor: '#8B1A2B', height: 40, fontWeight: 600 }}
-                onClick={handleApplyClick}
-              >
-                {!application 
-                  ? 'Yeni Başvuru Oluştur' 
-                  : application.status === 'DRAFT'
-                    ? 'Başvurumu Tamamla'
-                    : 'Başvurumu Görüntüle'}
-              </Button>
-            </div>
+            {hasAction && (
+              <div style={styles.cardFooter}>
+                <Button
+                  type="primary"
+                  block
+                  style={{ background: '#8B1A2B', borderColor: '#8B1A2B', height: 40, fontWeight: 600 }}
+                  onClick={handleApplyClick}
+                >
+                  {!application ? 'Yeni Başvuru Oluştur' : 'Başvurumu Tamamla'}
+                </Button>
+              </div>
+            )}
           </div>
         </Col>
 
@@ -203,7 +183,7 @@ export default function StudentDashboard() {
                       <Text style={{ fontSize: 14, fontWeight: 500 }}>Yatay Geçiş Başvurusu</Text>
                       <br />
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        Başvuru No: #YG-{application.applicationId}
+                        Başvuru No: #YG-{application.id}
                       </Text>
                     </div>
                   </div>
@@ -223,7 +203,7 @@ export default function StudentDashboard() {
                 <Button
                   block
                   style={{ height: 40, fontWeight: 600 }}
-                  onClick={() => navigate(`/student/applications/${application.applicationId}`)}
+                  onClick={() => navigate(`/student/applications/${application.id}`)}
                 >
                   Başvuru Detaylarını Görüntüle
                 </Button>

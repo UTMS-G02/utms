@@ -22,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 import jakarta.persistence.EntityNotFoundException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
@@ -62,8 +63,25 @@ public class ApplicationService {
 
     private final StudentRepository studentRepository; // EKLENDİ
     private final YoksisIntegrationService yoksisIntegrationService; // EKLENDİ
+    private final edu.iztech.utms.g02.utms_app.integration.edevlet.EgovDocumentService egovDocumentService; // e-Devlet/ÖSYM mock belge üretimi
+    private final edu.iztech.utms.g02.utms_app.bl.notification.NotificationService notificationService; // UC-15: ÖİDB aksiyonlarında öğrenciye bildirim
 
     //  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için --> en aşağıda manuel olarak yapıyoruz, toResponse() metodu ile
+
+    // Şu an başvuru kabul edilen tek akademik yıl. Yeni başvurular yalnızca bu yıla yapılabilir;
+    // geçmiş dönemlere ait (ör. 2025-2026) kayıtlar yalnızca görüntüleme amaçlıdır.
+    private static final String ACTIVE_ACADEMIC_YEAR = "2026-2027";
+
+    // Yeni başvuruyu ENGELLEMEYEN durumlar. Bunların dışındaki her durum "aktif/devam eden"
+    // sayılır ve tek-program kuralı gereği yeni başvuruyu engeller.
+    private static final Set<ApplicationStatus> NON_BLOCKING_STATUSES = EnumSet.of(
+            ApplicationStatus.DRAFT,
+            ApplicationStatus.WITHDRAWN,
+            ApplicationStatus.OIDB_REJECTED,
+            ApplicationStatus.YDYO_REJECTED,
+            ApplicationStatus.FACULTY_BOARD_REJECTED,
+            ApplicationStatus.DEAN_REJECTED,
+            ApplicationStatus.REJECTED);
 
     @Transactional
     public ApplicationResponse create(ApplicationCreateRequest req) { // Integer userId, silindi
@@ -74,15 +92,36 @@ public class ApplicationService {
         Student currentStudent = studentRepository.findByEmail(currentStudentEmail)
             .orElseThrow(() -> new EntityNotFoundException("Öğrenci bulunamadı."));
 
-        // 1. İŞ KURALI: Öğrenci aynı bölüme aynı dönemde birden fazla başvuru yapamaz
-        boolean alreadyApplied = applicationRepository.existsByStudent_UserIdAndTargetDepartmentAndAcademicYear(
-                currentStudent.getUserId(), // Artık request'ten değil, güvenilir kaynaktan alıyoruz
-                req.getTargetDepartment(), 
-                req.getAcademicYear()
-        );
+        // 0. İŞ KURALI: Akademik yıl yalnızca içinde bulunulan dönem (2026-2027) olabilir.
+        if (!ACTIVE_ACADEMIC_YEAR.equals(req.getAcademicYear())) {
+            throw new IllegalArgumentException("Başvurular yalnızca " + ACTIVE_ACADEMIC_YEAR + " akademik yılı için yapılabilir.");
+        }
 
-        if (alreadyApplied) {                               
-            throw new IllegalArgumentException("Bir öğrenci aynı bölüme, aynı akademik dönemde birden fazla başvuru yapamaz.");
+        // 1. İŞ KURALI: Bir öğrenci yalnızca TEK bir programa yatay geçiş başvurusu yapabilir.
+        // Yalnızca AKTİF (devam eden/onaylı) bir başvuru engel oluşturur. Aşağıdaki durumlar
+        // duplicate SAYILMAZ, yeni başvuruya engel değildir:
+        //   - DRAFT (yarım kalmış taslak) → yeniden kullanılır,
+        //   - WITHDRAWN (geri çekilmiş) → yeniden başvurulabilir,
+        //   - *_REJECTED / REJECTED (sonuçlanmış/elenmiş) → ör. geçmiş döneme ait reddedilmiş başvuru.
+        boolean hasActiveApplication = applicationRepository
+                .existsByStudent_UserIdAndStatusNotIn(currentStudent.getUserId(), NON_BLOCKING_STATUSES);
+
+        if (hasActiveApplication) {
+            throw new IllegalArgumentException("Yalnızca bir program için yatay geçiş başvurusu yapabilirsiniz. Devam eden bir başvurunuz bulunduğu için yeni başvuru oluşturamazsınız.");
+        }
+
+        // Yarım kalmış bir taslak varsa onu YENİDEN KULLAN (yeni taslak üretme). Hedef program
+        // değişmiş olabileceğinden taslağın hedef/dönem alanlarını güncelleriz. Böylece belge
+        // yükleme/iptal gibi sebeplerle yarıda kalan akış öğrenciyi kilitlemez.
+        Optional<Application> existingDraft = applicationRepository
+                .findFirstByStudent_UserIdAndStatus(currentStudent.getUserId(), ApplicationStatus.DRAFT);
+        if (existingDraft.isPresent()) {
+            Application draft = existingDraft.get();
+            draft.setAcademicYear(req.getAcademicYear());
+            draft.setSemester(String.valueOf(req.getSemester()));
+            draft.setTargetDepartment(req.getTargetDepartment());
+            draft.setTargetFaculty(req.getTargetFaculty());
+            return toResponse(applicationRepository.save(draft));
         }
 
         //2. Diğer geçerlilik kontrolleri // gerekli miiii?
@@ -125,9 +164,10 @@ public class ApplicationService {
                 .targetDepartment(req.getTargetDepartment())
                 .targetFaculty(req.getTargetFaculty())
 
-                // Front-end'den gelen YKS verileri
-                .sayYksScore(req.getSayYksScore())
-                .sayYksRank(req.getSayYksRank())
+                // YKS verileri artık ÖSYM'den (mock) otomatik gelir; request'ten değil.
+                // Öğrenci elle giremediği için kaynak tek ve güvenilir tutulur.
+                .sayYksScore(yoksisData.yksScore())
+                .sayYksRank(yoksisData.yksRank())
 
                 // YÖKSİS'ten otomatik gelen veriler
                 .currentUniversity(yoksisData.currentUniversity())
@@ -136,11 +176,15 @@ public class ApplicationService {
                 .gpa(yoksisData.gpa())
 
                 .build();
-        
+
         // 4. Veritabanına kaydet
         app = applicationRepository.save(app);
 
-        // 5. Response olarak dön
+        // 5. e-Devlet/ÖSYM belgelerini (öğrenci belgesi, transkript, YKS sonuç belgesi)
+        //    otomatik üret ve başvuruya iliştir — öğrenci bunları elle yüklemez.
+        egovDocumentService.generateAndAttach(app, currentStudent, yoksisData);
+
+        // 6. Response olarak dön
         return toResponse(app);
     }
 
@@ -158,6 +202,11 @@ public class ApplicationService {
         }
         
         app.setStatus(ApplicationStatus.SUBMITTED);
+        // Başvuru tarihi = öğrencinin başvuruyu İLK gönderdiği an. REVISION_REQUESTED'tan
+        // sonra tekrar gönderimde orijinal tarihi korumak için yalnızca boşken atanır.
+        if (app.getSubmissionDate() == null) {
+            app.setSubmissionDate(LocalDate.now());
+        }
         app = applicationRepository.save(app);
 
         return toResponse(app);
@@ -194,10 +243,14 @@ public class ApplicationService {
     private ApplicationResponse processOidbReviewAfterSubmission(Application app, OidbReviewRequest req) {
         if (req.isRequestRevision()) {
             if (app.isRevisionRequestedBefore()) {
-                throw new IllegalStateException("Öğrenciye zaten bir kez düzeltme hakkı tanınmış.");
+                throw new IllegalStateException("Bir başvuru için sadece bir kez belge güncellemesi istenebilir.");
             }
             app.setStatus(ApplicationStatus.REVISION_REQUESTED);
             app.setRevisionRequestedBefore(true);
+            // Memurun seçtiği hatalı belge(ler) ve düzeltme notunu kaydet → öğrenci ekranı bunları kullanır.
+            // Birden fazla belge tek kolonda CSV olarak saklanır ("TRANSCRIPT,LANGUAGE_CERT").
+            app.setRequestedDocumentType(joinRequestedDocumentTypes(req));
+            app.setRevisionNotes(req.getRevisionNotes());
         } else if (Boolean.TRUE.equals(req.isApproved())) {
             app.setStatus(ApplicationStatus.YDYO_REVIEW); 
         } else {
@@ -209,13 +262,31 @@ public class ApplicationService {
         app.setOidbReviewedBy(req.getReviewer());
         app.setOidbReviewedDate(LocalDateTime.now());
 
-        return toResponse(applicationRepository.save(app));
+        Application saved = applicationRepository.save(app);
+
+        // UC-15: ÖİDB ön inceleme sonucunu öğrenciye bildir (Güncel Durum ile birebir).
+        switch (saved.getStatus()) {
+            case REVISION_REQUESTED -> notifyStudent(saved, "Belge Güncellemesi Gerekiyor",
+                    saved.getRevisionNotes() != null && !saved.getRevisionNotes().isBlank()
+                            ? saved.getRevisionNotes()
+                            : "Başvurunuzdaki belgelerin güncellenmesi istenmektedir. Lütfen başvuru detayından ilgili belgeleri yeniden yükleyin.");
+            case YDYO_REVIEW -> notifyStudent(saved, "Ön İnceleme Tamamlandı",
+                    "Başvurunuz Öğrenci İşleri ön incelemesinden başarıyla geçti ve değerlendirme sürecine alındı.");
+            case OIDB_REJECTED -> notifyStudent(saved, "Başvurunuz Reddedildi",
+                    saved.getOidbNotes() != null && !saved.getOidbNotes().isBlank()
+                            ? saved.getOidbNotes()
+                            : "Başvurunuz Öğrenci İşleri tarafından reddedilmiştir.");
+            default -> { /* bildirim yok */ }
+        }
+
+        return toResponse(saved);
     }
 
     // AŞAMA 2: YDYO Sonrası Karar
     private ApplicationResponse processOidbPostYdyoReview(Application app, boolean forwardToDean, OidbReviewRequest req) {
         if (forwardToDean && app.getStatus() == ApplicationStatus.YDYO_ACCEPTED) {
-            app.setStatus(ApplicationStatus.DEAN_OFFICE_REVIEW); 
+            // Pair 3 devir noktası: değerlendirme kuyruğuna alınır (frontend + spec ile uyumlu).
+            app.setStatus(ApplicationStatus.EVALUATION_QUEUE);
         } else {
             app.setStatus(ApplicationStatus.REJECTED); 
         }
@@ -227,12 +298,29 @@ public class ApplicationService {
         app.setOidbReviewedBy(req.getReviewer());
         app.setOidbReviewedDate(LocalDateTime.now());
 
-        return toResponse(applicationRepository.save(app));
+        Application saved = applicationRepository.save(app);
+
+        // UC-15: YDYO sonucu öğrenciye ANCAK burada (ÖİDB post-YDYO işlemi) yüzeye çıkar.
+        if (saved.getStatus() == ApplicationStatus.EVALUATION_QUEUE) {
+            // EVALUATION_QUEUE yalnızca YDYO_ACCEPTED'tan ilerletilince oluşur.
+            // ydyoApproved==true → belge muafiyeti; false → sınavı geçti.
+            String msg = Boolean.TRUE.equals(saved.getYdyoApproved())
+                    ? "Yabancı dil şartından muaf tutuldunuz. Başvurunuz değerlendirme sürecine alındı."
+                    : "Yabancı dil sınavını başarıyla geçtiniz. Başvurunuz değerlendirme sürecine alındı.";
+            notifyStudent(saved, "Yabancı Dil Şartı Tamamlandı", msg);
+        } else if (saved.getStatus() == ApplicationStatus.REJECTED) {
+            notifyStudent(saved, "Başvurunuz Reddedildi",
+                    saved.getOidbNotes() != null && !saved.getOidbNotes().isBlank()
+                            ? saved.getOidbNotes()
+                            : "Başvurunuz Öğrenci İşleri tarafından reddedilmiştir.");
+        }
+
+        return toResponse(saved);
     }
 
 
 
-    
+
     // --------------------------------------------------------
     // YDYO 1. AŞAMA: EVRAK KONTROLÜ
     // --------------------------------------------------------
@@ -483,6 +571,49 @@ public class ApplicationService {
     }
 
 
+    // --------------------------------------------------------
+    // ÖİDB: DOĞRUDAN RED
+    // --------------------------------------------------------
+    // Memur, kriterleri sağlamayan veya evrakları hâlâ geçersiz olan bir başvuruyu
+    // güncelleme/YDYO akışına sokmadan doğrudan REJECTED yapabilir. (POST /{id}/reject)
+    @Transactional
+    public ApplicationResponse rejectApplication(Integer applicationId) {
+        Application app = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + applicationId));
+
+        // Nihai karara bağlanmış ya da geri çekilmiş başvurular tekrar reddedilemez.
+        Set<ApplicationStatus> notRejectable = EnumSet.of(
+                ApplicationStatus.APPROVED,
+                ApplicationStatus.ACCEPTED,
+                ApplicationStatus.REJECTED,
+                ApplicationStatus.WITHDRAWN);
+        if (notRejectable.contains(app.getStatus())) {
+            throw new IllegalStateException("Bu başvuru mevcut statüsünde reddedilemez. Güncel Statü: " + app.getStatus());
+        }
+
+        app.setStatus(ApplicationStatus.REJECTED);
+        app.setOidbReviewedDate(LocalDateTime.now());
+
+        Application saved = applicationRepository.save(app);
+
+        // UC-15: Doğrudan red sonucunu öğrenciye bildir.
+        notifyStudent(saved, "Başvurunuz Reddedildi",
+                saved.getOidbNotes() != null && !saved.getOidbNotes().isBlank()
+                        ? saved.getOidbNotes()
+                        : "Başvurunuz Öğrenci İşleri tarafından reddedilmiştir.");
+
+        return toResponse(saved);
+    }
+
+
+    // UC-15: Başvurunun sahibi öğrenciye bildirim üretir. Yalnızca ÖİDB aksiyonlarında
+    // çağrılır; öğrenci "Güncel Durum" kartında gördüğü ÖİDB sonucunu burada da görür.
+    private void notifyStudent(Application app, String title, String message) {
+        if (app.getStudent() != null) {
+            notificationService.create(app.getStudent().getUserId(), title, message);
+        }
+    }
+
     // --- ZAMAN KONTROLÜ İÇİN YARDIMCI METOT ---
     private boolean isApplicationPeriodActive() {
         // Veritabanından "aktif" olarak işaretlenmiş başvuru dönemini çek
@@ -544,12 +675,15 @@ public class ApplicationService {
         //response.setStudentId(app.getStudent().getUserId()); //
         response.setStatus(app.getStatus());
         response.setAcademicYear(app.getAcademicYear());
+        response.setSemester(app.getSemester());
         response.setTargetFaculty(app.getTargetFaculty());
         response.setTargetDepartment(app.getTargetDepartment());
         response.setCurrentUniversity(app.getCurrentUniversity());
         response.setCurrentFaculty(app.getCurrentFaculty());
         response.setCurrentDepartment(app.getCurrentDepartment());
         response.setGpa(app.getGpa());
+        response.setSayYksScore(app.getSayYksScore());
+        response.setSayYksRank(app.getSayYksRank());
         response.setSubmissionDate(app.getSubmissionDate());
 
         // Öğrenci kimlik/iletişim (YDYO paneli için) — student @ManyToOne EAGER, güvenli
@@ -559,6 +693,7 @@ public class ApplicationService {
             response.setTckn(student.getTckn());
             response.setEmail(student.getEmail());
             response.setPhoneNumber(student.getPhoneNumber());
+            response.setDateOfBirth(student.getDateOfBirth());
         }
 
         // ÖİDB inceleme detayları
@@ -566,6 +701,11 @@ public class ApplicationService {
         response.setOidbNotes(app.getOidbNotes());
         response.setOidbReviewedBy(app.getOidbReviewedBy() != null ? app.getOidbReviewedBy().getUserId() : null);
         response.setOidbReviewedDate(app.getOidbReviewedDate());
+
+        // Düzeltme isteği detayları (hangi belge(ler) + not) → öğrenci ve ÖİDB ekranları kullanır
+        response.setRequestedDocumentTypes(splitRequestedDocumentTypes(app.getRequestedDocumentType()));
+        response.setRevisionNotes(app.getRevisionNotes());
+        response.setRevisionRequestedBefore(app.isRevisionRequestedBefore());
 
         // YDYO inceleme detayları
         response.setYdyoApproved(app.getYdyoApproved());
@@ -609,6 +749,28 @@ public class ApplicationService {
         }
 
         return response;
+    }
+
+    // Düzeltme istenen belge tiplerini CSV'ye çevir. Yeni istemci listeyi (requestedDocumentTypes)
+    // gönderir; eski istemci tek alanı (requestedDocumentType) gönderebilir — ikisini de destekleriz.
+    private String joinRequestedDocumentTypes(OidbReviewRequest req) {
+        List<String> types = req.getRequestedDocumentTypes();
+        if (types != null && !types.isEmpty()) {
+            return types.stream()
+                    .filter(t -> t != null && !t.isBlank())
+                    .map(String::trim)
+                    .collect(Collectors.joining(","));
+        }
+        return req.getRequestedDocumentType(); // geriye dönük tek belge
+    }
+
+    // CSV olarak saklanan belge tiplerini listeye ayır (boşsa boş liste).
+    private List<String> splitRequestedDocumentTypes(String csv) {
+        if (csv == null || csv.isBlank()) return List.of();
+        return java.util.Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
     }
 
     // Ad + (varsa) ikinci ad + soyad → tek görünen ad

@@ -1,39 +1,36 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Typography, Tag, Spin, Steps, Alert, Descriptions, Divider, Space, App } from 'antd'
-import { FileTextOutlined } from '@ant-design/icons'
+import { Button, Typography, Tag, Spin, Steps, Alert, Descriptions, Divider, Space, Upload, Tooltip, App } from 'antd'
+import { FileTextOutlined, UploadOutlined, LockOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { applicationsApi } from '../../api/applications'
+import { getStudentStatusMeta, getStudentMilestone, isRevisionRequested } from '../../constants/applicationStatus'
 
 const { Title, Text } = Typography
 
-const STATUS_MAP = {
-  DRAFT:                { label: 'Taslak',                        color: 'default'  },
-  SUBMITTED:            { label: 'Gönderildi',                    color: 'blue'     },
-  OIDB_REVIEW:          { label: 'OIDB İncelemesinde',            color: 'orange'   },
-  YDYO_REVIEW:          { label: 'YDYO İncelemesinde',            color: 'orange'   },
-  EVALUATION_QUEUE:     { label: 'Değerlendirme Kuyruğunda',      color: 'cyan'     },
-  YGK_SCORED:           { label: 'YGK Puanlandı',                 color: 'geekblue' },
-  DEAN_REVIEW:          { label: 'Dekan İncelemesinde',           color: 'orange'   },
-  FACULTY_BOARD_REVIEW: { label: 'Fakülte Kurulu İncelemesinde',  color: 'orange'   },
-  FINAL_DEAN_REVIEW:    { label: 'Final Dekan İncelemesinde',     color: 'orange'   },
-  RESULT_PUBLISHED:     { label: 'Sonuç Yayınlandı',              color: 'green'    },
-  ACCEPTED:             { label: 'Kabul Edildi',                  color: 'success'  },
-  REJECTED:             { label: 'Reddedildi',                    color: 'error'    },
+// e-Devlet/ÖSYM'den otomatik gelen ve öğrencinin yüklediği belge tiplerinin okunabilir adları.
+const DOCUMENT_TYPE_LABEL = {
+  STUDENT_CERTIFICATE: 'Öğrenci Belgesi (e-Devlet)',
+  TRANSCRIPT: 'Transkript / Not Dökümü (e-Devlet)',
+  YKS_RESULT: 'YKS Sonuç Belgesi (ÖSYM)',
+  COURSE_CONTENTS: 'Ders İçerikleri',
+  LANGUAGE_CERT: 'İngilizce Yeterlilik Belgesi',
+  ID_CARD: 'Kimlik Belgesi',
+  OTHER: 'Diğer Belge',
 }
 
-const ALERT_MAP = {
-  DRAFT:                'Başvurunuz henüz gönderilmemiştir. Tamamlayarak gönderin.',
-  SUBMITTED:            'Başvurunuz başarıyla gönderilmiştir. İnceleme sürecini bekliyorsunuz.',
-  OIDB_REVIEW:          'Başvurunuz şu anda akademik kurul tarafından incelenmektedir. Karar verildiğinde e-posta ile bilgilendirileceksiniz.',
-  YDYO_REVIEW:          'Başvurunuz YDYO birimi tarafından incelenmektedir.',
-  EVALUATION_QUEUE:     'Başvurunuz değerlendirme kuyruğuna alınmıştır.',
-  YGK_SCORED:           'Başvurunuz puanlandı, üst birim onayı bekleniyor.',
-  DEAN_REVIEW:          'Başvurunuz dekan tarafından incelenmektedir.',
-  FACULTY_BOARD_REVIEW: 'Başvurunuz fakülte kurulunda değerlendirilmektedir.',
-  FINAL_DEAN_REVIEW:    'Başvurunuz son dekan incelemesindedir.',
-  RESULT_PUBLISHED:     'Başvurunuzun sonucu açıklanmıştır.',
-  ACCEPTED:             'Başvurunuz kabul edilmiştir. Tebrikler!',
-  REJECTED:             'Başvurunuz reddedilmiştir.',
+const docTypeLabel = (type) =>
+  DOCUMENT_TYPE_LABEL[type] ?? (type?.startsWith('OTHER') ? 'Ek Belge' : 'Belge')
+
+// Yetkili (Bearer) GET ile alınan blob'u tarayıcıda indirmeye zorlar.
+const triggerBlobDownload = (blob, fileName) => {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
 }
 
 const TERMINAL_STATUSES = ['RESULT_PUBLISHED', 'ACCEPTED', 'REJECTED']
@@ -46,7 +43,8 @@ const getStepCurrent = (status) => {
 
 const formatDate = (iso) => {
   if (!iso) return '—'
-  return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
+  // GG.AA.YYYY (tr-TR locale '.' ayırıcı kullanır → örn. 03.06.2026)
+  return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso))
 }
 
 const styles = {
@@ -103,6 +101,8 @@ const stepItems = [
 export default function ApplicationDetail() {
   const [loading, setLoading] = useState(true)
   const [application, setApplication] = useState(null)
+  const [reuploading, setReuploading] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState({}) // { [documentType]: File }
   const navigate = useNavigate()
   const { id } = useParams()
   const { message } = App.useApp()
@@ -142,34 +142,147 @@ export default function ApplicationDetail() {
     )
   }
 
-  const { applicationId, status, submittedAt, studentName, targetDepartment, documents = [], statusHistory = [] } = application
-  const lastHistory = statusHistory[statusHistory.length - 1]
-  const alertText = ALERT_MAP[status] ?? 'Başvurunuzun durumu güncellenmektedir.'
+  const {
+    id: applicationId,            // DTO alanı 'id' (eski kodda 'applicationId' yoktu → undefined idi)
+    status,
+    academicYear,
+    semester,                     // hedef yarıyıl ('3' / '5')
+    submissionDate,               // DTO alanı 'submissionDate' (eski 'submittedAt' yanlıştı)
+    studentName,
+    tckn,
+    email,                        // gerçek öğrenci e-postası (backend ApplicationResponse)
+    phoneNumber,
+    dateOfBirth,
+    targetFaculty,
+    targetDepartment,
+    currentUniversity,            // YÖKSİS'ten (mock) — başvuru anında kaydedildi
+    currentFaculty,
+    currentDepartment,
+    gpa,
+    sayYksScore,
+    sayYksRank,
+    oidbNotes,                    // geriye dönük ÖİDB notu (revisionNotes yoksa yedek gerekçe)
+    ydyoNotes,
+    requestedDocumentTypes = [],  // OİDB'nin düzeltme istediği belge tip(ler)i (örn: ['TRANSCRIPT'])
+    revisionNotes,                // OİDB'nin düzeltme notu (öncelikli gerekçe)
+    documents = [],
+  } = application
   const stepCurrent = getStepCurrent(status)
+  // Durum rozeti + Güncel Durum metni: yalnızca ÖİDB aksiyonlarını yansıtan milestone'dan
+  // türetilir (YDYO/YGK/Dekanlık iç aşamaları "Değerlendiriliyor" altında gizli).
+  const statusMeta = getStudentStatusMeta(application)
+  const milestone = getStudentMilestone(application)
 
-  // TODO: backend'e bu alanlar eklenince güncellenecek
-  const HARDCODED_CURRENT_DEPT = 'Fen Bilimleri'
-  const HARDCODED_STUDENT_NO = 'STU-2024-12345'
-  const HARDCODED_GPA = '3.85'
-  const HARDCODED_EMAIL = 'ahmet.yilmaz@ogrenci.iyte.edu.tr'
-  const HARDCODED_UNIVERSITY = 'İzmir Yüksek Teknoloji Enstitüsü'
-  const HARDCODED_GRADE = '2. Sınıf'
+  const revisionMode = isRevisionRequested(status)
+  const revisionNote = revisionNotes || oidbNotes || ydyoNotes || 'Düzeltme gerekçesi belirtilmemiştir. Lütfen birimle iletişime geçin.'
+  // İstenen belge tiplerinin okunabilir adları (birden fazla olabilir).
+  const requestedDocLabel = requestedDocumentTypes.length > 0
+    ? requestedDocumentTypes.map((t) => DOCUMENT_TYPE_LABEL[t] ?? t).join(', ')
+    : null
+  // OİDB belirli belge(ler) seçtiyse yalnızca onlar düzenlenebilir; seçmediyse (geriye dönük) hepsi açık.
+  const isDocEditable = (docType) => requestedDocumentTypes.length === 0 || requestedDocumentTypes.includes(docType)
 
-  const descriptionItems = [
+  const beforeReupload = (documentType, file) => {
+    if (file.type !== 'application/pdf') { message.error('Sadece PDF yüklenebilir.'); return Upload.LIST_IGNORE }
+    if (file.size > 10 * 1024 * 1024) { message.error("Dosya 10MB'dan büyük olamaz."); return Upload.LIST_IGNORE }
+    setPendingFiles((prev) => ({ ...prev, [documentType]: file }))
+    return false // otomatik upload'ı engelle; gönderimi biz yapacağız
+  }
+
+  const handleReupload = async () => {
+    const entries = Object.entries(pendingFiles).filter(([, f]) => f)
+    if (entries.length === 0) {
+      message.warning('Lütfen güncellemek istediğiniz en az bir belgeyi seçin.')
+      return
+    }
+    setReuploading(true)
+    try {
+      for (const [documentType, file] of entries) {
+        await applicationsApi.uploadDocument(applicationId, file, documentType)
+      }
+      await applicationsApi.submitApplication(applicationId) // düzeltmeyi tekrar gönder
+      message.success('Belgeleriniz güncellendi ve başvurunuz yeniden gönderildi.')
+      const fresh = await applicationsApi.getApplicationById(applicationId)
+      setApplication(fresh)
+      setPendingFiles({})
+    } catch (err) {
+      message.error(err?.response?.data?.message || 'Belgeler güncellenirken bir hata oluştu.')
+    } finally {
+      setReuploading(false)
+    }
+  }
+
+  // Belgeyi yeni sekmede görüntüle (inline). Endpoint attachment header'ı dönse de
+  // taze bir blob URL üzerinden tarayıcı PDF'i sekmede açabilir.
+  const handleViewDocument = async (documentId) => {
+    try {
+      const res = await applicationsApi.downloadDocument(documentId)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      // Sekmenin yüklenmesine zaman tanıyıp URL'i serbest bırak.
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000)
+    } catch {
+      message.error('Belge görüntülenemedi. Lütfen tekrar deneyin.')
+    }
+  }
+
+  const handleDownloadDocument = async (documentId, fileName) => {
+    try {
+      const res = await applicationsApi.downloadDocument(documentId)
+      triggerBlobDownload(res.data, fileName || `belge_${documentId}.pdf`)
+    } catch {
+      message.error('Belge indirilemedi. Lütfen tekrar deneyin.')
+    }
+  }
+
+  const formatSemester = (s) => (s ? `${s}. Yarıyıl` : '—')
+
+  const personalItems = [
+    { key: 'studentName', label: 'Ad Soyad', children: studentName ?? '—' },
+    { key: 'tckn', label: 'TC Kimlik No', children: tckn ?? '—' },
+    { key: 'birthDate', label: 'Doğum Tarihi', children: formatDate(dateOfBirth) },
+    { key: 'email', label: 'E-posta', children: email ?? '—' },
+    { key: 'phone', label: 'Telefon', children: phoneNumber ?? '—' },
+  ]
+
+  const academicItems = [
     {
-      key: 'applicationId',
-      label: 'Başvuru Numarası',
-      children: <Text style={{ fontWeight: 500 }}>#YG-{applicationId}</Text>,
+      key: 'academicYear',
+      label: 'Akademik Yıl',
+      children: academicYear ?? '—',
     },
+    {
+      key: 'semester',
+      label: 'Başvurulan Yarıyıl',
+      children: formatSemester(semester),
+    },
+    { key: 'university', label: 'Kayıtlı Olduğu Üniversite', children: currentUniversity ?? '—' },
+    { key: 'currentFaculty', label: 'Mevcut Fakülte', children: currentFaculty ?? '—' },
     {
       key: 'currentDept',
       label: 'Mevcut Bölüm',
-      children: <Tag>{HARDCODED_CURRENT_DEPT}</Tag>,
+      children: currentDepartment ? <Tag>{currentDepartment}</Tag> : '—',
     },
     {
-      key: 'studentNo',
-      label: 'Öğrenci Numarası',
-      children: HARDCODED_STUDENT_NO,
+      key: 'gpa',
+      label: 'Genel Not Ortalaması',
+      children: gpa != null ? Number(gpa).toFixed(2) : '—',
+    },
+    {
+      key: 'yksScore',
+      label: 'SAY YKS Puanı',
+      children: sayYksScore != null ? Number(sayYksScore).toFixed(3) : '—',
+    },
+    {
+      key: 'yksRank',
+      label: 'SAY YKS Sıralaması',
+      children: sayYksRank != null ? Number(sayYksRank).toLocaleString('tr-TR') : '—',
+    },
+    {
+      key: 'targetFaculty',
+      label: 'Hedef Fakülte',
+      children: targetFaculty ?? '—',
     },
     {
       key: 'targetDept',
@@ -181,39 +294,14 @@ export default function ApplicationDetail() {
       ),
     },
     {
-      key: 'studentName',
-      label: 'Ad Soyad',
-      children: studentName,
-    },
-    {
-      key: 'gpa',
-      label: 'Genel Not Ortalaması',
-      children: HARDCODED_GPA,
-    },
-    {
-      key: 'email',
-      label: 'E-posta',
-      children: HARDCODED_EMAIL,
+      key: 'applicationId',
+      label: 'Başvuru Numarası',
+      children: <Text style={{ fontWeight: 500 }}>#YG-{applicationId}</Text>,
     },
     {
       key: 'submittedAt',
       label: 'Başvuru Tarihi',
-      children: `📅 ${formatDate(submittedAt)}`,
-    },
-    {
-      key: 'university',
-      label: 'Üniversite',
-      children: HARDCODED_UNIVERSITY,
-    },
-    {
-      key: 'lastUpdate',
-      label: 'Son Güncelleme',
-      children: `📅 ${formatDate(lastHistory?.changedAt)}`,
-    },
-    {
-      key: 'grade',
-      label: 'Sınıf',
-      children: HARDCODED_GRADE,
+      children: `📅 ${formatDate(submissionDate)}`,
     },
   ]
 
@@ -228,9 +316,37 @@ export default function ApplicationDetail() {
         </Text>
       </div>
 
+      {/* Düzeltme / Evrak İadesi banner'ı — yalnızca REVISION_REQUESTED iken */}
+      {revisionMode && (
+        <Alert
+          type="warning"
+          showIcon
+          banner
+          style={{ marginBottom: 24, borderRadius: 8 }}
+          message={<strong>Düzeltme / Evrak İadesi Gerekiyor</strong>}
+          description={
+            <span>
+              {requestedDocLabel ? (
+                <>
+                  Başvurunuzda <Text strong style={{ color: '#ad6800' }}>{requestedDocLabel}</Text> belge(ler)inin
+                  düzeltilmesi isteniyor. Yalnızca bu belge(ler)i yeniden yükleyip başvurunuzu tekrar gönderin:
+                </>
+              ) : (
+                <>Başvurunuz aşağıdaki gerekçeyle düzeltmeye gönderildi. İlgili belgeleri güncelleyip yeniden gönderin:</>
+              )}
+              <br />
+              <Text strong style={{ color: '#ad6800' }}>"{revisionNote}"</Text>
+            </span>
+          }
+        />
+      )}
+
       {/* Durum kartı */}
       <div style={styles.card}>
-        <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Başvuru Durumu</Title>
+        <Space align="center" style={{ marginBottom: 4 }}>
+          <Title level={5} style={{ margin: 0 }}>Başvuru Durumu</Title>
+          <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
+        </Space>
         <Text type="secondary" style={styles.cardSubtitle}>
           Geçiş talebinizin sürecini takip edin
         </Text>
@@ -242,42 +358,112 @@ export default function ApplicationDetail() {
         />
 
         <Alert
-          type="info"
+          type={milestone.alertType}
           showIcon
           message={
             <span>
-              <strong>Güncel Durum: </strong>{alertText}
+              <strong>Güncel Durum: </strong>{milestone.alertText}
             </span>
           }
         />
       </div>
 
-      {/* Detay kartı */}
+      {/* Detay kartı — Yeni Başvuru'da girilen tüm bilgilerin özeti */}
       <div style={styles.card}>
         <Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>Başvuru Detayları</Title>
         <Text type="secondary" style={styles.cardSubtitle}>
           Bu geçiş talebi hakkında tam bilgi
         </Text>
 
+        <Text strong style={{ display: 'block', marginBottom: 12 }}>Kişisel Bilgiler</Text>
         <Descriptions
           column={2}
           layout="vertical"
           colon={false}
-          items={descriptionItems}
+          items={personalItems}
         />
 
         <Divider />
 
+        <Text strong style={{ display: 'block', marginBottom: 12 }}>Akademik Bilgiler</Text>
+        <Descriptions
+          column={2}
+          layout="vertical"
+          colon={false}
+          items={academicItems}
+        />
+
+        <Divider />
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>Belgeler</Text>
         <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
-          Yüklenen Belgeler
+          e-Devlet / ÖSYM'den otomatik alınan ve yüklediğiniz belgeleri görüntüleyebilir veya indirebilirsiniz.
         </Text>
 
-        {documents.map((doc) => (
-          <div key={doc.documentId} style={styles.documentRow}>
-            <FileTextOutlined style={{ color: '#8B1A2B', fontSize: 16 }} />
-            <Text>{doc.fileName}</Text>
-          </div>
-        ))}
+        {documents.length === 0 && (
+          <Text type="secondary">Henüz belge bulunmuyor.</Text>
+        )}
+
+        {documents.map((doc) => {
+          const editable = isDocEditable(doc.documentType)
+          return (
+            <div
+              key={doc.documentId}
+              style={{
+                ...styles.documentRow,
+                // Düzeltme modunda OİDB'nin istediği belgeyi görsel olarak öne çıkar
+                ...(revisionMode && editable
+                  ? { borderColor: '#ad6800', background: '#fffbe6' }
+                  : {}),
+              }}
+            >
+              <FileTextOutlined style={{ color: '#8B1A2B', fontSize: 16 }} />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Text>{pendingFiles[doc.documentType]?.name ?? doc.fileName}</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>{docTypeLabel(doc.documentType)}</Text>
+              </div>
+
+              <Space>
+                <Button
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => handleViewDocument(doc.documentId)}
+                >
+                  Görüntüle
+                </Button>
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}
+                >
+                  İndir
+                </Button>
+
+                {/* Yalnızca REVISION_REQUESTED iken ve OİDB'nin seçtiği belge için kilit açılır */}
+                {revisionMode && (
+                  editable ? (
+                    <Upload
+                      accept=".pdf"
+                      maxCount={1}
+                      showUploadList={false}
+                      beforeUpload={(file) => beforeReupload(doc.documentType, file)}
+                    >
+                      <Button size="small" icon={<UploadOutlined />}>
+                        {pendingFiles[doc.documentType] ? 'Değiştir' : 'Yeniden Yükle'}
+                      </Button>
+                    </Upload>
+                  ) : (
+                    <Tooltip title="Bu belge için düzeltme istenmedi, yeniden yüklenemez.">
+                      <Button size="small" icon={<LockOutlined />} disabled>
+                        Kilitli
+                      </Button>
+                    </Tooltip>
+                  )
+                )}
+              </Space>
+            </div>
+          )
+        })}
       </div>
 
       <div style={styles.footer}>
@@ -288,6 +474,16 @@ export default function ApplicationDetail() {
           <Button onClick={() => navigate('/student/applications')}>
             Başvurularımı Görüntüle
           </Button>
+          {revisionMode && (
+            <Button
+              type="primary"
+              loading={reuploading}
+              onClick={handleReupload}
+              style={{ background: '#8B1A2B', borderColor: '#8B1A2B', fontWeight: 600 }}
+            >
+              Belgeleri Güncelle ve Yeniden Gönder
+            </Button>
+          )}
         </Space>
       </div>
     </div>

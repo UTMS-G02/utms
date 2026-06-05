@@ -270,10 +270,13 @@ const mockApi = {
   },
 
   // GET /api/documents/{documentId}/download → file blob.
-  // YDYO only views documents; the link opens the proxied download URL.
-  // TODO: replace with real API call →
-  //   apiClient.get(`/documents/${documentId}/download`, { responseType: 'blob' })
   getDocumentDownloadUrl: (documentId) => `/api/documents/${documentId}/download`,
+
+  // Mock: gerçek dosya yok → küçük bir sahte PDF blob'u döndür (UI akışı bozulmasın).
+  downloadDocument: async () => {
+    await delay(200)
+    return { data: new Blob(['Mock belge içeriği'], { type: 'application/pdf' }) }
+  },
 
   // PATCH /api/applications/{id}/ydyo-initial-review  (Phase 1 — document review)
   // Body: { approved, requiresExam, notes, reviewerId }.
@@ -386,6 +389,10 @@ const realApi = {
 
   // Plain href (yeni sekmede açılır); dev proxy /api → backend.
   getDocumentDownloadUrl: (documentId) => `/api/documents/${documentId}/download`,
+
+  // Yetkili (Bearer) blob indirme — href JWT göndermediği için görüntüleme/indirme bununla yapılır.
+  downloadDocument: (documentId) =>
+    apiClient.get(`/documents/${documentId}/download`, { responseType: 'blob' }),
 
   // ⚠️ Sadece reviewerId gönderilir — asla tam reviewer entity'si (passwordHash vb.).
   // Backend DTO alanı `isApproved` (Jackson JSON adı `approved`).

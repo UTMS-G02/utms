@@ -31,6 +31,7 @@ public class ApplicationResponse {
     //private Integer studentId;
     private ApplicationStatus status;
     private String academicYear;
+    private String semester;          // hedef yarıyıl (3/5) — başvuru takibi detayında gösterilir
     private String targetFaculty;
     private String targetDepartment;
 
@@ -39,6 +40,7 @@ public class ApplicationResponse {
     private String tckn;
     private String email;
     private String phoneNumber;
+    private LocalDate dateOfBirth;    // başvuru takibi detayında kişisel bilgiler için
     private LocalDate submissionDate;
 
     // ÖİDB İnceleme Detayları
@@ -46,6 +48,14 @@ public class ApplicationResponse {
     private String oidbNotes;
     private Integer oidbReviewedBy;
     private LocalDateTime oidbReviewedDate;
+
+    // Düzeltme (revizyon) isteği detayları — öğrenci ve ÖİDB ekranları bu alanlara dayanır.
+    //  - requestedDocumentTypes: yalnızca bu belge tiplerinin yükleme alanı öğrencide açılır (çoklu)
+    //  - revisionNotes: öğrenciye gösterilen düzeltme gerekçesi
+    //  - revisionRequestedBefore: bir kez düzeltme istendi mi? (ÖİDB butonu/öğrenci rozeti için)
+    private List<String> requestedDocumentTypes;
+    private String revisionNotes;
+    private boolean revisionRequestedBefore;
 
     // YDYO İnceleme Detayları
     private Boolean ydyoApproved;
@@ -72,6 +82,8 @@ public class ApplicationResponse {
     private String currentFaculty;
     private String currentDepartment;
     private Double gpa;
+    private Double sayYksScore;       // ÖSYM (mock) SAY YKS puanı
+    private Integer sayYksRank;       // ÖSYM (mock) SAY YKS sıralaması
 
     // Belgeler — YDYO detay ekranı için hafif özet (indirme linki documentId ile kurulur)
     private List<DocumentSummary> documents;

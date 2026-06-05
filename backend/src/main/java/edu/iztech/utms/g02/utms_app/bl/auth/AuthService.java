@@ -143,7 +143,8 @@ public class AuthService {
             facultyId = staff.getFacultyId();
         }
 
-        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, user.getMiddleName(), tckn, dateOfBirth, phoneNumber, departmentId, facultyId);
+        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, user.getMiddleName(), tckn, dateOfBirth,
+  phoneNumber, departmentId, facultyId);
     }
 
     /**
@@ -176,6 +177,26 @@ public class AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+    }
+
+    /**
+     * Changes the password of the currently authenticated user.
+     * Verifies the current password before setting the new one.
+     */
+    public void changePassword(String email, String currentPassword, String newPassword) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AuthException("Kullanıcı bulunamadı.", HttpStatus.BAD_REQUEST));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new AuthException("Mevcut şifreniz hatalı.", HttpStatus.BAD_REQUEST);
+        }
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new AuthException("Yeni şifre mevcut şifreden farklı olmalıdır.", HttpStatus.BAD_REQUEST);
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        log.info("Password changed for {}", email);
     }
 
     /**

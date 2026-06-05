@@ -7,6 +7,7 @@ import {
   Divider,
   Empty,
   Input,
+  Modal,
   Row,
   Select,
   Space,
@@ -30,6 +31,19 @@ const { Title, Text } = Typography
 const { Search } = Input
 const { Option } = Select
 
+// Yetkili (Bearer) bir GET ile alınan blob'u tarayıcıda indirmeye zorlar:
+// geçici obje URL'i → gizli <a download> → programatik click → URL'i temizle (revoke).
+const triggerBlobDownload = (blob, fileName) => {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
 const STATUS_MAP = {
   ALL: { label: 'Tümü' },
   OIDB_REVIEW: { label: 'İnceleniyor', color: 'blue' },
@@ -40,6 +54,48 @@ const STATUS_MAP = {
   FACULTY_REVIEW: { label: 'Fakültede', color: 'gold' },
   ACCEPTED: { label: 'Onaylandı', color: 'success' },
   REJECTED: { label: 'Reddedildi', color: 'error' },
+}
+
+// Color tinting system matching YDYO design
+const TINT = {
+  amber: { background: '#FEF3C7', color: '#B45309' },
+  green: { background: '#D1FAE5', color: '#047857' },
+  red: { background: '#FEE2E2', color: '#B91C1C' },
+  blue: { background: '#DBEAFE', color: '#1E40AF' },
+  purple: { background: '#E9D5FF', color: '#7E22CE' },
+  gray: { background: '#F3F4F6', color: '#6B7280' },
+}
+
+const getStatusTint = (status) => {
+  switch (status) {
+    case 'OIDB_REVIEW':
+      return TINT.blue
+    case 'REQUEST_UPDATE':
+      return TINT.amber
+    case 'YDYO_REVIEW':
+      return TINT.purple
+    case 'YDYO_APPROVED':
+      return TINT.green
+    case 'YDYO_REJECTED':
+      return TINT.red
+    case 'FACULTY_REVIEW':
+      return TINT.purple
+    case 'ACCEPTED':
+      return TINT.green
+    case 'REJECTED':
+      return TINT.red
+    default:
+      return TINT.gray
+  }
+}
+
+// Öğrenci, istenen düzeltmeyi yapıp başvuruyu yeniden gönderdiyse memura ayırt edici bir
+// rozet gösterilir ("Öğrenci Güncelledi") — aksi halde standart STATUS_MAP kullanılır.
+const getOidbStatusInfo = (application) => {
+  const resubmitted = application.revisionRequestedBefore &&
+    (application.rawStatus === 'SUBMITTED' || application.rawStatus === 'OIDB_REVIEW')
+  if (resubmitted) return { label: 'Öğrenci Güncelledi', color: 'gold' }
+  return STATUS_MAP[application.status] ?? { label: application.status, color: 'default' }
 }
 
 const STATUS_OPTIONS = [
@@ -64,15 +120,23 @@ const FACULTY_OPTIONS = [
 const ANNOUNCEABLE_STATUSES = ['ACCEPTED', 'REJECTED']
 
 const DOCUMENT_TYPE_LABEL = {
+  STUDENT_CERTIFICATE: 'Öğrenci Belgesi',
   TRANSCRIPT: 'Transkript Belgesi',
-  ID_CARD: 'Kimlik Belgesi',
+  YKS_RESULT: 'YKS Sonuç Belgesi',
   LANGUAGE_CERT: 'Yabancı Dil Belgesi',
+  ID_CARD: 'Kimlik Belgesi',
   OTHER: 'Diğer Belge',
 }
+
+// Modal dropdown'u için, başvuruda belge yoksa kullanılacak genel yedek liste.
+const FALLBACK_DOCUMENT_OPTIONS = Object.entries(DOCUMENT_TYPE_LABEL).map(
+  ([value, label]) => ({ value, label }),
+)
 
 const ACTION_CONFIG = {
   OIDB_REVIEW: [
     { key: 'request_update', label: 'Güncelleme İste', type: 'default' },
+    { key: 'reject_application', label: 'Reddet', type: 'default', danger: true },
     { key: 'send_ydyo', label: "YDYO'ya Gönder", type: 'primary' },
   ],
   YDYO_APPROVED: [
@@ -95,17 +159,19 @@ const styles = {
   },
   headerBar: {
     background: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 24,
-    boxShadow: '0 10px 18px rgba(0, 0, 0, 0.05)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
     marginBottom: 24,
+    border: '1px solid #f0f0f0',
   },
   filterBar: {
     background: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 24,
-    boxShadow: '0 10px 18px rgba(0, 0, 0, 0.05)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
     marginBottom: 24,
+    border: '1px solid #f0f0f0',
   },
   selectBox: {
     width: '100%',
@@ -113,10 +179,10 @@ const styles = {
   },
   card: {
     background: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 24,
     marginBottom: 16,
-    boxShadow: '0 8px 18px rgba(0, 0, 0, 0.04)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
     border: '1px solid #f0f0f0',
   },
   sectionRow: {
@@ -138,7 +204,7 @@ const styles = {
   },
   actionBox: {
     border: '1px dashed #d9d9d9',
-    borderRadius: 16,
+    borderRadius: 10,
     padding: 18,
     marginTop: 16,
   },
@@ -184,20 +250,32 @@ const formatSearchMatch = (application, searchQuery) => {
 }
 
 export default function OidbDashboard() {
-  const { message: antdMessage } = App.useApp()
+  const { message: antdMessage, modal } = App.useApp()
   const { logout } = useAuth()
   const location = useLocation()
   const isPendingRoute = location.pathname === '/oidb/pending'
 
   const [loading, setLoading] = useState(true)
   const [applications, setApplications] = useState([])
-  const [expandedIds, setExpandedIds] = useState([])
   const [details, setDetails] = useState({})
   const [selectedIds, setSelectedIds] = useState([])
   const [statusFilter, setStatusFilter] = useState(isPendingRoute ? 'OIDB_REVIEW' : 'ALL')
   const [facultyFilter, setFacultyFilter] = useState('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTabs, setActiveTabs] = useState({})
+  const [detailsModal, setDetailsModal] = useState({
+    open: false,
+    applicationId: null,
+  })
+
+  // "Güncelleme İste" modalı durumu: hangi başvuru, seçilen belge tip(ler)i ve not.
+  const [revisionModal, setRevisionModal] = useState({
+    open: false,
+    applicationId: null,
+    documentTypes: [],
+    notes: '',
+  })
+  const [revisionSubmitting, setRevisionSubmitting] = useState(false)
 
   useEffect(() => {
     setStatusFilter(isPendingRoute ? 'OIDB_REVIEW' : 'ALL')
@@ -244,27 +322,26 @@ export default function OidbDashboard() {
   }
 
   const handleToggleExpand = async (applicationId) => {
-    const isExpanded = expandedIds.includes(applicationId)
-    if (isExpanded) {
-      setExpandedIds(expandedIds.filter((id) => id !== applicationId))
-      return
-    }
-
+    // Open modal instead of expand
     if (!details[applicationId]) {
       antdMessage.loading({ content: 'Detaylar yükleniyor...', key: `loading-${applicationId}` })
       try {
         const detail = await applicationsApi.getOidbApplicationById(applicationId)
         setDetails((prev) => ({ ...prev, [applicationId]: detail }))
         antdMessage.destroy(`loading-${applicationId}`)
-      } catch (error) {
+      } catch {
         antdMessage.error('Başvuru detayları alınamadı.')
+        return
       }
     }
 
-    setExpandedIds([...expandedIds, applicationId])
+    setDetailsModal({
+      open: true,
+      applicationId,
+    })
   }
 
-  const handleAction = async (applicationId, actionKey) => {
+  const executeAction = async (applicationId, actionKey) => {
     try {
       let result = null
       if (actionKey === 'request_update') result = await applicationsApi.requestApplicationUpdate(applicationId)
@@ -279,10 +356,80 @@ export default function OidbDashboard() {
       } else {
         throw new Error('Action failed')
       }
-    } catch {
-      antdMessage.error('İşlem gerçekleştirilirken bir hata oluştu.')
+    } catch (err) {
+      // Varsa backend'in döndürdüğü anlamlı iş kuralı mesajını göster.
+      antdMessage.error(
+        err?.response?.data?.message || 'İşlem gerçekleştirilirken bir hata oluştu.',
+      )
     }
   }
+
+  const handleAction = (applicationId, actionKey) => {
+    // Güncelleme İste → doğrudan istek atma; hangi belge(ler) + not seçimi için modal aç.
+    if (actionKey === 'request_update') {
+      setRevisionModal({
+        open: true,
+        applicationId,
+        documentTypes: [], // memur düzeltilecek belgeleri kendi seçer (birden fazla olabilir)
+        notes: '',
+      })
+      return
+    }
+
+    // Reddetme geri alınamaz bir işlem; önce onay penceresi göster.
+    if (actionKey === 'reject_application') {
+      modal.confirm({
+        title: 'Başvuruyu Reddet',
+        content: 'Bu başvuruyu reddetmek istediğinize emin misiniz? Başvurunun durumu "Reddedildi" olarak güncellenecektir.',
+        okText: 'Evet, Reddet',
+        okButtonProps: { danger: true },
+        cancelText: 'Vazgeç',
+        onOk: () => executeAction(applicationId, actionKey),
+      })
+      return
+    }
+    executeAction(applicationId, actionKey)
+  }
+
+  const closeRevisionModal = () => setRevisionModal((prev) => ({ ...prev, open: false }))
+
+  const handleRevisionSubmit = async () => {
+    if (!revisionModal.documentTypes || revisionModal.documentTypes.length === 0) {
+      antdMessage.warning('Lütfen düzeltilmesi gereken en az bir belge seçin.')
+      return
+    }
+    if (!revisionModal.notes.trim()) {
+      antdMessage.warning('Lütfen öğrenciye iletilecek bir düzeltme notu yazın.')
+      return
+    }
+    setRevisionSubmitting(true)
+    try {
+      await applicationsApi.requestApplicationUpdate(revisionModal.applicationId, {
+        requestedDocumentTypes: revisionModal.documentTypes,
+        revisionNotes: revisionModal.notes.trim(),
+      })
+      antdMessage.success('Güncelleme isteği öğrenciye iletildi.')
+      closeRevisionModal()
+      await loadApplications()
+    } catch (err) {
+      // Backend anlamlı bir iş kuralı mesajı döndürdüyse (örn. "sadece bir kez...") onu göster.
+      antdMessage.error(
+        err?.response?.data?.message || 'Güncelleme isteği gönderilirken bir hata oluştu.',
+      )
+    } finally {
+      setRevisionSubmitting(false)
+    }
+  }
+
+  // Modal dropdown'u: seçili başvuruya yüklü belgelerden türetilir; yoksa genel listeye düşer.
+  const revisionDocOptions = (() => {
+    const docs = details[revisionModal.applicationId]?.documents ?? []
+    if (docs.length === 0) return FALLBACK_DOCUMENT_OPTIONS
+    return docs.map((doc) => ({
+      value: doc.docType,
+      label: DOCUMENT_TYPE_LABEL[doc.docType] ?? doc.docType,
+    }))
+  })()
 
   const handleBulkShare = async () => {
     if (selectedIds.length === 0) return
@@ -296,17 +443,39 @@ export default function OidbDashboard() {
     }
   }
 
-  const handleDownloadDocument = (documentId) => {
-    const downloadUrl = `/api/documents/${documentId}/download`
-    window.open(downloadUrl, '_blank')
+  // Tekli belge indirme — doğrudan link/window.open YERİNE axios ile yetkili GET.
+  // responseType: 'blob' API servisinde set edilir; dosya adı orijinal fileName.
+  const handleDownloadDocument = async (documentId, fileName) => {
+    try {
+      const res = await applicationsApi.downloadDocument(documentId)
+      triggerBlobDownload(res.data, fileName || `belge_${documentId}`)
+    } catch {
+      antdMessage.error('Belge indirilemedi. Lütfen tekrar deneyin.')
+    }
   }
 
-  const renderActionButtons = (status, applicationId) => {
-    const actions = ACTION_CONFIG[status] ?? []
+  // Toplu (ZIP) indirme — başvuruya ait tüm belgeler tek arşivde, yetkili GET ile.
+  const handleDownloadAllZip = async (applicationId) => {
+    try {
+      const res = await applicationsApi.downloadAllDocumentsZip(applicationId)
+      triggerBlobDownload(res.data, `basvuru_${applicationId}_belgeler.zip`)
+    } catch {
+      antdMessage.error('Belgeler indirilemedi. Lütfen tekrar deneyin.')
+    }
+  }
+
+  const renderActionButtons = (application) => {
+    let actions = ACTION_CONFIG[application.status] ?? []
+    // Bir kez düzeltme istendiyse "Güncelleme İste" artık kullanılamaz; memur yalnızca
+    // YDYO'ya gönderebilir veya reddedebilir (backend de ikinci isteği reddeder).
+    if (application.revisionRequestedBefore) {
+      actions = actions.filter((a) => a.key !== 'request_update')
+    }
     if (actions.length === 0) {
       return <Text type="secondary">Bu durumda yapılacak işlem yok.</Text>
     }
 
+    const applicationId = application.applicationId
     return (
       <Space wrap>
         {actions.map((action) => (
@@ -348,32 +517,36 @@ export default function OidbDashboard() {
             </Space>
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <Text strong>Başvuru Durumu:</Text>
-            <Select
-              value={statusFilter}
-              onChange={setStatusFilter}
-              style={styles.selectBox}
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <Option key={option.value} value={option.value}>{option.label}</Option>
-              ))}
-            </Select>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>Başvuru Durumu:</Text>
+              <Select
+                value={statusFilter}
+                onChange={setStatusFilter}
+                style={styles.selectBox}
+              >
+                {STATUS_OPTIONS.map((option) => (
+                  <Option key={option.value} value={option.value}>{option.label}</Option>
+                ))}
+              </Select>
+            </Space>
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <Text strong>Fakülte:</Text>
-            <Select
-              value={facultyFilter}
-              onChange={setFacultyFilter}
-              style={styles.selectBox}
-            >
-              {FACULTY_OPTIONS.map((option) => (
-                <Option key={option.value} value={option.value}>{option.label}</Option>
-              ))}
-            </Select>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>Fakülte:</Text>
+              <Select
+                value={facultyFilter}
+                onChange={setFacultyFilter}
+                style={styles.selectBox}
+              >
+                {FACULTY_OPTIONS.map((option) => (
+                  <Option key={option.value} value={option.value}>{option.label}</Option>
+                ))}
+              </Select>
+            </Space>
           </Col>
-          <Row xs={24} sm={24} lg={2} style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <Col xs={24} sm={24} lg={2} style={{ display: 'flex', alignItems: 'flex-end' }}>
             <Text style={{ display: 'block', fontWeight: 600 }}>{filteredApplications.length} başvuru gösteriliyor</Text>
-          </Row>
+          </Col>
         </Row>
       </div>
 
@@ -413,11 +586,8 @@ export default function OidbDashboard() {
         <Empty description="Herhangi bir başvuru bulunamadı." style={{ marginTop: 64 }} />
       ) : (
         filteredApplications.map((application) => {
-          const isExpanded = expandedIds.includes(application.applicationId)
           const detail = details[application.applicationId]
-          const activeKey = activeTabs[application.applicationId] ?? 'general'
-          const statusInfo = STATUS_MAP[application.status] ?? { label: application.status, color: 'default' }
-          const documentCount = detail?.documents?.length ?? 0
+          const statusInfo = getOidbStatusInfo(application)
 
           return (
             <div key={application.applicationId} style={styles.card}>
@@ -442,7 +612,9 @@ export default function OidbDashboard() {
                     </Col>
                     <Col xs={24} sm={12} md={8}>
                       <Text style={styles.summaryDetail}>Durum</Text>
-                      <Tag color={statusInfo.color}>{statusInfo.label}</Tag>
+                      <Tag style={{ ...getStatusTint(application.status), border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 500 }}>
+                        {statusInfo.label}
+                      </Tag>
                     </Col>
                     <Col xs={24} sm={12} md={8}>
                       <Text style={styles.summaryDetail}>Başvuru Tarihi</Text>
@@ -451,119 +623,169 @@ export default function OidbDashboard() {
                   </Row>
                 </Col>
                 <Col>
-                  <Button type="text" onClick={() => handleToggleExpand(application.applicationId)} icon={isExpanded ? <UpOutlined /> : <DownOutlined />}>
-                    {isExpanded ? 'Küçült' : 'Detay' }
+                  <Button type="primary" onClick={() => handleToggleExpand(application.applicationId)}>
+                    Detayları Gör
                   </Button>
                 </Col>
               </Row>
-
-              {isExpanded && (
-                <div style={{ marginTop: 24 }}>
-                  <Divider />
-                  <Row gutter={[16, 16]}>
-                    <Col xs={24} sm={12} lg={6}>
-                      <Text style={styles.summaryDetail}>Mevcut Üniversite</Text>
-                      <Text style={styles.summaryValue}>{detail?.currentUniversity ?? application.currentUniversity}</Text>
-                    </Col>
-                    <Col xs={24} sm={12} lg={6}>
-                      <Text style={styles.summaryDetail}>Mevcut Bölüm</Text>
-                      <Text style={styles.summaryValue}>{detail?.currentDepartment ?? application.currentDepartment}</Text>
-                    </Col>
-                    <Col xs={24} sm={12} lg={6}>
-                      <Text style={styles.summaryDetail}>Hedef Bölüm</Text>
-                      <Text style={styles.summaryValue}>{application.targetDepartment}</Text>
-                    </Col>
-                    <Col xs={24} sm={12} lg={6}>
-                      <Text style={styles.summaryDetail}>Dönem</Text>
-                      <Text style={styles.summaryValue}>{detail?.semester ?? application.semester}</Text>
-                    </Col>
-                  </Row>
-
-                  <div style={styles.sectionRow}>
-                    <div>
-                      <Tabs
-                        activeKey={activeKey}
-                        onChange={(key) => setActiveTabs((prev) => ({ ...prev, [application.applicationId]: key }))}
-                        items={[
-                          {
-                            key: 'general',
-                            label: 'Genel Bakış',
-                            children: (
-                              <div style={styles.actionBox}>
-                                <Title level={5}>İşlemler</Title>
-                                {renderActionButtons(application.status, application.applicationId)}
-                              </div>
-                            ),
-                          },
-                          {
-                            key: 'documents',
-                            label: `Dökümanlar (${documentCount})`,
-                            children: (
-                              <div style={styles.actionBox}>
-                                <Row align="middle" justify="space-between">
-                                  <Col>
-                                    <Title level={5} style={{ marginBottom: 0 }}>Dökümanlar</Title>
-                                  </Col>
-                                  <Col>
-                                    <Button icon={<DownloadOutlined />}>Tümünü İndir</Button>
-                                  </Col>
-                                </Row>
-
-                                {detail?.documents?.length ? (
-                                  detail.documents.map((doc) => (
-                                    <div key={doc.documentId} style={styles.documentRow}>
-                                      <div style={styles.documentMeta}>
-                                        <Text strong>{doc.fileName}</Text>
-                                        <Text type="secondary">{DOCUMENT_TYPE_LABEL[doc.docType] ?? 'Belge'}</Text>
-                                        <Text type="secondary" style={{ fontSize: 12 }}>
-                                          {doc.size} • Yüklenme: {formatDate(doc.uploadedAt)}
-                                        </Text>
-                                      </div>
-                                      <Button icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(doc.documentId)}>
-                                        İndir
-                                      </Button>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <Empty description="Döküman bulunmuyor." />
-                                )}
-                              </div>
-                            ),
-                          },
-                          {
-                            key: 'history',
-                            label: 'Geçmiş',
-                            children: (
-                              <div style={styles.actionBox}>
-                                <Title level={5}>Geçmiş</Title>
-                                {detail?.statusHistory?.length ? (
-                                  <Timeline mode="left">
-                                    {detail.statusHistory.map((entry) => {
-                                      const info = STATUS_MAP[entry.status] ?? { label: entry.status, color: 'default' }
-                                      return (
-                                        <Timeline.Item key={entry.status + entry.changedAt} color={info.color}>
-                                          <Text strong>{info.label}</Text>
-                                          <div>{formatDate(entry.changedAt)}</div>
-                                        </Timeline.Item>
-                                      )
-                                    })}
-                                  </Timeline>
-                                ) : (
-                                  <Empty description="Henüz geçmiş kaydı yok." />
-                                )}
-                              </div>
-                            ),
-                          },
-                        ]}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )
         })
       )}
+
+      <Modal
+        title="Güncelleme İste"
+        open={revisionModal.open}
+        onOk={handleRevisionSubmit}
+        onCancel={closeRevisionModal}
+        confirmLoading={revisionSubmitting}
+        okText="Gönder"
+        cancelText="Vazgeç"
+        destroyOnClose
+      >
+        <Text type="secondary">
+          Öğrenciden hangi belge(ler)i düzeltmesini istediğinizi seçin ve bir not ekleyin.
+          Öğrenci yalnızca seçtiğiniz belgeleri yeniden yükleyebilecek.
+        </Text>
+        <div style={{ marginTop: 16 }}>
+          <Text strong>Düzeltilecek Belge(ler)</Text>
+          <Select
+            mode="multiple"
+            allowClear
+            style={{ width: '100%', marginTop: 6 }}
+            placeholder="Bir veya daha fazla belge seçin"
+            value={revisionModal.documentTypes}
+            onChange={(value) => setRevisionModal((prev) => ({ ...prev, documentTypes: value }))}
+            options={revisionDocOptions}
+          />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <Text strong>Düzeltme Notu</Text>
+          <Input.TextArea
+            style={{ marginTop: 6 }}
+            rows={4}
+            maxLength={500}
+            showCount
+            placeholder="Örn: Belge okunamıyor, lütfen PDF olarak yeniden yükleyin."
+            value={revisionModal.notes}
+            onChange={(e) => setRevisionModal((prev) => ({ ...prev, notes: e.target.value }))}
+          />
+        </div>
+      </Modal>
+
+      {/* Details Modal */}
+      <Modal
+        title={detailsModal.applicationId && details[detailsModal.applicationId] ? `Başvuru Detayları - ${details[detailsModal.applicationId].studentName}` : 'Başvuru Detayları'}
+        open={detailsModal.open}
+        onCancel={() => setDetailsModal({ open: false, applicationId: null })}
+        footer={null}
+        width={1000}
+        destroyOnClose
+        bodyStyle={{ maxHeight: '70vh', overflowY: 'auto', padding: '24px' }}
+      >
+        {details[detailsModal.applicationId] && (
+          <Tabs
+            defaultActiveKey="general"
+            items={[
+              {
+                key: 'general',
+                label: 'Genel Bilgiler',
+                children: (
+                  <div style={{ marginTop: 16 }}>
+                    <Row gutter={[16, 16]}>
+                      <Col xs={24} sm={12}>
+                        <Text style={styles.summaryDetail}>Mevcut Üniversite</Text>
+                        <Text style={styles.summaryValue}>{details[detailsModal.applicationId]?.currentUniversity}</Text>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Text style={styles.summaryDetail}>Mevcut Bölüm</Text>
+                        <Text style={styles.summaryValue}>{details[detailsModal.applicationId]?.currentDepartment}</Text>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Text style={styles.summaryDetail}>Hedef Bölüm</Text>
+                        <Text style={styles.summaryValue}>{details[detailsModal.applicationId]?.targetDepartment}</Text>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Text style={styles.summaryDetail}>Dönem</Text>
+                        <Text style={styles.summaryValue}>{details[detailsModal.applicationId]?.semester}</Text>
+                      </Col>
+                    </Row>
+                    <Divider />
+                    <Title level={5}>İşlemler</Title>
+                    {renderActionButtons(applications.find(a => a.applicationId === detailsModal.applicationId))}
+                  </div>
+                ),
+              },
+              {
+                key: 'documents',
+                label: `Dökümanlar (${details[detailsModal.applicationId]?.documents?.length ?? 0})`,
+                children: (
+                  <div style={{ marginTop: 16 }}>
+                    <Row align="middle" justify="space-between" style={{ marginBottom: 16 }}>
+                      <Col>
+                        <Title level={5} style={{ marginBottom: 0 }}>Dökümanlar</Title>
+                      </Col>
+                      <Col>
+                        <Button
+                          icon={<DownloadOutlined />}
+                          disabled={!details[detailsModal.applicationId]?.documents?.length}
+                          onClick={() => handleDownloadAllZip(detailsModal.applicationId)}
+                        >
+                          Tümünü İndir
+                        </Button>
+                      </Col>
+                    </Row>
+
+                    {details[detailsModal.applicationId]?.documents?.length ? (
+                      details[detailsModal.applicationId].documents.map((doc) => (
+                        <div key={doc.documentId} style={styles.documentRow}>
+                          <div style={styles.documentMeta}>
+                            <Text strong>{doc.fileName}</Text>
+                            <Text type="secondary">{DOCUMENT_TYPE_LABEL[doc.docType] ?? 'Belge'}</Text>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {doc.size} • Yüklenme: {formatDate(doc.uploadedAt)}
+                            </Text>
+                          </div>
+                          <Button icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}>
+                            İndir
+                          </Button>
+                        </div>
+                      ))
+                    ) : (
+                      <Empty description="Döküman bulunmuyor." />
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'history',
+                label: 'Geçmiş',
+                children: (
+                  <div style={{ marginTop: 16 }}>
+                    <Title level={5}>Geçmiş</Title>
+                    {details[detailsModal.applicationId]?.statusHistory && details[detailsModal.applicationId].statusHistory.length > 0 ? (
+                      <Timeline mode="left">
+                        {details[detailsModal.applicationId].statusHistory.map((entry, index) => {
+                          const info = STATUS_MAP[entry.status] ?? { label: entry.status, color: 'default' }
+                          const date = entry.changedAt ? formatDate(entry.changedAt) : '-'
+                          return (
+                            <Timeline.Item key={`history-${index}`} color={info.color}>
+                              <Text strong>{info.label}</Text>
+                              <div style={{ marginTop: 4, color: '#999' }}>{date}</div>
+                            </Timeline.Item>
+                          )
+                        })}
+                      </Timeline>
+                    ) : (
+                      <Empty description="Henüz geçmiş kaydı yok." />
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Modal>
     </div>
   )
 }
