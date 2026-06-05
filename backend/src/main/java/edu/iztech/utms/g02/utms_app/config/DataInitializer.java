@@ -97,8 +97,31 @@ public class DataInitializer implements CommandLineRunner {
         // olduğu için tek-program kuralını ihlal etmez; öğrenci 2026-2027'ye başvurabilir.
         seedPastRejectedApplication("ogrenci@iyte.edu.tr");
 
+        // Pair 3: mevcut/seed başvuruların hedef fakülte/bölüm FK'larını metinlerinden doldur.
+        backfillApplicationOrgUnits();
+
         // UC-15: Her kullanıcıya örnek bildirimler (idempotent — bir kısmı okunmamış).
         seedNotifications();
+    }
+
+    /**
+     * Pair 3: {@code faculty_id}/{@code department_id} FK'sı boş olan başvuruları,
+     * {@code targetFaculty}/{@code targetDepartment} metinlerinden çözerek doldurur (en iyi çaba).
+     * Yeni başvurular zaten {@code ApplicationService.create} içinde bağlanır; bu, eski/seed kayıtlar içindir.
+     */
+    private void backfillApplicationOrgUnits() {
+        applicationRepository.findAll().forEach(app -> {
+            boolean changed = false;
+            if (app.getFaculty() == null && app.getTargetFaculty() != null) {
+                Faculty f = facultyRepository.findByName(app.getTargetFaculty()).orElse(null);
+                if (f != null) { app.setFaculty(f); changed = true; }
+            }
+            if (app.getDepartment() == null && app.getTargetDepartment() != null) {
+                Department d = departmentRepository.findByName(app.getTargetDepartment()).orElse(null);
+                if (d != null) { app.setDepartment(d); changed = true; }
+            }
+            if (changed) applicationRepository.save(app);
+        });
     }
 
     // Dev seed: bildirimler artık canlı ÖİDB aksiyonlarından üretiliyor; burada yalnızca

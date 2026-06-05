@@ -42,8 +42,18 @@ class ApplicationServiceTest {
     @Mock private StudentRepository studentRepository;
     @Mock private YoksisIntegrationService yoksisIntegrationService;
     @Mock private edu.iztech.utms.g02.utms_app.integration.edevlet.EgovDocumentService egovDocumentService;
+    // Pair 3: ApplicationService artık hedef fakülte/bölüm FK eşlemesi için bu repo'ları kullanıyor.
+    @Mock private edu.iztech.utms.g02.utms_app.dal.department.repository.FacultyRepository facultyRepository;
+    @Mock private edu.iztech.utms.g02.utms_app.dal.department.repository.DepartmentRepository departmentRepository;
 
     @InjectMocks private ApplicationService applicationService;
+
+    // Pair 3: create akışı linkTargetOrgUnits ile FK çözer; eşleşme yoksa null (lenient — her testte gerekmez).
+    @org.junit.jupiter.api.BeforeEach
+    void stubOrgUnitLookups() {
+        lenient().when(facultyRepository.findByName(any())).thenReturn(java.util.Optional.empty());
+        lenient().when(departmentRepository.findByName(any())).thenReturn(java.util.Optional.empty());
+    }
 
     @AfterEach
     void tearDown() {
