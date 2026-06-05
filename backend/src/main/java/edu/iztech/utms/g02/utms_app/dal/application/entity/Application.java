@@ -153,4 +153,12 @@ public class Application {
     @Column(nullable = false)
     @Builder.Default
     private boolean revisionRequestedBefore = false;
+
+    // ÖİDB düzeltme isteğinde HANGİ belgenin yenilenmesi istendiği (örn: "TRANSCRIPT").
+    // Öğrenci ekranında yalnızca bu belge tipinin yükleme alanı açılır.
+    private String requestedDocumentType;
+
+    // ÖİDB'nin düzeltme isteğiyle birlikte öğrenciye gönderdiği serbest metin not.
+    @Column(columnDefinition = "TEXT")
+    private String revisionNotes;
 }

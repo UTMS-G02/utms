@@ -7,6 +7,7 @@ import {
   Divider,
   Empty,
   Input,
+  Modal,
   Row,
   Select,
   Space,
@@ -30,6 +31,19 @@ const { Title, Text } = Typography
 const { Search } = Input
 const { Option } = Select
 
+// Yetkili (Bearer) bir GET ile alınan blob'u tarayıcıda indirmeye zorlar:
+// geçici obje URL'i → gizli <a download> → programatik click → URL'i temizle (revoke).
+const triggerBlobDownload = (blob, fileName) => {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
 const STATUS_MAP = {
   ALL: { label: 'Tümü' },
   OIDB_REVIEW: { label: 'İnceleniyor', color: 'blue' },
@@ -40,6 +54,15 @@ const STATUS_MAP = {
   FACULTY_REVIEW: { label: 'Fakültede', color: 'gold' },
   ACCEPTED: { label: 'Onaylandı', color: 'success' },
   REJECTED: { label: 'Reddedildi', color: 'error' },
+}
+
+// Öğrenci, istenen düzeltmeyi yapıp başvuruyu yeniden gönderdiyse memura ayırt edici bir
+// rozet gösterilir ("Öğrenci Güncelledi") — aksi halde standart STATUS_MAP kullanılır.
+const getOidbStatusInfo = (application) => {
+  const resubmitted = application.revisionRequestedBefore &&
+    (application.rawStatus === 'SUBMITTED' || application.rawStatus === 'OIDB_REVIEW')
+  if (resubmitted) return { label: 'Öğrenci Güncelledi', color: 'gold' }
+  return STATUS_MAP[application.status] ?? { label: application.status, color: 'default' }
 }
 
 const STATUS_OPTIONS = [
@@ -64,15 +87,23 @@ const FACULTY_OPTIONS = [
 const ANNOUNCEABLE_STATUSES = ['ACCEPTED', 'REJECTED']
 
 const DOCUMENT_TYPE_LABEL = {
+  STUDENT_CERTIFICATE: 'Öğrenci Belgesi',
   TRANSCRIPT: 'Transkript Belgesi',
-  ID_CARD: 'Kimlik Belgesi',
+  YKS_RESULT: 'YKS Sonuç Belgesi',
   LANGUAGE_CERT: 'Yabancı Dil Belgesi',
+  ID_CARD: 'Kimlik Belgesi',
   OTHER: 'Diğer Belge',
 }
+
+// Modal dropdown'u için, başvuruda belge yoksa kullanılacak genel yedek liste.
+const FALLBACK_DOCUMENT_OPTIONS = Object.entries(DOCUMENT_TYPE_LABEL).map(
+  ([value, label]) => ({ value, label }),
+)
 
 const ACTION_CONFIG = {
   OIDB_REVIEW: [
     { key: 'request_update', label: 'Güncelleme İste', type: 'default' },
+    { key: 'reject_application', label: 'Reddet', type: 'default', danger: true },
     { key: 'send_ydyo', label: "YDYO'ya Gönder", type: 'primary' },
   ],
   YDYO_APPROVED: [
@@ -184,7 +215,7 @@ const formatSearchMatch = (application, searchQuery) => {
 }
 
 export default function OidbDashboard() {
-  const { message: antdMessage } = App.useApp()
+  const { message: antdMessage, modal } = App.useApp()
   const { logout } = useAuth()
   const location = useLocation()
   const isPendingRoute = location.pathname === '/oidb/pending'
@@ -198,6 +229,15 @@ export default function OidbDashboard() {
   const [facultyFilter, setFacultyFilter] = useState('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTabs, setActiveTabs] = useState({})
+
+  // "Güncelleme İste" modalı durumu: hangi başvuru, seçilen belge tip(ler)i ve not.
+  const [revisionModal, setRevisionModal] = useState({
+    open: false,
+    applicationId: null,
+    documentTypes: [],
+    notes: '',
+  })
+  const [revisionSubmitting, setRevisionSubmitting] = useState(false)
 
   useEffect(() => {
     setStatusFilter(isPendingRoute ? 'OIDB_REVIEW' : 'ALL')
@@ -256,7 +296,7 @@ export default function OidbDashboard() {
         const detail = await applicationsApi.getOidbApplicationById(applicationId)
         setDetails((prev) => ({ ...prev, [applicationId]: detail }))
         antdMessage.destroy(`loading-${applicationId}`)
-      } catch (error) {
+      } catch {
         antdMessage.error('Başvuru detayları alınamadı.')
       }
     }
@@ -264,7 +304,7 @@ export default function OidbDashboard() {
     setExpandedIds([...expandedIds, applicationId])
   }
 
-  const handleAction = async (applicationId, actionKey) => {
+  const executeAction = async (applicationId, actionKey) => {
     try {
       let result = null
       if (actionKey === 'request_update') result = await applicationsApi.requestApplicationUpdate(applicationId)
@@ -279,10 +319,80 @@ export default function OidbDashboard() {
       } else {
         throw new Error('Action failed')
       }
-    } catch {
-      antdMessage.error('İşlem gerçekleştirilirken bir hata oluştu.')
+    } catch (err) {
+      // Varsa backend'in döndürdüğü anlamlı iş kuralı mesajını göster.
+      antdMessage.error(
+        err?.response?.data?.message || 'İşlem gerçekleştirilirken bir hata oluştu.',
+      )
     }
   }
+
+  const handleAction = (applicationId, actionKey) => {
+    // Güncelleme İste → doğrudan istek atma; hangi belge(ler) + not seçimi için modal aç.
+    if (actionKey === 'request_update') {
+      setRevisionModal({
+        open: true,
+        applicationId,
+        documentTypes: [], // memur düzeltilecek belgeleri kendi seçer (birden fazla olabilir)
+        notes: '',
+      })
+      return
+    }
+
+    // Reddetme geri alınamaz bir işlem; önce onay penceresi göster.
+    if (actionKey === 'reject_application') {
+      modal.confirm({
+        title: 'Başvuruyu Reddet',
+        content: 'Bu başvuruyu reddetmek istediğinize emin misiniz? Başvurunun durumu "Reddedildi" olarak güncellenecektir.',
+        okText: 'Evet, Reddet',
+        okButtonProps: { danger: true },
+        cancelText: 'Vazgeç',
+        onOk: () => executeAction(applicationId, actionKey),
+      })
+      return
+    }
+    executeAction(applicationId, actionKey)
+  }
+
+  const closeRevisionModal = () => setRevisionModal((prev) => ({ ...prev, open: false }))
+
+  const handleRevisionSubmit = async () => {
+    if (!revisionModal.documentTypes || revisionModal.documentTypes.length === 0) {
+      antdMessage.warning('Lütfen düzeltilmesi gereken en az bir belge seçin.')
+      return
+    }
+    if (!revisionModal.notes.trim()) {
+      antdMessage.warning('Lütfen öğrenciye iletilecek bir düzeltme notu yazın.')
+      return
+    }
+    setRevisionSubmitting(true)
+    try {
+      await applicationsApi.requestApplicationUpdate(revisionModal.applicationId, {
+        requestedDocumentTypes: revisionModal.documentTypes,
+        revisionNotes: revisionModal.notes.trim(),
+      })
+      antdMessage.success('Güncelleme isteği öğrenciye iletildi.')
+      closeRevisionModal()
+      await loadApplications()
+    } catch (err) {
+      // Backend anlamlı bir iş kuralı mesajı döndürdüyse (örn. "sadece bir kez...") onu göster.
+      antdMessage.error(
+        err?.response?.data?.message || 'Güncelleme isteği gönderilirken bir hata oluştu.',
+      )
+    } finally {
+      setRevisionSubmitting(false)
+    }
+  }
+
+  // Modal dropdown'u: seçili başvuruya yüklü belgelerden türetilir; yoksa genel listeye düşer.
+  const revisionDocOptions = (() => {
+    const docs = details[revisionModal.applicationId]?.documents ?? []
+    if (docs.length === 0) return FALLBACK_DOCUMENT_OPTIONS
+    return docs.map((doc) => ({
+      value: doc.docType,
+      label: DOCUMENT_TYPE_LABEL[doc.docType] ?? doc.docType,
+    }))
+  })()
 
   const handleBulkShare = async () => {
     if (selectedIds.length === 0) return
@@ -296,17 +406,39 @@ export default function OidbDashboard() {
     }
   }
 
-  const handleDownloadDocument = (documentId) => {
-    const downloadUrl = `/api/documents/${documentId}/download`
-    window.open(downloadUrl, '_blank')
+  // Tekli belge indirme — doğrudan link/window.open YERİNE axios ile yetkili GET.
+  // responseType: 'blob' API servisinde set edilir; dosya adı orijinal fileName.
+  const handleDownloadDocument = async (documentId, fileName) => {
+    try {
+      const res = await applicationsApi.downloadDocument(documentId)
+      triggerBlobDownload(res.data, fileName || `belge_${documentId}`)
+    } catch {
+      antdMessage.error('Belge indirilemedi. Lütfen tekrar deneyin.')
+    }
   }
 
-  const renderActionButtons = (status, applicationId) => {
-    const actions = ACTION_CONFIG[status] ?? []
+  // Toplu (ZIP) indirme — başvuruya ait tüm belgeler tek arşivde, yetkili GET ile.
+  const handleDownloadAllZip = async (applicationId) => {
+    try {
+      const res = await applicationsApi.downloadAllDocumentsZip(applicationId)
+      triggerBlobDownload(res.data, `basvuru_${applicationId}_belgeler.zip`)
+    } catch {
+      antdMessage.error('Belgeler indirilemedi. Lütfen tekrar deneyin.')
+    }
+  }
+
+  const renderActionButtons = (application) => {
+    let actions = ACTION_CONFIG[application.status] ?? []
+    // Bir kez düzeltme istendiyse "Güncelleme İste" artık kullanılamaz; memur yalnızca
+    // YDYO'ya gönderebilir veya reddedebilir (backend de ikinci isteği reddeder).
+    if (application.revisionRequestedBefore) {
+      actions = actions.filter((a) => a.key !== 'request_update')
+    }
     if (actions.length === 0) {
       return <Text type="secondary">Bu durumda yapılacak işlem yok.</Text>
     }
 
+    const applicationId = application.applicationId
     return (
       <Space wrap>
         {actions.map((action) => (
@@ -416,7 +548,7 @@ export default function OidbDashboard() {
           const isExpanded = expandedIds.includes(application.applicationId)
           const detail = details[application.applicationId]
           const activeKey = activeTabs[application.applicationId] ?? 'general'
-          const statusInfo = STATUS_MAP[application.status] ?? { label: application.status, color: 'default' }
+          const statusInfo = getOidbStatusInfo(application)
           const documentCount = detail?.documents?.length ?? 0
 
           return (
@@ -491,7 +623,7 @@ export default function OidbDashboard() {
                             children: (
                               <div style={styles.actionBox}>
                                 <Title level={5}>İşlemler</Title>
-                                {renderActionButtons(application.status, application.applicationId)}
+                                {renderActionButtons(application)}
                               </div>
                             ),
                           },
@@ -505,7 +637,13 @@ export default function OidbDashboard() {
                                     <Title level={5} style={{ marginBottom: 0 }}>Dökümanlar</Title>
                                   </Col>
                                   <Col>
-                                    <Button icon={<DownloadOutlined />}>Tümünü İndir</Button>
+                                    <Button
+                                      icon={<DownloadOutlined />}
+                                      disabled={!documentCount}
+                                      onClick={() => handleDownloadAllZip(application.applicationId)}
+                                    >
+                                      Tümünü İndir
+                                    </Button>
                                   </Col>
                                 </Row>
 
@@ -519,7 +657,7 @@ export default function OidbDashboard() {
                                           {doc.size} • Yüklenme: {formatDate(doc.uploadedAt)}
                                         </Text>
                                       </div>
-                                      <Button icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(doc.documentId)}>
+                                      <Button icon={<DownloadOutlined />} onClick={() => handleDownloadDocument(doc.documentId, doc.fileName)}>
                                         İndir
                                       </Button>
                                     </div>
@@ -564,6 +702,46 @@ export default function OidbDashboard() {
           )
         })
       )}
+
+      <Modal
+        title="Güncelleme İste"
+        open={revisionModal.open}
+        onOk={handleRevisionSubmit}
+        onCancel={closeRevisionModal}
+        confirmLoading={revisionSubmitting}
+        okText="Gönder"
+        cancelText="Vazgeç"
+        destroyOnClose
+      >
+        <Text type="secondary">
+          Öğrenciden hangi belge(ler)i düzeltmesini istediğinizi seçin ve bir not ekleyin.
+          Öğrenci yalnızca seçtiğiniz belgeleri yeniden yükleyebilecek.
+        </Text>
+        <div style={{ marginTop: 16 }}>
+          <Text strong>Düzeltilecek Belge(ler)</Text>
+          <Select
+            mode="multiple"
+            allowClear
+            style={{ width: '100%', marginTop: 6 }}
+            placeholder="Bir veya daha fazla belge seçin"
+            value={revisionModal.documentTypes}
+            onChange={(value) => setRevisionModal((prev) => ({ ...prev, documentTypes: value }))}
+            options={revisionDocOptions}
+          />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <Text strong>Düzeltme Notu</Text>
+          <Input.TextArea
+            style={{ marginTop: 6 }}
+            rows={4}
+            maxLength={500}
+            showCount
+            placeholder="Örn: Belge okunamıyor, lütfen PDF olarak yeniden yükleyin."
+            value={revisionModal.notes}
+            onChange={(e) => setRevisionModal((prev) => ({ ...prev, notes: e.target.value }))}
+          />
+        </div>
+      </Modal>
     </div>
   )
 }

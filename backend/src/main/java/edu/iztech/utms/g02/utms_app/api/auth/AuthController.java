@@ -1,5 +1,6 @@
 package edu.iztech.utms.g02.utms_app.api.auth;
 
+import edu.iztech.utms.g02.utms_app.api.auth.dto.ChangePasswordRequest;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.ForgotPasswordRequest;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.LoginRequest;
 import edu.iztech.utms.g02.utms_app.api.auth.dto.LoginResponse;
@@ -86,6 +87,18 @@ public class AuthController {
     @PostMapping("/reset-password")
     public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Changes the authenticated user's password (verifies the current password first).
+     * PATCH /api/auth/change-password
+     */
+    @PatchMapping("/change-password")
+    public ResponseEntity<Void> changePassword(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(userDetails.getUsername(), request.getCurrentPassword(), request.getNewPassword());
         return ResponseEntity.ok().build();
     }
 }

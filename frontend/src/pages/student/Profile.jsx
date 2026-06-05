@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Form, Input, Button, Typography, Tag, Descriptions, App } from 'antd'
 import { useAuth } from '../../contexts/AuthContext'
 import { authApi } from '../../api/auth'
+import { applicationsApi } from '../../api/applications'
 
 const { Title, Text } = Typography
 
@@ -29,11 +30,25 @@ const styles = {
 export default function Profile() {
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
+  const [academic, setAcademic] = useState(null)
   const { user } = useAuth()
   const { message } = App.useApp()
 
-  const displayName = user?.name
-    ?? ([user?.firstName, user?.lastName].filter(Boolean).join(' ') || '—')
+  // Akademik bilgiler (bölüm, GNO, YKS) YÖKSİS/ÖSYM'den (mock) gelir; başvuru
+  // formuyla AYNI kaynak (GET /api/yoksis/me) kullanılır, böylece tutarlı kalır.
+  useEffect(() => {
+    let active = true
+    applicationsApi
+      .getMyYoksisData()
+      .then((data) => { if (active) setAcademic(data) })
+      .catch(() => { /* sessiz geç: alanlar '—' kalır */ })
+    return () => { active = false }
+  }, [])
+
+  // Ad + (varsa) ikinci ad + soyad — ikinci ad profilde de görünsün diye parçalardan kurulur.
+  // (user.name / fullName ikinci adı içermeyebilir, bu yüzden önce parçalar denenir.)
+  const displayName = [user?.firstName, user?.middleName, user?.lastName]
+    .filter(Boolean).join(' ') || user?.name || '—'
 
   const handleChangePassword = async ({ currentPassword, newPassword }) => {
     setLoading(true)
@@ -42,7 +57,10 @@ export default function Profile() {
       message.success('Şifreniz başarıyla güncellendi.')
       form.resetFields()
     } catch (error) {
-      message.error(error.message ?? 'Şifre güncellenirken bir hata oluştu.')
+      // Backend iş kuralı hatalarını { message } olarak döndürür (örn. "Mevcut şifreniz hatalı.").
+      message.error(
+        error?.response?.data?.message ?? 'Şifre güncellenirken bir hata oluştu.'
+      )
     } finally {
       setLoading(false)
     }
@@ -55,34 +73,39 @@ export default function Profile() {
       children: displayName,
     },
     {
-      key: 'studentNumber',
-      label: 'Öğrenci Numarası',
-      children: user?.studentNumber ?? '—',
-    },
-    {
       key: 'email',
       label: 'E-posta',
       children: user?.email ?? '—',
     },
     {
+      key: 'university',
+      label: 'Kayıtlı Olduğu Üniversite',
+      children: academic?.currentUniversity ?? '—',
+    },
+    {
+      key: 'faculty',
+      label: 'Fakülte',
+      children: academic?.currentFaculty ?? '—',
+    },
+    {
       key: 'department',
       label: 'Bölüm',
-      children: user?.department ?? '—',
+      children: academic?.currentDepartment ?? '—',
     },
     {
       key: 'currentGpa',
       label: 'Genel Not Ortalaması',
-      children: user?.currentGpa ?? '—',
+      children: academic?.gpa != null ? Number(academic.gpa).toFixed(2) : '—',
     },
     {
       key: 'yksScore',
       label: 'YKS Puanı',
-      children: user?.yksScore ?? '—',
+      children: academic?.yksScore != null ? Number(academic.yksScore).toFixed(3) : '—',
     },
     {
       key: 'yksRanking',
       label: 'YKS Sıralaması',
-      children: user?.yksRanking ?? '—',
+      children: academic?.yksRank != null ? Number(academic.yksRank).toLocaleString('tr-TR') : '—',
     },
     {
       key: 'role',
