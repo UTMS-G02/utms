@@ -13,6 +13,7 @@ public class MeResponse {
     private UserRole role;
 
     private String fullName;
+    private String middleName;
 
     private String tckn;
     private LocalDate dateOfBirth;

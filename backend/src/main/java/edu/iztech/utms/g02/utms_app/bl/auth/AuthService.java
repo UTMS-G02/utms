@@ -143,7 +143,7 @@ public class AuthService {
             facultyId = staff.getFacultyId();
         }
 
-        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, tckn, dateOfBirth, phoneNumber, departmentId, facultyId);
+        return new MeResponse(user.getUserId(), user.getEmail(), user.getRole(), fullName, user.getMiddleName(), tckn, dateOfBirth, phoneNumber, departmentId, facultyId);
     }
 
     /**
