@@ -89,13 +89,13 @@ class DeanForwardServiceTest {
     }
 
     @Test
-    void forwardToYgk_facultyBoardRejected_sameFaculty_movesToYgkScored() {
+    void forwardToOidb_facultyBoardRejected_sameFaculty_movesToRejected() {
         Application app = buildApp(6, ApplicationStatus.FACULTY_BOARD_REJECTED, 10);
         stubForward(6, app, 10);
 
-        service.forwardToYgk(6);
+        service.forwardToOidb(6);
 
-        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.YGK_SCORED);
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.REJECTED);
     }
 
     @Test
