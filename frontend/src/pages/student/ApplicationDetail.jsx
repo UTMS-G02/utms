@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Typography, Tag, Spin, Steps, Alert, Descriptions, Divider, Space, Upload, Tooltip, App } from 'antd'
 import { FileTextOutlined, UploadOutlined, LockOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { applicationsApi } from '../../api/applications'
-import { getStudentStatusMeta, getStudentMilestone, isRevisionRequested } from '../../constants/applicationStatus'
+import { getStudentStatusMeta, isRevisionRequested } from '../../constants/applicationStatus'
 
 const { Title, Text } = Typography
 
@@ -168,10 +168,9 @@ export default function ApplicationDetail() {
     documents = [],
   } = application
   const stepCurrent = getStepCurrent(status)
-  // Durum rozeti + Güncel Durum metni: yalnızca ÖİDB aksiyonlarını yansıtan milestone'dan
-  // türetilir (YDYO/YGK/Dekanlık iç aşamaları "Değerlendiriliyor" altında gizli).
+  // Durum rozeti: yalnızca ÖİDB aksiyonlarını yansıtan milestone'dan türetilir
+  // (YDYO/YGK/Dekanlık iç aşamaları "Değerlendiriliyor" altında gizli).
   const statusMeta = getStudentStatusMeta(application)
-  const milestone = getStudentMilestone(application)
 
   const revisionMode = isRevisionRequested(status)
   const revisionNote = revisionNotes || oidbNotes || ydyoNotes || 'Düzeltme gerekçesi belirtilmemiştir. Lütfen birimle iletişime geçin.'
@@ -354,17 +353,6 @@ export default function ApplicationDetail() {
         <Steps
           current={stepCurrent}
           items={stepItems}
-          style={{ marginBottom: 24 }}
-        />
-
-        <Alert
-          type={milestone.alertType}
-          showIcon
-          message={
-            <span>
-              <strong>Güncel Durum: </strong>{milestone.alertText}
-            </span>
-          }
         />
       </div>
 
