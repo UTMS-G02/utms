@@ -2,27 +2,14 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Typography, Tag, Spin, Table, Empty, App } from 'antd'
 import { applicationsApi } from '../../api/applications'
+import { getStudentStatusMeta } from '../../constants/applicationStatus'
 
 const { Title, Text } = Typography
 
-const STATUS_MAP = {
-  DRAFT:                { label: 'Taslak',                        color: 'default'  },
-  SUBMITTED:            { label: 'Gönderildi',                    color: 'blue'     },
-  OIDB_REVIEW:          { label: 'OIDB İncelemesinde',            color: 'orange'   },
-  YDYO_REVIEW:          { label: 'YDYO İncelemesinde',            color: 'orange'   },
-  EVALUATION_QUEUE:     { label: 'Değerlendirme Kuyruğunda',      color: 'cyan'     },
-  YGK_SCORED:           { label: 'YGK Puanlandı',                 color: 'geekblue' },
-  DEAN_REVIEW:          { label: 'Dekan İncelemesinde',           color: 'orange'   },
-  FACULTY_BOARD_REVIEW: { label: 'Fakülte Kurulu İncelemesinde',  color: 'orange'   },
-  FINAL_DEAN_REVIEW:    { label: 'Final Dekan İncelemesinde',     color: 'orange'   },
-  RESULT_PUBLISHED:     { label: 'Sonuç Yayınlandı',              color: 'green'    },
-  ACCEPTED:             { label: 'Kabul Edildi',                  color: 'success'  },
-  REJECTED:             { label: 'Reddedildi',                    color: 'error'    },
-}
-
 const formatDate = (iso) => {
   if (!iso) return 'Gönderilmedi'
-  return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
+  // GG.AA.YYYY (tr-TR locale '.' ayırıcı kullanır → örn. 03.06.2026)
+  return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso))
 }
 
 const styles = {
@@ -79,14 +66,20 @@ export default function ApplicationList() {
       render: (id) => <Text style={{ fontWeight: 500 }}>#YG-{id}</Text>,
     },
     {
+      title: 'Akademik Yıl',
+      dataIndex: 'academicYear',
+      key: 'academicYear',
+      render: (val) => val ?? '—',
+    },
+    {
       title: 'Hedef Bölüm',
       dataIndex: 'targetDepartment',
       key: 'targetDepartment',
     },
     {
       title: 'Başvuru Tarihi',
-      dataIndex: 'submittedAt',
-      key: 'submittedAt',
+      dataIndex: 'submissionDate',
+      key: 'submissionDate',
       render: (val) => (
         <Text type={val ? undefined : 'secondary'}>{formatDate(val)}</Text>
       ),
@@ -95,8 +88,8 @@ export default function ApplicationList() {
       title: 'Durum',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => {
-        const info = STATUS_MAP[status] ?? { label: status, color: 'default' }
+      render: (_, record) => {
+        const info = getStudentStatusMeta(record)
         return <Tag color={info.color}>{info.label}</Tag>
       },
     },

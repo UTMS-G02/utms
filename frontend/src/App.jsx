@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/auth/Login'
 import ActivatePage from './pages/auth/ActivatePage';
+import KvkkPage from './pages/auth/KvkkPage';
 import StudentDashboard from './pages/student/Dashboard';
 import ApplicationList from './pages/student/ApplicationList';
 import ApplicationDetail from './pages/student/ApplicationDetail';
@@ -9,10 +10,15 @@ import Profile from './pages/student/Profile';
 import OidbDashboard from './pages/oidb/Dashboard';
 import YdyoDashboard from './pages/ydyo/YdyoDashboard';
 import YdyoApplicationDetail from './pages/ydyo/YdyoApplicationDetail';
+
+// Dekanlık Sayfaları
+import DeanDashboard from './pages/dean/DekanlikOfisi';
+import FacultyDashboard from './pages/dean/FakulteKuruluDashboard';
+import YGKDashboard from './pages/dean/YGKDashboard';
+
 import AppLayout from './components/Layout/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROLES } from './contexts/AuthContext';
-
 
 export default function App() {
   return (
@@ -24,8 +30,9 @@ export default function App() {
       <Route path="/forgot-password" element={<Login initialModal="forgot" />} />
       <Route path="/reset-password" element={<Login initialModal="reset" />} />
       <Route path="/activate" element={<ActivatePage />} />
+      <Route path="/kvkk" element={<KvkkPage />} />
 
-      {/* Öğrenci Portalı */}
+{/* Öğrenci Portalı */}
       <Route
         path="/student"
         element={
@@ -53,7 +60,6 @@ export default function App() {
       >
         <Route index element={<OidbDashboard />} />
         <Route path="dashboard" element={<OidbDashboard />} />
-        <Route path="pending" element={<OidbDashboard />} />
       </Route>
 
       {/* YDYO (Yabancı Diller) Portalı */}
@@ -70,7 +76,7 @@ export default function App() {
         <Route path="applications/:id" element={<YdyoApplicationDetail />} />
       </Route>
 
-      {/* Dekanlık Portalı */}
+      {/* Dean Portalı */}
       <Route
         path="/dean"
         element={
@@ -79,7 +85,32 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="dashboard" element={<div style={{ padding: 24 }}><h2>Dean Dashboard</h2></div>} />
+        <Route index element={<DeanDashboard />} />
+        <Route path="dashboard" element={<DeanDashboard />} />
+      </Route>
+      {/* YGK Portalı */}
+      <Route
+        path="/ygk"
+        element={
+          <ProtectedRoute allowedRoles={[ROLES.YGK]}>
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<YGKDashboard />} />
+        <Route path="dashboard" element={<YGKDashboard />} />
+      </Route>
+      {/* Fakülte Kurulu Portalı */}
+      <Route
+        path="/faculty-board"
+        element={
+          <ProtectedRoute allowedRoles={[ROLES.FACULTY_BOARD]}>
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<FacultyDashboard />} />
+        <Route path="dashboard" element={<FacultyDashboard />} />
       </Route>
 
       {/* Yanlış URL girilirse Login'e at */}

@@ -56,6 +56,9 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
+                        // Şifre değiştirme yalnızca giriş yapmış kullanıcıya açıktır
+                        // (genel /api/auth/** permitAll'ından önce gelmeli).
+                        .requestMatchers("/api/auth/change-password").authenticated()
                         .requestMatchers("/api/auth/**", "/error",
                                 "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()

@@ -4,6 +4,11 @@ import edu.iztech.utms.g02.utms_app.dal.department.entity.Department;
 import edu.iztech.utms.g02.utms_app.dal.department.entity.Faculty;
 import edu.iztech.utms.g02.utms_app.dal.department.repository.DepartmentRepository;
 import edu.iztech.utms.g02.utms_app.dal.department.repository.FacultyRepository;
+import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
+import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
+import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
+import edu.iztech.utms.g02.utms_app.dal.notification.entity.Notification;
+import edu.iztech.utms.g02.utms_app.dal.notification.repository.NotificationRepository;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.UserRole;
@@ -48,6 +53,8 @@ public class DataInitializer implements CommandLineRunner {
     private final StudentRepository studentRepository;
     private final FacultyRepository facultyRepository;
     private final DepartmentRepository departmentRepository;
+    private final ApplicationRepository applicationRepository;
+    private final NotificationRepository notificationRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -84,6 +91,79 @@ public class DataInitializer implements CommandLineRunner {
                     "Ardacan", "Aktürk", "11111111110", "5551112233", LocalDate.of(2002, 5, 14));
             System.out.println("Test öğrencisi (ogrenci@iyte.edu.tr / test123) başarıyla eklendi.");
         }
+
+        // Geçmiş döneme (2025-2026) ait, REDDEDİLMİŞ örnek başvuru. Amaç: "Başvurularım"
+        // listesinde geçmiş kayıt + akademik yıl kolonu görünür olsun. Reddedilmiş statü
+        // olduğu için tek-program kuralını ihlal etmez; öğrenci 2026-2027'ye başvurabilir.
+        seedPastRejectedApplication("ogrenci@iyte.edu.tr");
+
+        // UC-15: Her kullanıcıya örnek bildirimler (idempotent — bir kısmı okunmamış).
+        seedNotifications();
+    }
+
+    // Dev seed: bildirimler artık canlı ÖİDB aksiyonlarından üretiliyor; burada yalnızca
+    // test öğrencisine kutu boş kalmasın diye ÖİDB-tarzı örnekler eklenir (idempotent).
+    // Personel hesaplarına seed yok — bildirimleri kendi işlemlerinden doğar.
+    private void seedNotifications() {
+        userRepository.findByEmail("ogrenci@iyte.edu.tr").ifPresent(user -> {
+            if (notificationRepository.existsByUserId(user.getUserId())) return;
+
+            LocalDateTime now = LocalDateTime.now();
+            notificationRepository.saveAll(List.of(
+                    Notification.builder()
+                            .userId(user.getUserId())
+                            .title("Başvurunuz Reddedildi")
+                            .message("Önceki dönem başvurunuz eksik belgeler nedeniyle reddedilmiştir.")
+                            .isRead(true)
+                            .createdAt(now.minusDays(3))
+                            .build(),
+                    Notification.builder()
+                            .userId(user.getUserId())
+                            .title("Ön İnceleme Tamamlandı")
+                            .message("Başvurunuz Öğrenci İşleri ön incelemesinden başarıyla geçti ve değerlendirme sürecine alındı.")
+                            .isRead(false)
+                            .createdAt(now.minusDays(1))
+                            .build(),
+                    Notification.builder()
+                            .userId(user.getUserId())
+                            .title("Belge Güncellemesi Gerekiyor")
+                            .message("Başvurunuzdaki transkript belgesinin güncellenmesi istenmektedir. Lütfen başvuru detayından yeniden yükleyin.")
+                            .isRead(false)
+                            .createdAt(now.minusHours(4))
+                            .build()
+            ));
+            System.out.println("UC-15: Test öğrencisi için örnek bildirimler eklendi.");
+        });
+    }
+
+    private void seedPastRejectedApplication(String studentEmail) {
+        studentRepository.findByEmail(studentEmail).ifPresent(student -> {
+            boolean hasPast = applicationRepository
+                    .findFirstByStudent_UserIdAndStatus(student.getUserId(), ApplicationStatus.OIDB_REJECTED)
+                    .isPresent();
+            if (hasPast) return;
+
+            Application past = Application.builder()
+                    .student(student)
+                    .status(ApplicationStatus.OIDB_REJECTED)
+                    .academicYear("2025-2026")
+                    .semester("3")
+                    .targetFaculty("Mühendislik Fakültesi")
+                    .targetDepartment("Bilgisayar Mühendisliği")
+                    .currentUniversity("Ege Üniversitesi")
+                    .currentFaculty("Mühendislik Fakültesi")
+                    .currentDepartment("Yazılım Mühendisliği")
+                    .gpa(2.85)
+                    .sayYksScore(455.0)
+                    .sayYksRank(18500)
+                    .submissionDate(LocalDate.of(2025, 7, 15))
+                    .oidbApproved(false)
+                    .oidbNotes("Önceki dönem başvurusu eksik belgeler nedeniyle reddedilmiştir.")
+                    .build();
+
+            applicationRepository.save(past);
+            System.out.println("Geçmiş dönem (2025-2026) örnek reddedilmiş başvuru eklendi.");
+        });
     }
 
     private void seedFacultiesAndDepartments() {

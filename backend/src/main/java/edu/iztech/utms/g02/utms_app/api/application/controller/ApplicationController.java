@@ -106,6 +106,19 @@ public class ApplicationController {
     }
 
 
+    /*
+    /   POST /api/applications/{id}/reject
+    /   ÖİDB memuru, kriterleri/evrakları geçersiz bir başvuruyu doğrudan REDDEDER.
+    */
+
+    @PreAuthorize("hasRole('OIDB')")
+    @PostMapping("/{id}/reject")
+    public ResponseEntity<ApplicationResponse> rejectApplication(@PathVariable Integer id) {
+        ApplicationResponse response = applicationService.rejectApplication(id);
+        return ResponseEntity.ok(response);
+    }
+
+
 
     @PreAuthorize("hasRole('YDYO')")
     @PatchMapping("/{id}/ydyo-review")

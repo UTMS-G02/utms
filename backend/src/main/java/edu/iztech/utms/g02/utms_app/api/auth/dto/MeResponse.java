@@ -13,6 +13,7 @@ public class MeResponse {
     private UserRole role;
 
     private String fullName;
+    private String middleName;   // YENİ EKLENDİ — kayıttaki opsiyonel ikinci ad
 
     private String tckn;
     private LocalDate dateOfBirth;
