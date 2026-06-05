@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Badge, Popover, Empty, Spin, Typography, Tooltip, Button, Modal, App } from 'antd'
+import { Badge, Popover, Empty, Spin, Typography, Tooltip, Button, App } from 'antd'
 import { BellOutlined, DeleteOutlined, CheckOutlined } from '@ant-design/icons'
 import { notificationsApi } from '../../api/notifications'
 
-const { Text, Paragraph } = Typography
+const { Text } = Typography
 
 // Kısa, yerel zaman etiketi (örn. "5 dk önce", "2 saat önce", tarih).
 function formatTime(value) {
@@ -19,31 +19,25 @@ function formatTime(value) {
   return date.toLocaleDateString('tr-TR')
 }
 
-// Tek bildirim satırı: başlık + zaman + aksiyon butonları (Okundu / Sil).
-// Satıra tıklamak detay modalını açar — okundu YAPMAZ (okundu yalnız buton ile).
-function NotificationItem({ item, onOpen, onMarkRead, onDelete }) {
+// Tek bildirim satırı: başlık + tam mesaj + zaman + aksiyon butonları (Okundu / Sil).
+// Satır tıklanabilir DEĞİL — detay paneli yok, okundu yalnız buton ile.
+function NotificationItem({ item, onMarkRead, onDelete }) {
   const unread = !item.isRead
   return (
     <div
-      onClick={() => onOpen(item)}
       style={{
         padding: '10px 12px',
-        cursor: 'pointer',
         borderLeft: unread ? '3px solid var(--color-primary)' : '3px solid transparent',
         background: unread ? '#f9f0f1' : 'transparent',
-        transition: 'background 0.2s',
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = unread ? '#f5e6e8' : '#fafafa')}
-      onMouseLeave={(e) => (e.currentTarget.style.background = unread ? '#f9f0f1' : 'transparent')}
     >
       <Text
         style={{ fontSize: 13, fontWeight: unread ? 600 : 500, display: 'block' }}
         type={unread ? undefined : 'secondary'}
-        ellipsis
       >
         {item.title}
       </Text>
-      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 2 }} ellipsis>
+      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 2 }}>
         {item.message}
       </Text>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
@@ -91,7 +85,6 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState([])
-  const [detailItem, setDetailItem] = useState(null) // açık detay modalı
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -123,7 +116,6 @@ export default function NotificationBell() {
     try {
       await notificationsApi.markAsRead(item.id)
       setItems((prev) => prev.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)))
-      setDetailItem((prev) => (prev && prev.id === item.id ? { ...prev, isRead: true } : prev))
     } catch {
       message.error('Bildirim güncellenemedi.')
     }
@@ -133,7 +125,6 @@ export default function NotificationBell() {
     try {
       await notificationsApi.deleteNotification(item.id)
       setItems((prev) => prev.filter((n) => n.id !== item.id))
-      setDetailItem((prev) => (prev && prev.id === item.id ? null : prev))
       message.success('Bildirim silindi.')
     } catch {
       message.error('Bildirim silinirken bir hata oluştu.')
@@ -169,7 +160,6 @@ export default function NotificationBell() {
                 <NotificationItem
                   key={item.id}
                   item={item}
-                  onOpen={setDetailItem}
                   onMarkRead={markAsRead}
                   onDelete={handleDelete}
                 />
@@ -183,7 +173,6 @@ export default function NotificationBell() {
                 <NotificationItem
                   key={item.id}
                   item={item}
-                  onOpen={setDetailItem}
                   onMarkRead={markAsRead}
                   onDelete={handleDelete}
                 />
@@ -196,45 +185,19 @@ export default function NotificationBell() {
   )
 
   return (
-    <>
-      <Popover
-        content={content}
-        trigger="click"
-        placement="bottomRight"
-        open={open}
-        onOpenChange={handleOpenChange}
-        arrow
-      >
-        <Badge count={unread.length} size="small" offset={[-2, 2]}>
-          <BellOutlined
-            style={{ fontSize: 18, color: 'var(--color-text-secondary)', cursor: 'pointer' }}
-          />
-        </Badge>
-      </Popover>
-
-      {/* Detay modalı — tam başlık + mesaj + zaman. Okundu yalnız butonla. */}
-      <Modal
-        open={!!detailItem}
-        onCancel={() => setDetailItem(null)}
-        title={detailItem?.title}
-        footer={[
-          detailItem && !detailItem.isRead && (
-            <Button key="read" icon={<CheckOutlined />} onClick={() => markAsRead(detailItem)}>
-              Okundu İşaretle
-            </Button>
-          ),
-          <Button key="close" type="primary" onClick={() => setDetailItem(null)}>
-            Kapat
-          </Button>,
-        ]}
-      >
-        {detailItem && (
-          <>
-            <Paragraph style={{ marginBottom: 8 }}>{detailItem.message}</Paragraph>
-            <Text type="secondary" style={{ fontSize: 12 }}>{formatTime(detailItem.createdAt)}</Text>
-          </>
-        )}
-      </Modal>
-    </>
+    <Popover
+      content={content}
+      trigger="click"
+      placement="bottomRight"
+      open={open}
+      onOpenChange={handleOpenChange}
+      arrow
+    >
+      <Badge count={unread.length} size="small" offset={[-2, 2]}>
+        <BellOutlined
+          style={{ fontSize: 18, color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+        />
+      </Badge>
+    </Popover>
   )
 }

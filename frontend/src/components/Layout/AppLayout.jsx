@@ -225,7 +225,7 @@ export default function AppLayout() {
 
           {/* Right side: bell + user */}
           <Space size={16}>
-            <NotificationBell />
+            {user?.role === ROLES.STUDENT && <NotificationBell />}
             <Dropdown
               menu={{ items: userDropdownItems, onClick: handleUserMenuClick }}
               placement="bottomRight"
