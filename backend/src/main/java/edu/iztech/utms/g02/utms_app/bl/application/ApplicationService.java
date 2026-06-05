@@ -8,6 +8,9 @@ import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff; // EKLENDİ: YDYO de�
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student; // EKLENDİ
 import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository; // EKLENDİ
 
+import edu.iztech.utms.g02.utms_app.dal.department.repository.FacultyRepository; // Pair 3: hedef fakülte FK eşlemesi
+import edu.iztech.utms.g02.utms_app.dal.department.repository.DepartmentRepository; // Pair 3: hedef bölüm FK eşlemesi
+
 import edu.iztech.utms.g02.utms_app.integration.yoksis.YoksisIntegrationService; // EKLENDİ
 import edu.iztech.utms.g02.utms_app.integration.yoksis.dto.YoksisStudentResponse; // EKLENDİ
 
@@ -62,8 +65,11 @@ public class ApplicationService {
     private final ApplicationPeriodRepository applicationPeriodRepository;
 
     private final StudentRepository studentRepository; // EKLENDİ
+    private final FacultyRepository facultyRepository;       // Pair 3: targetFaculty -> Faculty FK
+    private final DepartmentRepository departmentRepository; // Pair 3: targetDepartment -> Department FK
     private final YoksisIntegrationService yoksisIntegrationService; // EKLENDİ
     private final edu.iztech.utms.g02.utms_app.integration.edevlet.EgovDocumentService egovDocumentService; // e-Devlet/ÖSYM mock belge üretimi
+    private final edu.iztech.utms.g02.utms_app.bl.notification.NotificationService notificationService; // UC-15: ÖİDB aksiyonlarında öğrenciye bildirim
 
     //  private final ApplicationMapper applicationMapper; // DTO<->Entity dönüşümleri için --> en aşağıda manuel olarak yapıyoruz, toResponse() metodu ile
 
@@ -120,6 +126,7 @@ public class ApplicationService {
             draft.setSemester(String.valueOf(req.getSemester()));
             draft.setTargetDepartment(req.getTargetDepartment());
             draft.setTargetFaculty(req.getTargetFaculty());
+            linkTargetOrgUnits(draft);
             return toResponse(applicationRepository.save(draft));
         }
 
@@ -176,6 +183,9 @@ public class ApplicationService {
 
                 .build();
 
+        // Pair 3: hedef fakülte/bölüm FK'larını bağla (en iyi çaba; eşleşmezse null)
+        linkTargetOrgUnits(app);
+
         // 4. Veritabanına kaydet
         app = applicationRepository.save(app);
 
@@ -185,6 +195,21 @@ public class ApplicationService {
 
         // 6. Response olarak dön
         return toResponse(app);
+    }
+
+    /**
+     * Pair 3: hedef fakülte/bölüm METİNLERİNİ gerçek {@link edu.iztech.utms.g02.utms_app.dal.department.entity.Faculty}/
+     * {@link edu.iztech.utms.g02.utms_app.dal.department.entity.Department} FK'larına bağlar.
+     *
+     * <p>"En iyi çaba": isim birebir eşleşmezse ilgili FK {@code null} bırakılır — herhangi bir
+     * DOĞRULAMA yapılmaz (başvuru reddedilmez). Fakülte/bölüm kapsamlı sorgular (dekan listesi,
+     * YGK bölüm-bazlı skorlama) bu FK'lar üzerinden çalışır. FK boşsa kayıt o kapsamların dışında kalır.
+     */
+    private void linkTargetOrgUnits(Application app) {
+        app.setFaculty(app.getTargetFaculty() == null ? null
+                : facultyRepository.findByName(app.getTargetFaculty()).orElse(null));
+        app.setDepartment(app.getTargetDepartment() == null ? null
+                : departmentRepository.findByName(app.getTargetDepartment()).orElse(null));
     }
 
     @Transactional
@@ -261,7 +286,24 @@ public class ApplicationService {
         app.setOidbReviewedBy(req.getReviewer());
         app.setOidbReviewedDate(LocalDateTime.now());
 
-        return toResponse(applicationRepository.save(app));
+        Application saved = applicationRepository.save(app);
+
+        // UC-15: ÖİDB ön inceleme sonucunu öğrenciye bildir (Güncel Durum ile birebir).
+        switch (saved.getStatus()) {
+            case REVISION_REQUESTED -> notifyStudent(saved, "Belge Güncellemesi Gerekiyor",
+                    saved.getRevisionNotes() != null && !saved.getRevisionNotes().isBlank()
+                            ? saved.getRevisionNotes()
+                            : "Başvurunuzdaki belgelerin güncellenmesi istenmektedir. Lütfen başvuru detayından ilgili belgeleri yeniden yükleyin.");
+            case YDYO_REVIEW -> notifyStudent(saved, "Ön İnceleme Tamamlandı",
+                    "Başvurunuz Öğrenci İşleri ön incelemesinden başarıyla geçti ve değerlendirme sürecine alındı.");
+            case OIDB_REJECTED -> notifyStudent(saved, "Başvurunuz Reddedildi",
+                    saved.getOidbNotes() != null && !saved.getOidbNotes().isBlank()
+                            ? saved.getOidbNotes()
+                            : "Başvurunuz Öğrenci İşleri tarafından reddedilmiştir.");
+            default -> { /* bildirim yok */ }
+        }
+
+        return toResponse(saved);
     }
 
     // AŞAMA 2: YDYO Sonrası Karar
@@ -280,12 +322,29 @@ public class ApplicationService {
         app.setOidbReviewedBy(req.getReviewer());
         app.setOidbReviewedDate(LocalDateTime.now());
 
-        return toResponse(applicationRepository.save(app));
+        Application saved = applicationRepository.save(app);
+
+        // UC-15: YDYO sonucu öğrenciye ANCAK burada (ÖİDB post-YDYO işlemi) yüzeye çıkar.
+        if (saved.getStatus() == ApplicationStatus.EVALUATION_QUEUE) {
+            // EVALUATION_QUEUE yalnızca YDYO_ACCEPTED'tan ilerletilince oluşur.
+            // ydyoApproved==true → belge muafiyeti; false → sınavı geçti.
+            String msg = Boolean.TRUE.equals(saved.getYdyoApproved())
+                    ? "Yabancı dil şartından muaf tutuldunuz. Başvurunuz değerlendirme sürecine alındı."
+                    : "Yabancı dil sınavını başarıyla geçtiniz. Başvurunuz değerlendirme sürecine alındı.";
+            notifyStudent(saved, "Yabancı Dil Şartı Tamamlandı", msg);
+        } else if (saved.getStatus() == ApplicationStatus.REJECTED) {
+            notifyStudent(saved, "Başvurunuz Reddedildi",
+                    saved.getOidbNotes() != null && !saved.getOidbNotes().isBlank()
+                            ? saved.getOidbNotes()
+                            : "Başvurunuz Öğrenci İşleri tarafından reddedilmiştir.");
+        }
+
+        return toResponse(saved);
     }
 
 
 
-    
+
     // --------------------------------------------------------
     // YDYO 1. AŞAMA: EVRAK KONTROLÜ
     // --------------------------------------------------------
@@ -559,9 +618,25 @@ public class ApplicationService {
         app.setStatus(ApplicationStatus.REJECTED);
         app.setOidbReviewedDate(LocalDateTime.now());
 
-        return toResponse(applicationRepository.save(app));
+        Application saved = applicationRepository.save(app);
+
+        // UC-15: Doğrudan red sonucunu öğrenciye bildir.
+        notifyStudent(saved, "Başvurunuz Reddedildi",
+                saved.getOidbNotes() != null && !saved.getOidbNotes().isBlank()
+                        ? saved.getOidbNotes()
+                        : "Başvurunuz Öğrenci İşleri tarafından reddedilmiştir.");
+
+        return toResponse(saved);
     }
 
+
+    // UC-15: Başvurunun sahibi öğrenciye bildirim üretir. Yalnızca ÖİDB aksiyonlarında
+    // çağrılır; öğrenci "Güncel Durum" kartında gördüğü ÖİDB sonucunu burada da görür.
+    private void notifyStudent(Application app, String title, String message) {
+        if (app.getStudent() != null) {
+            notificationService.create(app.getStudent().getUserId(), title, message);
+        }
+    }
 
     // --- ZAMAN KONTROLÜ İÇİN YARDIMCI METOT ---
     private boolean isApplicationPeriodActive() {

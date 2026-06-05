@@ -14,4 +14,6 @@ public class IntibakTableResponse {
     private Boolean conditionsMet;
     private String shortcomingNote;
     private List<CourseEquivalencyRow> rows;
+    // 0.0–1.0; null if conditionsMet=false or table is empty
+    private Double equivalencyRatio;
 }

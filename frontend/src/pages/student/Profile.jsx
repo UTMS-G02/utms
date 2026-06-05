@@ -3,6 +3,7 @@ import { Form, Input, Button, Typography, Tag, Descriptions, App } from 'antd'
 import { useAuth } from '../../contexts/AuthContext'
 import { authApi } from '../../api/auth'
 import { applicationsApi } from '../../api/applications'
+import PasswordStrengthIndicator from '../../components/PasswordStrengthIndicator'
 
 const { Title, Text } = Typography
 
@@ -29,6 +30,7 @@ const styles = {
 
 export default function Profile() {
   const [form] = Form.useForm()
+  const newPasswordValue = Form.useWatch('newPassword', form) // canlı kural göstergesi için
   const [loading, setLoading] = useState(false)
   const [academic, setAcademic] = useState(null)
   const { user } = useAuth()
@@ -161,17 +163,32 @@ export default function Profile() {
             <Input.Password placeholder="Mevcut şifrenizi girin" />
           </Form.Item>
 
+          {/* Kayıt ekranıyla aynı kural seti: 8+ karakter, büyük/küçük harf, rakam.
+              Altta canlı kural göstergesi (PasswordStrengthIndicator). */}
           <Form.Item
             label="Yeni Şifre"
             name="newPassword"
             rules={[
               { required: true, message: 'Yeni şifre zorunludur.' },
-              { min: 8, message: 'En az 8 karakter olmalıdır.' },
+              {
+                validator: (_, value) => {
+                  if (!value) return Promise.resolve()
+                  const checks = [
+                    value.length >= 8,
+                    /[A-Z]/.test(value),
+                    /[a-z]/.test(value),
+                    /[0-9]/.test(value),
+                  ]
+                  if (checks.every(Boolean)) return Promise.resolve()
+                  return Promise.reject(new Error('Şifre kurallarını sağlamıyor.'))
+                },
+              },
             ]}
             hasFeedback
           >
             <Input.Password placeholder="Yeni şifrenizi girin" />
           </Form.Item>
+          <PasswordStrengthIndicator value={newPasswordValue} />
 
           <Form.Item
             label="Yeni Şifre (Tekrar)"

@@ -33,24 +33,6 @@ const triggerBlobDownload = (blob, fileName) => {
   window.URL.revokeObjectURL(url)
 }
 
-const ALERT_MAP = {
-  DRAFT:                'Başvurunuz henüz gönderilmemiştir. Tamamlayarak gönderin.',
-  SUBMITTED:            'Başvurunuz başarıyla gönderilmiştir. İnceleme sürecini bekliyorsunuz.',
-  OIDB_REVIEW:          'Başvurunuz şu anda akademik kurul tarafından incelenmektedir. Karar verildiğinde e-posta ile bilgilendirileceksiniz.',
-  REVISION_REQUESTED:   'Başvurunuz düzeltme için iade edilmiştir. Aşağıdaki gerekçeyi inceleyip ilgili belgeleri güncelleyin.',
-  OIDB_REJECTED:        'Başvurunuz reddedilmiştir.',
-  APPROVED:             'Başvurunuz kabul edilmiştir. Tebrikler!',
-  YDYO_REVIEW:          'Başvurunuz YDYO birimi tarafından incelenmektedir.',
-  EVALUATION_QUEUE:     'Başvurunuz değerlendirme kuyruğuna alınmıştır.',
-  YGK_SCORED:           'Başvurunuz puanlandı, üst birim onayı bekleniyor.',
-  DEAN_REVIEW:          'Başvurunuz dekan tarafından incelenmektedir.',
-  FACULTY_BOARD_REVIEW: 'Başvurunuz fakülte kurulunda değerlendirilmektedir.',
-  FINAL_DEAN_REVIEW:    'Başvurunuz son dekan incelemesindedir.',
-  RESULT_PUBLISHED:     'Başvurunuzun sonucu açıklanmıştır.',
-  ACCEPTED:             'Başvurunuz kabul edilmiştir. Tebrikler!',
-  REJECTED:             'Başvurunuz reddedilmiştir.',
-}
-
 const TERMINAL_STATUSES = ['RESULT_PUBLISHED', 'ACCEPTED', 'REJECTED']
 
 const getStepCurrent = (status) => {
@@ -185,9 +167,9 @@ export default function ApplicationDetail() {
     revisionNotes,                // OİDB'nin düzeltme notu (öncelikli gerekçe)
     documents = [],
   } = application
-  const alertText = ALERT_MAP[status] ?? 'Başvurunuzun durumu güncellenmektedir.'
   const stepCurrent = getStepCurrent(status)
-  // Durum rozeti: düzeltme yapıp yeniden gönderilen başvuru "İncelemede" görünür (sonuç henüz belli değil).
+  // Durum rozeti: yalnızca ÖİDB aksiyonlarını yansıtan milestone'dan türetilir
+  // (YDYO/YGK/Dekanlık iç aşamaları "Değerlendiriliyor" altında gizli).
   const statusMeta = getStudentStatusMeta(application)
 
   const revisionMode = isRevisionRequested(status)
@@ -371,17 +353,6 @@ export default function ApplicationDetail() {
         <Steps
           current={stepCurrent}
           items={stepItems}
-          style={{ marginBottom: 24 }}
-        />
-
-        <Alert
-          type="info"
-          showIcon
-          message={
-            <span>
-              <strong>Güncel Durum: </strong>{alertText}
-            </span>
-          }
         />
       </div>
 
