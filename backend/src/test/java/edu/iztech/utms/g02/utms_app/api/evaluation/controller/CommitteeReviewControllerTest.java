@@ -3,6 +3,7 @@ package edu.iztech.utms.g02.utms_app.api.evaluation.controller;
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.BoardReviewResponse;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.DecisionRequest;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.FacultyBoardDecisionResponse;
 import edu.iztech.utms.g02.utms_app.bl.evaluation.BoardReviewService;
 import edu.iztech.utms.g02.utms_app.bl.evaluation.DecisionService;
 import org.junit.jupiter.api.Test;
@@ -31,40 +32,20 @@ class CommitteeReviewControllerTest {
     // ==========================================
 
     @Test
-    void deanReview_delegatesToDecisionService() {
-        DecisionRequest req = new DecisionRequest(true, "ok");
-        ApplicationResponse expected = ApplicationResponse.builder().id(1).build();
-        when(decisionService.recordDeanDecision(eq(1), eq(req))).thenReturn(expected);
-
-        ResponseEntity<ApplicationResponse> response = controller.deanReview(1, req);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().getId()).isEqualTo(1);
-        verify(decisionService).recordDeanDecision(1, req);
-    }
-
-    @Test
     void facultyBoardReview_delegatesToDecisionService() {
         DecisionRequest req = new DecisionRequest(false, "ret", "EX-2");
-        ApplicationResponse expected = ApplicationResponse.builder().id(2).build();
+        FacultyBoardDecisionResponse expected = FacultyBoardDecisionResponse.builder()
+                .application(ApplicationResponse.builder().id(2).build())
+                .equivalencyRatio(0.75)
+                .belowThreshold(false)
+                .build();
         when(decisionService.recordFacultyBoardDecision(eq(2), eq(req))).thenReturn(expected);
 
-        ResponseEntity<ApplicationResponse> response = controller.facultyBoardReview(2, req);
+        ResponseEntity<FacultyBoardDecisionResponse> response = controller.facultyBoardReview(2, req);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().getApplication().getId()).isEqualTo(2);
         verify(decisionService).recordFacultyBoardDecision(2, req);
-    }
-
-    @Test
-    void finalDeanReview_delegatesToDecisionService() {
-        DecisionRequest req = new DecisionRequest(true, null);
-        ApplicationResponse expected = ApplicationResponse.builder().id(3).build();
-        when(decisionService.recordFinalDeanDecision(eq(3), eq(req))).thenReturn(expected);
-
-        ResponseEntity<ApplicationResponse> response = controller.finalDeanReview(3, req);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(decisionService).recordFinalDeanDecision(3, req);
     }
 
     // ==========================================

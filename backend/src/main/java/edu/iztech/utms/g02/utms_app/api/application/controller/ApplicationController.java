@@ -89,7 +89,7 @@ public class ApplicationController {
     }
 
 
-    @PreAuthorize("hasAnyRole('STUDENT', 'OIDB', 'YDYO', 'FACULTY', 'DEAN')") 
+    @PreAuthorize("hasAnyRole('STUDENT', 'OIDB', 'YDYO', 'YGK', 'FACULTY_BOARD', 'DEAN_OFFICE')")
     @GetMapping("/{id}")
     public ResponseEntity<ApplicationResponse> getApplicationById(@PathVariable Integer id) {
         ApplicationResponse response = applicationService.getApplicationById(id);

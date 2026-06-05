@@ -12,4 +12,7 @@ public interface EvaluationResultRepository extends JpaRepository<EvaluationResu
 
     // Skor sıralı liste (en yüksek skor ilk) — GET /api/evaluations ve sıralama için
     List<EvaluationResult> findAllByOrderByCompositeScoreDesc();
+
+    // Pair 3: bölüm-bazlı sıralama/listeleme — yalnızca verilen bölümün değerlendirmeleri.
+    List<EvaluationResult> findByApplication_Department_DepartmentId(Integer departmentId);
 }

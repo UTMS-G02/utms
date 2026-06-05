@@ -9,10 +9,14 @@ import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.CommitteeDecision;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.EvaluationResult;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.CommitteeDecisionRepository;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.EvaluationResultRepository;
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.UserRole;
+import edu.iztech.utms.g02.utms_app.dal.user.repository.StaffRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.assertj.core.data.Offset;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -22,6 +26,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -33,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,8 +51,26 @@ class EvaluationServiceTest {
     @Mock private ApplicationRepository applicationRepository;
     @Mock private EvaluationResultRepository evaluationResultRepository;
     @Mock private CommitteeDecisionRepository committeeDecisionRepository;
+    @Mock private StaffRepository staffRepository;
 
     @InjectMocks private EvaluationService evaluationService;
+
+    // #6: Tüm skorlama/listeleme oturum açan YGK üyesinin bölümüne (departmentId) göre kapsanır.
+    private static final Integer YGK_DEPT_ID = 5;
+
+    @BeforeEach
+    void ygkContext() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("ygk@iyte.edu.tr", "pw",
+                        List.of(new SimpleGrantedAuthority("ROLE_YGK"))));
+        Staff ygk = Staff.builder().departmentId(YGK_DEPT_ID).build();
+        lenient().when(staffRepository.findByEmail("ygk@iyte.edu.tr")).thenReturn(Optional.of(ygk));
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     // ==========================================
     // HANDOFF + SKORLAMA
@@ -54,11 +80,11 @@ class EvaluationServiceTest {
     void scoreAll_picksUpEvaluationQueue_scoresAndMarksYgkScored() {
         Application queued = buildApplication(1, ApplicationStatus.EVALUATION_QUEUE, 3.0, 400.0); // 0.30 + 360 = 360.30
 
-        when(applicationRepository.findByStatus(eq(ApplicationStatus.EVALUATION_QUEUE), any(Pageable.class)))
+        when(applicationRepository.findByStatusAndDepartment_DepartmentId(eq(ApplicationStatus.EVALUATION_QUEUE), eq(YGK_DEPT_ID), any(Pageable.class)))
                 .thenReturn(page(queued));
         when(evaluationResultRepository.findByApplication_ApplicationId(anyInt())).thenReturn(Optional.empty());
         when(evaluationResultRepository.save(any(EvaluationResult.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(evaluationResultRepository.findAll()).thenReturn(List.of());
+        when(evaluationResultRepository.findByApplication_Department_DepartmentId(YGK_DEPT_ID)).thenReturn(List.of());
 
         int count = evaluationService.scoreAllPendingApplications();
 
@@ -69,12 +95,12 @@ class EvaluationServiceTest {
 
     @Test
     void scoreAll_assignsRankingsHighestScoreFirst() {
-        when(applicationRepository.findByStatus(any(ApplicationStatus.class), any(Pageable.class)))
+        when(applicationRepository.findByStatusAndDepartment_DepartmentId(any(ApplicationStatus.class), eq(YGK_DEPT_ID), any(Pageable.class)))
                 .thenReturn(page()); // hiç bekleyen yok; sadece sıralama mantığını test ediyoruz
 
         EvaluationResult high = result(buildApplication(1, ApplicationStatus.YGK_SCORED, 0, 0), 360.30);
         EvaluationResult low = result(buildApplication(2, ApplicationStatus.YGK_SCORED, 0, 0), 180.40);
-        when(evaluationResultRepository.findAll()).thenReturn(List.of(low, high)); // "yanlış" sırada
+        when(evaluationResultRepository.findByApplication_Department_DepartmentId(YGK_DEPT_ID)).thenReturn(List.of(low, high)); // "yanlış" sırada
         when(evaluationResultRepository.save(any(EvaluationResult.class))).thenAnswer(inv -> inv.getArgument(0));
 
         evaluationService.scoreAllPendingApplications();
@@ -98,8 +124,8 @@ class EvaluationServiceTest {
         EvaluationResult rEarlier = result(earlier, 360.30);
         EvaluationResult rLater = result(later, 360.30);
 
-        when(applicationRepository.findByStatus(any(ApplicationStatus.class), any(Pageable.class))).thenReturn(page());
-        when(evaluationResultRepository.findAll()).thenReturn(List.of(rLater, rEarlier));
+        when(applicationRepository.findByStatusAndDepartment_DepartmentId(any(ApplicationStatus.class), eq(YGK_DEPT_ID), any(Pageable.class))).thenReturn(page());
+        when(evaluationResultRepository.findByApplication_Department_DepartmentId(YGK_DEPT_ID)).thenReturn(List.of(rLater, rEarlier));
         when(evaluationResultRepository.save(any(EvaluationResult.class))).thenAnswer(inv -> inv.getArgument(0));
 
         evaluationService.scoreAllPendingApplications();
@@ -121,8 +147,8 @@ class EvaluationServiceTest {
         EvaluationResult ra = result(a, 360.30);
         EvaluationResult rb = result(b, 360.30);
 
-        when(applicationRepository.findByStatus(any(ApplicationStatus.class), any(Pageable.class))).thenReturn(page());
-        when(evaluationResultRepository.findAll()).thenReturn(List.of(rb, ra));
+        when(applicationRepository.findByStatusAndDepartment_DepartmentId(any(ApplicationStatus.class), eq(YGK_DEPT_ID), any(Pageable.class))).thenReturn(page());
+        when(evaluationResultRepository.findByApplication_Department_DepartmentId(YGK_DEPT_ID)).thenReturn(List.of(rb, ra));
         when(evaluationResultRepository.save(any(EvaluationResult.class))).thenAnswer(inv -> inv.getArgument(0));
 
         evaluationService.scoreAllPendingApplications();
@@ -144,7 +170,7 @@ class EvaluationServiceTest {
                 .compositeScore(360.35)
                 .ranking(1)
                 .build();
-        when(evaluationResultRepository.findAll()).thenReturn(List.of(result));
+        when(evaluationResultRepository.findByApplication_Department_DepartmentId(YGK_DEPT_ID)).thenReturn(List.of(result));
 
         List<EvaluationResponse> responses = evaluationService.getEvaluations();
 
