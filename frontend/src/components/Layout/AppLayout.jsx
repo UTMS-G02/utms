@@ -9,9 +9,11 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
 import { useAuth, ROLES } from '../../contexts/AuthContext'
-import NotificationBell from './NotificationBell'
+
+const STUDENT_ONLY_ROLES = [ROLES.STUDENT]
 
 const { Sider, Content, Header } = Layout
 const { Text } = Typography
@@ -32,7 +34,6 @@ const MENU_CONFIG = {
   ],
   [ROLES.YGK]: [
     { key: '/ygk/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
-    { key: '/ygk/intibak', icon: <FileTextOutlined />, label: 'İntibak Tablosu' },
   ],
   [ROLES.DEAN_OFFICE]: [
     { key: '/dean/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
@@ -225,7 +226,11 @@ export default function AppLayout() {
 
           {/* Right side: bell + user */}
           <Space size={16}>
-            <NotificationBell />
+            {STUDENT_ONLY_ROLES.includes(user?.role) && (
+              <BellOutlined
+                style={{ fontSize: 18, color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+              />
+            )}
             <Dropdown
               menu={{ items: userDropdownItems, onClick: handleUserMenuClick }}
               placement="bottomRight"
