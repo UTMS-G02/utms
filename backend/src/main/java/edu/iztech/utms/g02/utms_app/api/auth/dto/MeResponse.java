@@ -16,6 +16,9 @@ public class MeResponse {
     private String middleName;   // YENİ EKLENDİ — kayıttaki opsiyonel ikinci ad
 
     private String tckn;
-    private LocalDate dateOfBirth;   // YENİ EKLENDİ
-    private String phoneNumber;   // YENİ EKLENDİ
+    private LocalDate dateOfBirth;
+    private String phoneNumber;
+
+    private Integer departmentId;
+    private Integer facultyId;
 }
