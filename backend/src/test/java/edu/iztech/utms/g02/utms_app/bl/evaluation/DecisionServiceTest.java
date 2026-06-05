@@ -2,6 +2,7 @@ package edu.iztech.utms.g02.utms_app.bl.evaluation;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.DecisionRequest;
+import edu.iztech.utms.g02.utms_app.bl.evaluation.CourseEquivalencyService;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
@@ -32,6 +33,7 @@ class DecisionServiceTest {
     @Mock private ApplicationRepository applicationRepository;
     @Mock private CommitteeDecisionRepository committeeDecisionRepository;
     @Mock private ApplicationService applicationService;
+    @Mock private CourseEquivalencyService courseEquivalencyService;
 
     @InjectMocks private DecisionService decisionService;
 
@@ -161,6 +163,43 @@ class DecisionServiceTest {
         decisionService.recordFacultyBoardDecision(7, reject("%80 denklik sağlanamadı."));
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REJECTED);
+    }
+
+    @Test
+    void facultyBoard_approves_belowThreshold_warningReturned() {
+        Application app = buildApp(40, ApplicationStatus.FACULTY_BOARD_REVIEW);
+        stubFind(40, app);
+        when(courseEquivalencyService.calculateEquivalencyRatio(40)).thenReturn(0.72);
+
+        var response = decisionService.recordFacultyBoardDecision(40, approve(null));
+
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FINAL_DEAN_REVIEW);
+        assertThat(response.getEquivalencyRatio()).isEqualTo(0.72);
+        assertThat(response.getBelowThreshold()).isTrue();
+    }
+
+    @Test
+    void facultyBoard_approves_aboveThreshold_noWarning() {
+        Application app = buildApp(41, ApplicationStatus.FACULTY_BOARD_REVIEW);
+        stubFind(41, app);
+        when(courseEquivalencyService.calculateEquivalencyRatio(41)).thenReturn(0.85);
+
+        var response = decisionService.recordFacultyBoardDecision(41, approve(null));
+
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FINAL_DEAN_REVIEW);
+        assertThat(response.getBelowThreshold()).isFalse();
+    }
+
+    @Test
+    void facultyBoard_rejects_noThresholdCheck() {
+        Application app = buildApp(42, ApplicationStatus.FACULTY_BOARD_REVIEW);
+        stubFind(42, app);
+        when(courseEquivalencyService.calculateEquivalencyRatio(42)).thenReturn(0.50);
+
+        var response = decisionService.recordFacultyBoardDecision(42, reject("Uygunsuz."));
+
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REJECTED);
+        assertThat(response.getBelowThreshold()).isFalse();
     }
 
     @Test
