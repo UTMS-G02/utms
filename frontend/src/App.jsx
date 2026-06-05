@@ -10,13 +10,16 @@ import Profile from './pages/student/Profile';
 import OidbDashboard from './pages/oidb/Dashboard';
 import YdyoDashboard from './pages/ydyo/YdyoDashboard';
 import YdyoApplicationDetail from './pages/ydyo/YdyoApplicationDetail';
+
+// Dekanlık Sayfaları
 import DekanlikOfisi from './pages/dean/DekanlikOfisi';
-import FakulteKurulu from './pages/dean/FakulteKurulu';
-import YGK from './pages/dean/YGK';
+import FakulteKurulu from './pages/dean/FakulteKuruluDashboard';
+import YGK from './pages/dean/YGKDashboard';
+// İstersen sonradan oluşturduğun Dashboard'ları da buraya import edebilirsin.
+
 import AppLayout from './components/Layout/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ROLES } from './contexts/AuthContext';
-
 
 export default function App() {
   return (
@@ -29,6 +32,15 @@ export default function App() {
       <Route path="/reset-password" element={<Login initialModal="reset" />} />
       <Route path="/activate" element={<ActivatePage />} />
       <Route path="/kvkk" element={<KvkkPage />} />
+
+      {/* --- GEÇİCİ TEST ALANI (LOGİN OLMADAN GİRİŞ İÇİN) --- */}
+      {/* Bu rotalarda ProtectedRoute kullanmadığımız için direkt URL'den erişebilirsin */}
+      <Route path="/test" element={<AppLayout />}>
+        <Route path="dekanlik" element={<DekanlikOfisi />} />
+        <Route path="fakulte" element={<FakulteKurulu />} />
+        <Route path="ygk" element={<YGK />} />
+      </Route>
+      {/* ----------------------------------------------------- */}
 
       {/* Öğrenci Portalı */}
       <Route
@@ -75,7 +87,7 @@ export default function App() {
         <Route path="applications/:id" element={<YdyoApplicationDetail />} />
       </Route>
 
-      {/* Dekanlık Portalı */}
+      {/* Dekanlık Portalı (Orijinal Korumalı Hali - Test bitince burayı kullanırsın) */}
       <Route
         path="/dean"
         element={
@@ -85,7 +97,7 @@ export default function App() {
         }
       >
         <Route path="dashboard" element={<div style={{ padding: 24 }}><h2>Dean Dashboard</h2></div>} />
-        <Route path="dekanlık-ofisi" element={<DekanlikOfisi />} />
+        <Route path="dekanlik-ofisi" element={<DekanlikOfisi />} />
         <Route path="faculty-board" element={<FakulteKurulu />} />
         <Route path="ygk" element={<YGK />} />
       </Route>

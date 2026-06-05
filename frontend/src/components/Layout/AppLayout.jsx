@@ -20,12 +20,12 @@ const { Text } = Typography
 const MENU_CONFIG = {
   [ROLES.STUDENT]: [
     { key: '/student/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
-    { key: '/student/applications/new', icon: <FileTextOutlined />, label: 'Başvuru Yap' },    { key: '/student/applications', icon: <FolderOpenOutlined />, label: 'Başvurularım' },
+    { key: '/student/applications/new', icon: <FileTextOutlined />, label: 'Başvuru Yap' },
+    { key: '/student/applications', icon: <FolderOpenOutlined />, label: 'Başvurularım' },
     { key: '/student/profile', icon: <UserOutlined />, label: 'Profil' },
   ],
   [ROLES.OIDB]: [
     { key: '/oidb/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
-    { key: '/oidb/pending', icon: <FileTextOutlined />, label: 'Bekleyen Başvurular' },
   ],
   [ROLES.YDYO]: [
     { key: '/ydyo/dashboard', icon: <HomeOutlined />, label: 'Başvuru Yönetimi' },
@@ -95,88 +95,104 @@ export default function AppLayout() {
     if (key === 'profile') navigate(`/${user?.role?.toLowerCase()}/profile`)
   }
 
+  const hideSidebarRoutes = [
+  '/oidb',
+  '/test/ygk',
+  '/test/dekanlik',
+  '/test/fakulte',
+  '/test/ygk/dashboard',
+  '/test/faculty-board/dashboard',
+  '/oidb/dashboard'
+  ];
+
+  const shouldHideSidebar = hideSidebarRoutes.includes(location.pathname);
+
+  const contentMarginLeft = shouldHideSidebar ? 0 : (collapsed ? 64 : 220);
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      {/* ── Sidebar ── */}
-      <Sider
-        collapsed={collapsed}
-        onCollapse={setCollapsed}
-        width={220}
-        collapsedWidth={64}
-        style={{
-          background: 'var(--color-surface)',
-          borderRight: '1px solid var(--color-border)',
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          bottom: 0,
-          zIndex: 100,
-          overflow: 'auto',
-        }}
-        trigger={null}
-      >
-        {/* Logo */}
-        <div
-          style={{
-            height: 64,
-            display: 'flex',
-            alignItems: 'center',
-            padding: '0 16px',
-            borderBottom: '1px solid var(--color-border)',
-          }}
-        >
-          <IyteLogo collapsed={collapsed} />
-        </div>
 
-        {/* Navigation */}
-        <Menu
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          style={{ border: 'none', marginTop: 8 }}
-        />
-
-        {/* Logout at bottom */}
-        <div
+      {!shouldHideSidebar && (
+        <Sider
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
+          width={220}
+          collapsedWidth={64}
           style={{
-            position: 'absolute',
+            background: 'var(--color-surface)',
+            borderRight: '1px solid var(--color-border)',
+            position: 'fixed',
+            left: 0,
+            top: 0,
             bottom: 0,
-            width: '100%',
-            padding: '16px',
-            borderTop: '1px solid var(--color-border)',
+            zIndex: 100,
+            overflow: 'auto',
           }}
+          trigger={null}
         >
+          {/* Logo */}
           <div
-            onClick={logout}
             style={{
+              height: 64,
               display: 'flex',
               alignItems: 'center',
-              gap: 10,
-              cursor: 'pointer',
-              color: 'var(--color-text-secondary)',
-              fontSize: 13,
-              padding: '6px 8px',
-              borderRadius: 6,
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#fff1f0'
-              e.currentTarget.style.color = '#ff4d4f'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent'
-              e.currentTarget.style.color = 'var(--color-text-secondary)'
+              padding: '0 16px',
+              borderBottom: '1px solid var(--color-border)',
             }}
           >
-            <LogoutOutlined />
-            {!collapsed && <span>Çıkış Yap</span>}
+            <IyteLogo collapsed={collapsed} />
           </div>
-        </div>
-      </Sider>
+
+          {/* Navigation */}
+          <Menu
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            items={menuItems}
+            onClick={({ key }) => navigate(key)}
+            style={{ border: 'none', marginTop: 8 }}
+          />
+
+          {/* Logout at bottom */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              width: '100%',
+              padding: '16px',
+              borderTop: '1px solid var(--color-border)',
+            }}
+          >
+            <div
+              onClick={logout}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                cursor: 'pointer',
+                color: 'var(--color-text-secondary)',
+                fontSize: 13,
+                padding: '6px 8px',
+                borderRadius: 6,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#fff1f0'
+                e.currentTarget.style.color = '#ff4d4f'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.color = 'var(--color-text-secondary)'
+              }}
+            >
+              <LogoutOutlined />
+              {!collapsed && <span>Çıkış Yap</span>}
+            </div>
+          </div>
+        </Sider>
+      )}
 
       {/* ── Main content area ── */}
-      <Layout style={{ marginLeft: collapsed ? 64 : 220, transition: 'margin 0.2s' }}>
+      <Layout style={{ marginLeft: contentMarginLeft, transition: 'margin 0.2s' }}>
         {/* Header */}
         <Header
           style={{
@@ -192,12 +208,18 @@ export default function AppLayout() {
             height: 64,
           }}
         >
-          {/* Collapse toggle */}
-          <div
-            onClick={() => setCollapsed(!collapsed)}
-            style={{ cursor: 'pointer', color: 'var(--color-text-secondary)', fontSize: 18 }}
-          >
-            {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          {/* Collapse toggle / Logo */}
+          <div>
+            {!shouldHideSidebar ? (
+              <div
+                onClick={() => setCollapsed(!collapsed)}
+                style={{ cursor: 'pointer', color: 'var(--color-text-secondary)', fontSize: 18 }}
+              >
+                {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              </div>
+            ) : (
+              <IyteLogo collapsed={false} />
+            )}
           </div>
 
           {/* Right side: bell + user */}
