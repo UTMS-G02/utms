@@ -9,9 +9,9 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  BellOutlined,
 } from '@ant-design/icons'
 import { useAuth, ROLES } from '../../contexts/AuthContext'
+import NotificationBell from './NotificationBell'
 
 const STUDENT_ONLY_ROLES = [ROLES.STUDENT]
 

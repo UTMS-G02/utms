@@ -15,4 +15,7 @@ import lombok.experimental.SuperBuilder;
 public class Staff extends User {
 
     private Integer departmentId;
+
+    @Column(name = "faculty_id")
+    private Integer facultyId;
 }
