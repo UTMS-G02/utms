@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Typography, Tag, Spin, Steps, Alert, Descriptions, Divider, Space, Upload, Tooltip, App } from 'antd'
 import { FileTextOutlined, UploadOutlined, LockOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { applicationsApi } from '../../api/applications'
-import { getStudentStatusMeta, isRevisionRequested } from '../../constants/applicationStatus'
+import { getStudentStatusMeta, getStudentMilestone, isRevisionRequested } from '../../constants/applicationStatus'
 
 const { Title, Text } = Typography
 
@@ -31,24 +31,6 @@ const triggerBlobDownload = (blob, fileName) => {
   link.click()
   link.remove()
   window.URL.revokeObjectURL(url)
-}
-
-const ALERT_MAP = {
-  DRAFT:                'Başvurunuz henüz gönderilmemiştir. Tamamlayarak gönderin.',
-  SUBMITTED:            'Başvurunuz başarıyla gönderilmiştir. İnceleme sürecini bekliyorsunuz.',
-  OIDB_REVIEW:          'Başvurunuz şu anda akademik kurul tarafından incelenmektedir. Karar verildiğinde e-posta ile bilgilendirileceksiniz.',
-  REVISION_REQUESTED:   'Başvurunuz düzeltme için iade edilmiştir. Aşağıdaki gerekçeyi inceleyip ilgili belgeleri güncelleyin.',
-  OIDB_REJECTED:        'Başvurunuz reddedilmiştir.',
-  APPROVED:             'Başvurunuz kabul edilmiştir. Tebrikler!',
-  YDYO_REVIEW:          'Başvurunuz YDYO birimi tarafından incelenmektedir.',
-  EVALUATION_QUEUE:     'Başvurunuz değerlendirme kuyruğuna alınmıştır.',
-  YGK_SCORED:           'Başvurunuz puanlandı, üst birim onayı bekleniyor.',
-  DEAN_REVIEW:          'Başvurunuz dekan tarafından incelenmektedir.',
-  FACULTY_BOARD_REVIEW: 'Başvurunuz fakülte kurulunda değerlendirilmektedir.',
-  FINAL_DEAN_REVIEW:    'Başvurunuz son dekan incelemesindedir.',
-  RESULT_PUBLISHED:     'Başvurunuzun sonucu açıklanmıştır.',
-  ACCEPTED:             'Başvurunuz kabul edilmiştir. Tebrikler!',
-  REJECTED:             'Başvurunuz reddedilmiştir.',
 }
 
 const TERMINAL_STATUSES = ['RESULT_PUBLISHED', 'ACCEPTED', 'REJECTED']
@@ -185,10 +167,11 @@ export default function ApplicationDetail() {
     revisionNotes,                // OİDB'nin düzeltme notu (öncelikli gerekçe)
     documents = [],
   } = application
-  const alertText = ALERT_MAP[status] ?? 'Başvurunuzun durumu güncellenmektedir.'
   const stepCurrent = getStepCurrent(status)
-  // Durum rozeti: düzeltme yapıp yeniden gönderilen başvuru "İncelemede" görünür (sonuç henüz belli değil).
+  // Durum rozeti + Güncel Durum metni: yalnızca ÖİDB aksiyonlarını yansıtan milestone'dan
+  // türetilir (YDYO/YGK/Dekanlık iç aşamaları "Değerlendiriliyor" altında gizli).
   const statusMeta = getStudentStatusMeta(application)
+  const milestone = getStudentMilestone(application)
 
   const revisionMode = isRevisionRequested(status)
   const revisionNote = revisionNotes || oidbNotes || ydyoNotes || 'Düzeltme gerekçesi belirtilmemiştir. Lütfen birimle iletişime geçin.'
@@ -375,11 +358,11 @@ export default function ApplicationDetail() {
         />
 
         <Alert
-          type="info"
+          type={milestone.alertType}
           showIcon
           message={
             <span>
-              <strong>Güncel Durum: </strong>{alertText}
+              <strong>Güncel Durum: </strong>{milestone.alertText}
             </span>
           }
         />

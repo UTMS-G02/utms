@@ -9,9 +9,9 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  BellOutlined,
 } from '@ant-design/icons'
 import { useAuth, ROLES } from '../../contexts/AuthContext'
+import NotificationBell from './NotificationBell'
 
 const { Sider, Content, Header } = Layout
 const { Text } = Typography
@@ -202,9 +202,7 @@ export default function AppLayout() {
 
           {/* Right side: bell + user */}
           <Space size={16}>
-            <BellOutlined
-              style={{ fontSize: 18, color: 'var(--color-text-secondary)', cursor: 'pointer' }}
-            />
+            <NotificationBell />
             <Dropdown
               menu={{ items: userDropdownItems, onClick: handleUserMenuClick }}
               placement="bottomRight"
