@@ -2,6 +2,7 @@ package edu.iztech.utms.g02.utms_app.bl.evaluation;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.DecisionRequest;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.FacultyBoardDecisionResponse;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
@@ -35,7 +36,8 @@ public class DecisionService {
 
     private final ApplicationRepository applicationRepository;
     private final CommitteeDecisionRepository committeeDecisionRepository;
-    private final ApplicationService applicationService; // ApplicationResponse üretimi için (Pair 2 public API)
+    private final ApplicationService applicationService;
+    private final CourseEquivalencyService courseEquivalencyService;
 
     @Transactional
     public ApplicationResponse recordDeanDecision(Integer applicationId, DecisionRequest req) {
@@ -45,8 +47,17 @@ public class DecisionService {
     }
 
     @Transactional
-    public ApplicationResponse recordFacultyBoardDecision(Integer applicationId, DecisionRequest req) {
-        return record(applicationId, "FACULTY_BOARD", req, EnumSet.of(FACULTY_BOARD_REVIEW));
+    public FacultyBoardDecisionResponse recordFacultyBoardDecision(Integer applicationId, DecisionRequest req) {
+        ApplicationResponse application = record(applicationId, "FACULTY_BOARD", req, EnumSet.of(FACULTY_BOARD_REVIEW));
+        Double ratio = courseEquivalencyService.calculateEquivalencyRatio(applicationId);
+        boolean belowThreshold = Boolean.TRUE.equals(req.getApproved())
+                && ratio != null
+                && ratio < 0.80;
+        return FacultyBoardDecisionResponse.builder()
+                .application(application)
+                .equivalencyRatio(ratio)
+                .belowThreshold(belowThreshold)
+                .build();
     }
 
     @Transactional

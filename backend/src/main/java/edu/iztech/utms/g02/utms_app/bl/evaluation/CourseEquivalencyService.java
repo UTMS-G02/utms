@@ -6,6 +6,7 @@ import edu.iztech.utms.g02.utms_app.api.evaluation.dto.IntibakTableResponse;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.CourseEquivalency;
+import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.EquivalencyStatus;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.CourseEquivalencyRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ import org.springframework.web.util.HtmlUtils;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -22,8 +24,15 @@ import java.util.stream.IntStream;
 @RequiredArgsConstructor
 public class CourseEquivalencyService {
 
+    private static final Set<String> VALID_GRADES =
+            Set.of("AA", "BA", "BB", "CB", "CC", "DC", "DD", "FF");
+
     private final ApplicationRepository applicationRepository;
     private final CourseEquivalencyRepository courseEquivalencyRepository;
+
+    // ============================================================
+    // OKUMA
+    // ============================================================
 
     @Transactional(readOnly = true)
     public IntibakTableResponse getTable(Integer applicationId) {
@@ -31,18 +40,13 @@ public class CourseEquivalencyService {
         List<CourseEquivalency> rows =
                 courseEquivalencyRepository.findByApplication_ApplicationIdOrderByRowOrderAsc(applicationId);
 
-        return IntibakTableResponse.builder()
-                .applicationId(applicationId)
-                .conditionsMet(app.getYgkApproved())
-                .shortcomingNote(app.getYgkNotes())
-                .rows(rows.stream().map(this::toRow).collect(Collectors.toList()))
-                .build();
+        return buildResponse(app, rows);
     }
 
-    /**
-     * Tablonun tamamını kaydeder (replace-all). Mevcut satırlar silinip yenileri eklenir.
-     * Koşullar karşılanmıyorsa shortcomingNote zorunludur ve rows görmezden gelinir.
-     */
+    // ============================================================
+    // TOPLU KAYIT (replace-all)
+    // ============================================================
+
     @Transactional
     public IntibakTableResponse saveTable(Integer applicationId, IntibakTableRequest req) {
         if (req.getConditionsMet() == null) {
@@ -55,8 +59,6 @@ public class CourseEquivalencyService {
 
         Application app = findApp(applicationId);
 
-        // Koşullar karşılanıyorsa tablo eksiksiz olmalı: durumu/satırları DEĞİŞTİRMEDEN
-        // önce doğrula ki hatalı istek mevcut tabloyu silmesin (EX-2).
         List<CourseEquivalencyRow> rows = null;
         if (Boolean.TRUE.equals(req.getConditionsMet())) {
             rows = req.getRows();
@@ -67,51 +69,150 @@ public class CourseEquivalencyService {
         app.setYgkNotes(req.getShortcomingNote());
         applicationRepository.save(app);
 
-        // Eski satırları sil, yenileri ekle
         courseEquivalencyRepository.deleteByApplication_ApplicationId(applicationId);
 
-        List<CourseEquivalency> newRows = Collections.emptyList();
+        List<CourseEquivalency> saved = Collections.emptyList();
         if (rows != null) {
             final List<CourseEquivalencyRow> validRows = rows;
-            newRows = IntStream.range(0, validRows.size())
+            saved = IntStream.range(0, validRows.size())
                     .mapToObj(i -> toEntity(validRows.get(i), app, i))
                     .collect(Collectors.toList());
-            courseEquivalencyRepository.saveAll(newRows);
+            courseEquivalencyRepository.saveAll(saved);
         }
 
-        return IntibakTableResponse.builder()
-                .applicationId(applicationId)
-                .conditionsMet(req.getConditionsMet())
-                .shortcomingNote(req.getShortcomingNote())
-                .rows(newRows.stream().map(this::toRow).collect(Collectors.toList()))
-                .build();
+        return buildResponse(app, saved);
     }
 
+    // ============================================================
+    // TEK SATIR İŞLEMLERİ
+    // ============================================================
+
+    @Transactional
+    public IntibakTableResponse addRow(Integer applicationId, CourseEquivalencyRow row) {
+        Application app = findApp(applicationId);
+        validateRow(row, 1);
+
+        int nextOrder = courseEquivalencyRepository.countByApplication_ApplicationId(applicationId);
+        courseEquivalencyRepository.save(toEntity(row, app, nextOrder));
+
+        return buildResponse(app,
+                courseEquivalencyRepository.findByApplication_ApplicationIdOrderByRowOrderAsc(applicationId));
+    }
+
+    @Transactional
+    public IntibakTableResponse editRow(Integer applicationId, Integer rowId, CourseEquivalencyRow row) {
+        Application app = findApp(applicationId);
+        CourseEquivalency existing = findRowForApp(rowId, applicationId);
+        validateRow(row, 1);
+
+        existing.setSourceCode(HtmlUtils.htmlEscape(row.getSourceCode()));
+        existing.setSourceName(HtmlUtils.htmlEscape(row.getSourceName()));
+        existing.setSourceCredit(row.getSourceCredit());
+        existing.setSourceGrade(row.getSourceGrade());
+        existing.setSource2Code(row.getSource2Code() != null ? HtmlUtils.htmlEscape(row.getSource2Code()) : null);
+        existing.setSource2Name(row.getSource2Name() != null ? HtmlUtils.htmlEscape(row.getSource2Name()) : null);
+        existing.setSource2Credit(row.getSource2Credit());
+        existing.setSource2Grade(row.getSource2Grade());
+        existing.setTargetCode(HtmlUtils.htmlEscape(row.getTargetCode()));
+        existing.setTargetName(HtmlUtils.htmlEscape(row.getTargetName()));
+        existing.setTargetCredit(row.getTargetCredit());
+        existing.setTargetGrade(row.getTargetGrade());
+        existing.setEquivalencyStatus(row.getEquivalencyStatus());
+        courseEquivalencyRepository.save(existing);
+
+        return buildResponse(app,
+                courseEquivalencyRepository.findByApplication_ApplicationIdOrderByRowOrderAsc(applicationId));
+    }
+
+    @Transactional
+    public IntibakTableResponse deleteRow(Integer applicationId, Integer rowId) {
+        Application app = findApp(applicationId);
+        CourseEquivalency existing = findRowForApp(rowId, applicationId);
+        courseEquivalencyRepository.delete(existing);
+
+        return buildResponse(app,
+                courseEquivalencyRepository.findByApplication_ApplicationIdOrderByRowOrderAsc(applicationId));
+    }
+
+    // ============================================================
+    // %80 DENKLİK ORANI
+    // ============================================================
+
     /**
-     * Koşullar karşılanıyorken intibak tablosunun eksiksizliğini doğrular (EX-2).
-     * En az bir ders satırı gerekir; her satırda ders kodu/adı dolu, krediler pozitif
-     * ve denklik durumu seçili olmalıdır. Hata mesajları kullanıcı dostudur ve
-     * 1 tabanlı satır numarasını içerir.
+     * Kredi ağırlıklı denklik oranı (0.0–1.0).
+     * conditionsMet=false veya tablo boşsa null döner.
      */
+    public Double calculateEquivalencyRatio(Integer applicationId) {
+        Application app = findApp(applicationId);
+        if (!Boolean.TRUE.equals(app.getYgkApproved())) return null;
+
+        List<CourseEquivalency> rows =
+                courseEquivalencyRepository.findByApplication_ApplicationIdOrderByRowOrderAsc(applicationId);
+        if (rows.isEmpty()) return null;
+
+        int total = rows.stream().mapToInt(this::effectiveCredits).sum();
+        if (total == 0) return null;
+
+        int equivalent = rows.stream()
+                .filter(r -> r.getEquivalencyStatus() != EquivalencyStatus.DENK_DEGIL)
+                .mapToInt(this::effectiveCredits)
+                .sum();
+
+        return (double) equivalent / total;
+    }
+
+    // ============================================================
+    // YARDIMCI — VALİDASYON
+    // ============================================================
+
     private void validateRows(List<CourseEquivalencyRow> rows) {
         if (rows == null || rows.isEmpty()) {
             throw new IllegalArgumentException(
                     "İntibak tablosu eksik: koşullar karşılanıyorsa en az bir ders satırı girilmelidir.");
         }
         for (int i = 0; i < rows.size(); i++) {
-            CourseEquivalencyRow row = rows.get(i);
-            int rowNo = i + 1;
-            requireText(row.getSourceCode(), rowNo, "kaynak ders kodu");
-            requireText(row.getSourceName(), rowNo, "kaynak ders adı");
-            requirePositive(row.getSourceCredit(), rowNo, "kaynak kredi");
-            requireText(row.getTargetCode(), rowNo, "hedef ders kodu");
-            requireText(row.getTargetName(), rowNo, "hedef ders adı");
-            requirePositive(row.getTargetCredit(), rowNo, "hedef kredi");
-            if (row.getEquivalencyStatus() == null) {
-                throw new IllegalArgumentException(
-                        "İntibak tablosu eksik: " + rowNo + ". satırda denklik durumu seçilmelidir.");
-            }
+            validateRow(rows.get(i), i + 1);
         }
+    }
+
+    private void validateRow(CourseEquivalencyRow row, int rowNo) {
+        requireText(row.getSourceCode(), rowNo, "kaynak ders kodu");
+        requireText(row.getSourceName(), rowNo, "kaynak ders adı");
+        requirePositive(row.getSourceCredit(), rowNo, "kaynak kredi");
+        requireGrade(row.getSourceGrade(), rowNo, "kaynak not");
+
+        validateSource2(row, rowNo);
+
+        requireText(row.getTargetCode(), rowNo, "hedef ders kodu");
+        requireText(row.getTargetName(), rowNo, "hedef ders adı");
+        requirePositive(row.getTargetCredit(), rowNo, "hedef kredi");
+        requireGrade(row.getTargetGrade(), rowNo, "hedef not");
+
+        if (row.getEquivalencyStatus() == null) {
+            throw new IllegalArgumentException(
+                    "İntibak tablosu eksik: " + rowNo + ". satırda denklik durumu seçilmelidir.");
+        }
+    }
+
+    private void validateSource2(CourseEquivalencyRow row, int rowNo) {
+        boolean hasCode   = row.getSource2Code()   != null && !row.getSource2Code().isBlank();
+        boolean hasName   = row.getSource2Name()   != null && !row.getSource2Name().isBlank();
+        boolean hasCredit = row.getSource2Credit() != null;
+        boolean hasGrade  = row.getSource2Grade()  != null && !row.getSource2Grade().isBlank();
+
+        long filledCount = List.of(hasCode, hasName, hasCredit, hasGrade)
+                .stream().filter(b -> b).count();
+
+        if (filledCount == 0) return; // 1→1 satır, geçerli
+
+        if (filledCount < 4) {
+            throw new IllegalArgumentException(
+                    rowNo + ". satır: 2. kaynak ders alanları ya tamamı dolu ya da tamamı boş olmalıdır " +
+                    "(sourceCode, sourceName, sourceCredit, sourceGrade).");
+        }
+
+        requirePositive(row.getSource2Credit(), rowNo, "2. kaynak kredi");
+        requireGrade(row.getSource2Grade(), rowNo, "2. kaynak not");
     }
 
     private void requireText(String value, int rowNo, String field) {
@@ -128,15 +229,66 @@ public class CourseEquivalencyService {
         }
     }
 
+    private void requireGrade(String value, int rowNo, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(
+                    "İntibak tablosu eksik: " + rowNo + ". satırda " + field + " zorunludur.");
+        }
+        if (!VALID_GRADES.contains(value.toUpperCase())) {
+            throw new IllegalArgumentException(
+                    rowNo + ". satırda " + field + " geçersiz: \"" + value +
+                    "\". Geçerli notlar: AA, BA, BB, CB, CC, DC, DD, FF.");
+        }
+    }
+
+    // ============================================================
+    // YARDIMCI — DÖNÜŞÜM
+    // ============================================================
+
+    private IntibakTableResponse buildResponse(Application app, List<CourseEquivalency> rows) {
+        List<CourseEquivalencyRow> rowDtos = rows.stream().map(this::toRow).collect(Collectors.toList());
+        Double ratio = Boolean.TRUE.equals(app.getYgkApproved()) ? computeRatio(rows) : null;
+        return IntibakTableResponse.builder()
+                .applicationId(app.getApplicationId())
+                .conditionsMet(app.getYgkApproved())
+                .shortcomingNote(app.getYgkNotes())
+                .rows(rowDtos)
+                .equivalencyRatio(ratio)
+                .build();
+    }
+
+    private Double computeRatio(List<CourseEquivalency> rows) {
+        if (rows.isEmpty()) return null;
+        int total = rows.stream().mapToInt(this::effectiveCredits).sum();
+        if (total == 0) return null;
+        int equivalent = rows.stream()
+                .filter(r -> r.getEquivalencyStatus() != EquivalencyStatus.DENK_DEGIL)
+                .mapToInt(this::effectiveCredits)
+                .sum();
+        return (double) equivalent / total;
+    }
+
+    private int effectiveCredits(CourseEquivalency row) {
+        int credits = row.getSourceCredit() != null ? row.getSourceCredit() : 0;
+        if (row.getSource2Credit() != null) credits += row.getSource2Credit();
+        return credits;
+    }
+
     private CourseEquivalency toEntity(CourseEquivalencyRow row, Application app, int order) {
         return CourseEquivalency.builder()
                 .application(app)
                 .sourceCode(HtmlUtils.htmlEscape(row.getSourceCode()))
                 .sourceName(HtmlUtils.htmlEscape(row.getSourceName()))
                 .sourceCredit(row.getSourceCredit())
+                .sourceGrade(row.getSourceGrade())
+                .source2Code(row.getSource2Code() != null ? HtmlUtils.htmlEscape(row.getSource2Code()) : null)
+                .source2Name(row.getSource2Name() != null ? HtmlUtils.htmlEscape(row.getSource2Name()) : null)
+                .source2Credit(row.getSource2Credit())
+                .source2Grade(row.getSource2Grade())
                 .targetCode(HtmlUtils.htmlEscape(row.getTargetCode()))
                 .targetName(HtmlUtils.htmlEscape(row.getTargetName()))
                 .targetCredit(row.getTargetCredit())
+                .targetGrade(row.getTargetGrade())
                 .equivalencyStatus(row.getEquivalencyStatus())
                 .rowOrder(order)
                 .build();
@@ -144,14 +296,27 @@ public class CourseEquivalencyService {
 
     private CourseEquivalencyRow toRow(CourseEquivalency entity) {
         return CourseEquivalencyRow.builder()
+                .id(entity.getId())
                 .sourceCode(entity.getSourceCode())
                 .sourceName(entity.getSourceName())
                 .sourceCredit(entity.getSourceCredit())
+                .sourceGrade(entity.getSourceGrade())
+                .source2Code(entity.getSource2Code())
+                .source2Name(entity.getSource2Name())
+                .source2Credit(entity.getSource2Credit())
+                .source2Grade(entity.getSource2Grade())
                 .targetCode(entity.getTargetCode())
                 .targetName(entity.getTargetName())
                 .targetCredit(entity.getTargetCredit())
+                .targetGrade(entity.getTargetGrade())
                 .equivalencyStatus(entity.getEquivalencyStatus())
                 .build();
+    }
+
+    private CourseEquivalency findRowForApp(Integer rowId, Integer applicationId) {
+        return courseEquivalencyRepository.findByIdAndApplication_ApplicationId(rowId, applicationId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Satır bulunamadı veya bu başvuruya ait değil. rowId: " + rowId));
     }
 
     private Application findApp(Integer id) {
