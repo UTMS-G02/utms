@@ -3,6 +3,7 @@ package edu.iztech.utms.g02.utms_app.api.evaluation.controller;
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.BoardReviewResponse;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.DecisionRequest;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.FacultyBoardDecisionResponse;
 import edu.iztech.utms.g02.utms_app.bl.evaluation.BoardReviewService;
 import edu.iztech.utms.g02.utms_app.bl.evaluation.DecisionService;
 import lombok.RequiredArgsConstructor;
@@ -43,8 +44,8 @@ public class CommitteeReviewController {
     // Dekan iletimleri DeanController altındadır; Fakülte Kurulu kararı tek karar makamıdır.
     @PreAuthorize("hasRole('FACULTY_BOARD')")
     @PatchMapping("/{id}/faculty-board-review")
-    public ResponseEntity<ApplicationResponse> facultyBoardReview(@PathVariable Integer id,
-                                                                  @RequestBody DecisionRequest req) {
+    public ResponseEntity<FacultyBoardDecisionResponse> facultyBoardReview(@PathVariable Integer id,
+                                                                           @RequestBody DecisionRequest req) {
         return ResponseEntity.ok(decisionService.recordFacultyBoardDecision(id, req));
     }
 }

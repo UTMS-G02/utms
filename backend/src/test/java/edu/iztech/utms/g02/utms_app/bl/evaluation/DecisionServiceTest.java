@@ -36,6 +36,7 @@ class DecisionServiceTest {
     @Mock private ApplicationRepository applicationRepository;
     @Mock private CommitteeDecisionRepository committeeDecisionRepository;
     @Mock private ApplicationService applicationService;
+    @Mock private CourseEquivalencyService courseEquivalencyService; // recordFacultyBoardDecision denklik oranını sorar
 
     @InjectMocks private DecisionService decisionService;
 

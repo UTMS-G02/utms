@@ -2,6 +2,7 @@ package edu.iztech.utms.g02.utms_app.bl.evaluation;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.DecisionRequest;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.FacultyBoardDecisionResponse;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
@@ -23,21 +24,27 @@ import static edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationSta
 /**
  * Komisyon kararı. Router modelinde TEK karar makamı Fakülte Kurulu'dur.
  *
- * <p>Dekanlık Ofisi karar VERMEZ (yalnızca iletir → {@link DeanForwardService}), bu yüzden
- * eski dekan / nihai-dekan karar akışları kaldırılmıştır. committee_decisions EKLE-ONLY'dir.
- * Geçiş: {@code FACULTY_BOARD_REVIEW} → onay: {@code FACULTY_BOARD_ACCEPTED} | ret: {@code FACULTY_BOARD_REJECTED}.
+ * <p>Dekanlık Ofisi karar VERMEZ (yalnızca iletir → {@link DeanForwardService}); eski dekan/
+ * nihai-dekan akışları kaldırıldı. committee_decisions EKLE-ONLY'dir. Geçiş:
+ * {@code FACULTY_BOARD_REVIEW} → onay: {@code FACULTY_BOARD_ACCEPTED} | ret: {@code FACULTY_BOARD_REJECTED}.
+ *
+ * <p>İntibak redesign (dev) ile uyum: onay sonrası denklik oranı hesaplanır; %80 altındaysa
+ * yumuşak uyarı (belowThreshold) döndürülür — karar ENGELLENMEZ, yalnızca bilgilendirir.
  */
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class DecisionService {
 
+    private static final double EQUIVALENCY_THRESHOLD = 0.80;
+
     private final ApplicationRepository applicationRepository;
     private final CommitteeDecisionRepository committeeDecisionRepository;
-    private final ApplicationService applicationService; // ApplicationResponse üretimi için (Pair 2 public API)
+    private final ApplicationService applicationService;       // ApplicationResponse üretimi (Pair 2 public API)
+    private final CourseEquivalencyService courseEquivalencyService; // denklik oranı (intibak redesign)
 
     @Transactional
-    public ApplicationResponse recordFacultyBoardDecision(Integer applicationId, DecisionRequest req) {
+    public FacultyBoardDecisionResponse recordFacultyBoardDecision(Integer applicationId, DecisionRequest req) {
         Application app = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new EntityNotFoundException("Başvuru bulunamadı. ID: " + applicationId));
 
@@ -68,7 +75,17 @@ public class DecisionService {
         log.info("Fakülte Kurulu kararı: applicationId={}, {} -> {}, decision={}, rejectionCode={}, by={}",
                 applicationId, previous, next, approved ? "APPROVED" : "REJECTED", rejectionCode, currentUser());
 
-        return applicationService.getApplicationById(applicationId);
+        ApplicationResponse application = applicationService.getApplicationById(applicationId);
+
+        // İntibak redesign (dev): denklik oranı + %80 yumuşak uyarı (yalnızca onayda anlamlı).
+        Double ratio = courseEquivalencyService.calculateEquivalencyRatio(applicationId);
+        boolean belowThreshold = approved && ratio != null && ratio < EQUIVALENCY_THRESHOLD;
+
+        return FacultyBoardDecisionResponse.builder()
+                .application(application)
+                .equivalencyRatio(ratio)
+                .belowThreshold(belowThreshold)
+                .build();
     }
 
     /** Denetim logu için aktif kullanıcının e-postası; güvenlik bağlamı yoksa "anonymous". */
