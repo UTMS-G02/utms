@@ -28,9 +28,10 @@ public class DeanQueueService {
 
     /** Dekanlık sekmeleri → karşılık gelen başvuru statüsü. */
     public enum Queue {
-        FROM_OIDB(ApplicationStatus.EVALUATION_QUEUE),         // ÖİDB'den gelen (YGK'ya iletilecek — kozmetik)
-        FROM_YGK(ApplicationStatus.YGK_REVIEW_DONE),           // YGK'dan gelen (intibak görüntülenebilir)
-        FROM_FACULTY(ApplicationStatus.FACULTY_BOARD_ACCEPTED); // Fakülte Kurulu'ndan gelen (ÖİDB'ye iletilecek)
+        FROM_OIDB(ApplicationStatus.EVALUATION_QUEUE),              // ÖİDB'den gelen (YGK'ya iletilecek — kozmetik)
+        FROM_YGK(ApplicationStatus.YGK_REVIEW_DONE),                // YGK'dan gelen (intibak görüntülenebilir)
+        FROM_FACULTY(ApplicationStatus.FACULTY_BOARD_ACCEPTED),     // Fakülte Kurulu KABUL (ÖİDB'ye iletilecek)
+        FROM_FACULTY_REJECTED(ApplicationStatus.FACULTY_BOARD_REJECTED); // Fakülte Kurulu RED (YGK'ya geri iletilecek)
 
         final ApplicationStatus status;
 

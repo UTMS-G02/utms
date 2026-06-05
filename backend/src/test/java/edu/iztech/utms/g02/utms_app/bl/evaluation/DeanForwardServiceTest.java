@@ -89,6 +89,16 @@ class DeanForwardServiceTest {
     }
 
     @Test
+    void forwardToYgk_facultyBoardRejected_sameFaculty_movesToYgkScored() {
+        Application app = buildApp(6, ApplicationStatus.FACULTY_BOARD_REJECTED, 10);
+        stubForward(6, app, 10);
+
+        service.forwardToYgk(6);
+
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.YGK_SCORED);
+    }
+
+    @Test
     void applicationNotFound_throwsEntityNotFound() {
         when(applicationRepository.findById(99)).thenReturn(Optional.empty());
 

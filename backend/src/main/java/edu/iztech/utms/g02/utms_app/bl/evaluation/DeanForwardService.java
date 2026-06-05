@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>YGK → Fakülte Kurulu: {@code YGK_REVIEW_DONE → FACULTY_BOARD_REVIEW}</li>
  *   <li>Fakülte Kurulu → ÖİDB: YALNIZCA {@code FACULTY_BOARD_ACCEPTED → OIDB_FINAL_REVIEW}</li>
+ *   <li>Fakülte Kurulu (RED) → YGK: {@code FACULTY_BOARD_REJECTED → YGK_SCORED} (skor sabit, YGK değerlendirmeyi yeniden yapar)</li>
  * </ul>
  * Dekan yalnızca KENDİ fakültesindeki başvuruyu iletebilir (fakülte sahipliği zorunlu).
  */
@@ -42,6 +43,16 @@ public class DeanForwardService {
     @Transactional
     public ApplicationResponse forwardToOidb(Integer applicationId) {
         return forward(applicationId, ApplicationStatus.FACULTY_BOARD_ACCEPTED, ApplicationStatus.OIDB_FINAL_REVIEW);
+    }
+
+    /**
+     * Fakülte Kurulu'nca REDDEDİLEN başvuruyu YGK'ya geri iletir (karar yok).
+     * Skor sabittir; başvuru {@code YGK_SCORED}'a döner ki YGK yalnızca değerlendirmeyi
+     * (intibak/koşul/not) yeniden yapıp tekrar Dekanlığa yollasın.
+     */
+    @Transactional
+    public ApplicationResponse forwardToYgk(Integer applicationId) {
+        return forward(applicationId, ApplicationStatus.FACULTY_BOARD_REJECTED, ApplicationStatus.YGK_SCORED);
     }
 
     private ApplicationResponse forward(Integer applicationId, ApplicationStatus required, ApplicationStatus next) {

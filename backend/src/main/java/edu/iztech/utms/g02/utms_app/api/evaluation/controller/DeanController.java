@@ -49,4 +49,11 @@ public class DeanController {
     public ResponseEntity<ApplicationResponse> forwardToOidb(@PathVariable Integer id) {
         return ResponseEntity.ok(deanForwardService.forwardToOidb(id));
     }
+
+    /** Fakülte Kurulu'nca reddedilen başvuruyu YGK'ya geri iletir (yalnızca FACULTY_BOARD_REJECTED). */
+    @PreAuthorize("hasRole('DEAN_OFFICE')")
+    @PatchMapping("/applications/{id}/forward-to-ygk")
+    public ResponseEntity<ApplicationResponse> forwardToYgk(@PathVariable Integer id) {
+        return ResponseEntity.ok(deanForwardService.forwardToYgk(id));
+    }
 }

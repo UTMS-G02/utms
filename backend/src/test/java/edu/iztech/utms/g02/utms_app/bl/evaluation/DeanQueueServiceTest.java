@@ -64,5 +64,6 @@ class DeanQueueServiceTest {
         assertThat(DeanQueueService.Queue.FROM_OIDB.status).isEqualTo(ApplicationStatus.EVALUATION_QUEUE);
         assertThat(DeanQueueService.Queue.FROM_YGK.status).isEqualTo(ApplicationStatus.YGK_REVIEW_DONE);
         assertThat(DeanQueueService.Queue.FROM_FACULTY.status).isEqualTo(ApplicationStatus.FACULTY_BOARD_ACCEPTED);
+        assertThat(DeanQueueService.Queue.FROM_FACULTY_REJECTED.status).isEqualTo(ApplicationStatus.FACULTY_BOARD_REJECTED);
     }
 }
