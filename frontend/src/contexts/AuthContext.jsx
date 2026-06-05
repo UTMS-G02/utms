@@ -104,7 +104,7 @@ export function AuthProvider({ children }) {
 
     } catch (error) {
       // Eğer backend yoksa veya sunucuya ulaşılamıyorsa (Mock Fallback - Geliştirme aşaması için)
-        if (error.code === 'ERR_NETWORK' || !error.response || error.response.status >= 500) {
+        if (import.meta.env.DEV && (error.code === 'ERR_NETWORK' || !error.response || error.response.status >= 500)) {
         console.warn("Backend ulaşılamadı. Test (Mock) verisi ile giriş yapılıyor...");
         await new Promise((r) => setTimeout(r, 500));
         

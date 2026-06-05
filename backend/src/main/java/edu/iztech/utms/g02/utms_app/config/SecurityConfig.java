@@ -32,6 +32,9 @@ public class SecurityConfig {
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
 
+    @Value("${app.extra-allowed-origins:}")
+    private String extraAllowedOrigins;
+
     /**
      * Configures the security filter chain.
      *
@@ -85,7 +88,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173", frontendUrl));
+        List<String> origins = new java.util.ArrayList<>(List.of("http://localhost:5173", frontendUrl));
+        if (extraAllowedOrigins != null && !extraAllowedOrigins.isBlank()) {
+            origins.addAll(List.of(extraAllowedOrigins.split(",")));
+        }
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

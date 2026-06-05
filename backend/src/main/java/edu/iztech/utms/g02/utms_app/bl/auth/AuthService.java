@@ -15,8 +15,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -36,7 +34,7 @@ public class AuthService {
     private final StudentRepository studentRepository;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
-    private final JavaMailSender mailSender;
+    private final MailService mailService;
 
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
@@ -54,20 +52,7 @@ public class AuthService {
 
         String activationToken = jwtService.generateActivationToken(student.getEmail());
         String activationLink = frontendUrl + "/activate?token=" + activationToken;
-
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(student.getEmail());
-        message.setSubject("UTMS - Hesabınızı Aktive Edin");
-        message.setText(
-                "Merhaba " + student.getFirstName() + ",\n\n" +
-                "Hesabınızı aktive etmek için aşağıdaki bağlantıya tıklayın:\n" +
-                activationLink + "\n\n" +
-                "Bu bağlantı 24 saat boyunca geçerlidir.\n\n" +
-                "Eğer bu isteği siz yapmadıysanız, bu e-postayı görmezden gelebilirsiniz.\n\n" +
-                "UTMS Sistemi"
-        );
-        mailSender.send(message);
-        log.info("Activation email sent to {}", student.getEmail());
+        mailService.sendActivationEmail(student.getEmail(), student.getFirstName(), activationLink);
     }
 
     public void activateAccount(String token) {
@@ -144,7 +129,7 @@ public class AuthService {
 
         // Öğrenciye özel bilgileri başlangıçta null olarak tanımlıyoruz (Personel giriş yaparsa null dönecek)
         String tckn = null;
-        LocalDate dateOfBirth = null; 
+        LocalDate dateOfBirth = null;
         String phoneNumber = null;
 
         // EĞER bu user objesi arka planda aslında bir Student ise:
@@ -160,27 +145,13 @@ public class AuthService {
 
     /**
      * Initiates password reset by generating a short-lived reset token.
-     * In production this would send an email; here the link is logged instead.
      * Always returns successfully to avoid leaking whether an email is registered.
      */
     public void forgotPassword(ForgotPasswordRequest request) {
         userRepository.findByEmail(request.getEmail()).ifPresent(user -> {
             String resetToken = jwtService.generateResetToken(user.getEmail());
             String resetLink = frontendUrl + "/reset-password?token=" + resetToken;
-
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(user.getEmail());
-            message.setSubject("UTMS - Şifre Sıfırlama");
-            message.setText(
-                    "Merhaba " + user.getFirstName() + ",\n\n" +
-                    "Şifrenizi sıfırlamak için aşağıdaki bağlantıya tıklayın:\n" +
-                    resetLink + "\n\n" +
-                    "Bu bağlantı 15 dakika boyunca geçerlidir.\n\n" +
-                    "Eğer bu isteği siz yapmadıysanız, bu e-postayı görmezden gelebilirsiniz.\n\n" +
-                    "UTMS Sistemi"
-            );
-            mailSender.send(message);
-            log.info("Password reset email sent to {}", user.getEmail());
+            mailService.sendPasswordResetEmail(user.getEmail(), user.getFirstName(), resetLink);
         });
     }
 
