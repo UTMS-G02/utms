@@ -9,11 +9,14 @@ import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.CommitteeDecision;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.EvaluationResult;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.CommitteeDecisionRepository;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.EvaluationResultRepository;
+import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
+import edu.iztech.utms.g02.utms_app.dal.user.repository.StaffRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -42,6 +45,7 @@ public class EvaluationService {
     private final ApplicationRepository applicationRepository;
     private final EvaluationResultRepository evaluationResultRepository;
     private final CommitteeDecisionRepository committeeDecisionRepository;
+    private final StaffRepository staffRepository; // Pair 3: oturum açan YGK üyesinin bölümünü çözmek için
 
     /**
      * Sıralama düzeni: yüksek compositeScore önce; eşit skorda tie-break uygulanır.
@@ -71,8 +75,11 @@ public class EvaluationService {
      */
     @Transactional
     public int scoreAllPendingApplications() {
+        // #6: Her YGK YALNIZCA kendi bölümünü skorlar (18 bölüm YGK'sı).
+        Integer departmentId = currentYgkDepartmentId();
+
         List<Application> pending = applicationRepository
-                .findByStatus(ApplicationStatus.EVALUATION_QUEUE, Pageable.unpaged())
+                .findByStatusAndDepartment_DepartmentId(ApplicationStatus.EVALUATION_QUEUE, departmentId, Pageable.unpaged())
                 .getContent();
 
         for (Application app : pending) {
@@ -90,13 +97,14 @@ public class EvaluationService {
             applicationRepository.save(app);
         }
 
-        updateRankings();
+        updateRankings(departmentId);
         return pending.size();
     }
 
-    /** Skora ve tie-break'e göre sıralayıp ranking atar (1 = en yüksek). */
-    private void updateRankings() {
-        List<EvaluationResult> all = new ArrayList<>(evaluationResultRepository.findAll());
+    /** Bölüm İÇİNDE skora ve tie-break'e göre sıralayıp ranking atar (1 = bölümün en yükseği). */
+    private void updateRankings(Integer departmentId) {
+        List<EvaluationResult> all = new ArrayList<>(
+                evaluationResultRepository.findByApplication_Department_DepartmentId(departmentId));
         all.sort(RANKING_ORDER);
         int rank = 1;
         for (EvaluationResult result : all) {
@@ -107,10 +115,23 @@ public class EvaluationService {
 
     @Transactional(readOnly = true)
     public List<EvaluationResponse> getEvaluations() {
-        return evaluationResultRepository.findAll().stream()
+        // #6: YGK yalnızca kendi bölümünün değerlendirmelerini görür.
+        return evaluationResultRepository
+                .findByApplication_Department_DepartmentId(currentYgkDepartmentId()).stream()
                 .sorted(RANKING_ORDER)
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    /** Oturum açan YGK üyesinin bölüm kimliği; atanmamışsa erişim reddedilir (bölüm-bazlı kapsam). */
+    private Integer currentYgkDepartmentId() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        Staff ygk = staffRepository.findByEmail(email)
+                .orElseThrow(() -> new AccessDeniedException("YGK personeli bulunamadı: " + email));
+        if (ygk.getDepartmentId() == null) {
+            throw new AccessDeniedException("YGK hesabına bölüm atanmamış.");
+        }
+        return ygk.getDepartmentId();
     }
 
     /**
