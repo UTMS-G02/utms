@@ -97,12 +97,13 @@ export default function AppLayout() {
 
   const hideSidebarRoutes = [
   '/oidb',
-  '/test/ygk',
-  '/test/dekanlik',
-  '/test/fakulte',
-  '/test/ygk/dashboard',
-  '/test/faculty-board/dashboard',
-  '/oidb/dashboard'
+  '/oidb/dashboard',
+  '/ygk',
+  '/ygk/dashboard',
+  '/dean',
+  '/dean/dashboard',
+  '/faculty-board',
+  '/faculty-board/dashboard'
   ];
 
   const shouldHideSidebar = hideSidebarRoutes.includes(location.pathname);
