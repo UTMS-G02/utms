@@ -1,6 +1,10 @@
 import { useState } from 'react'
-import { Tabs, Table, Button, Typography, Tag, Modal, Row, Col, Space, Input, Radio, Divider, Alert } from 'antd'
+import {
+  Tabs, Table, Button, Typography, Tag, Modal, Row, Col, Space, Input,
+  Radio, Divider, Alert, Form, Select, InputNumber, Popconfirm, message,
+} from 'antd'
 import { DownOutlined, UpOutlined } from '@ant-design/icons'
+import intibakApi from '../../api/intibak'
 
 const { Title, Text } = Typography
 
@@ -24,6 +28,23 @@ const styles = {
   },
 }
 
+const GRADE_OPTIONS = ['AA', 'BA', 'BB', 'CB', 'CC', 'DC', 'DD', 'FF'].map((g) => ({
+  value: g,
+  label: g,
+}))
+
+const EQUIVALENCY_OPTIONS = [
+  { value: 'TAM_DENKLIK', label: 'Tam Denklik' },
+  { value: 'KISMI_DENKLIK', label: 'Kısmi Denklik' },
+  { value: 'DENK_DEGIL', label: 'Denk Değil' },
+]
+
+const EQUIVALENCY_DISPLAY = {
+  TAM_DENKLIK: { label: 'Tam Denk', tint: TINT.green },
+  KISMI_DENKLIK: { label: 'Kısmi Denk', tint: TINT.amber },
+  DENK_DEGIL: { label: 'Denk Değil', tint: TINT.red },
+}
+
 // Mock data
 const PENDING_STUDENTS = [
   { id: 1, ad: 'Burak', soyad: 'Yıldız', email: 'burak.yildiz@example.edu.tr', tel: '+90 537 765 4321', bolum: 'Bilgisayar Mühendisliği', compositeScore: 90.5, otoSiralama: 'Asil Liste #1', ingilizce: 'Onaylandı', durum: 'Onaylandı', basvuruTarihi: '03.01.2024', gpa: 3.78, yksPuani: 498, mevcutUni: 'İTÜ', ingilizceDetay: 'Onaylandı - TOEFL iBT 95 - Yeterli seviye' },
@@ -36,11 +57,6 @@ const EVALUATED_STUDENTS = [
   { id: 5, ad: 'Elif', soyad: 'Şahin', email: 'elif.sahin@example.edu.tr', tel: '+90 536 123 4567', bolum: 'Elektrik Mühendisliği', compositeScore: 75.2, otoSiralama: 'Yedek Liste #8', ingilizce: 'Bekleniyor', durum: 'İnceleme Yapılmıştır', basvuruTarihi: '05.01.2024', gpa: 3.1, yksPuani: 450, mevcutUni: 'Teknik Üniversite', ygkNotu: 'Yedek liste kapsamında değerlendirilmiştir.' },
 ]
 
-const INTIBAK_DATA = [
-  { mevcutDersKodu: 'BIL101', mevcutDersAdi: 'Programlama', kredi: 4, iyeteDersKodu: 'CENG102', iyeteDersAdi: 'Bilgisayar Pr', iyteKredi: 4, denklik: 'Tam Denk' },
-  { mevcutDersKodu: 'MAT101', mevcutDersAdi: 'Calculus I', kredi: 4, iyeteDersKodu: 'MATH101', iyeteDersAdi: 'Calculus I', iyteKredi: 4, denklik: 'Tam Denk' },
-]
-
 const YGKDashboard = () => {
   const [activeTab, setActiveTab] = useState('pending')
   const [evaluationModal, setEvaluationModal] = useState(false)
@@ -50,12 +66,43 @@ const YGKDashboard = () => {
   const [showConditionsWarning, setShowConditionsWarning] = useState(false)
   const [expandedEvaluated, setExpandedEvaluated] = useState({})
 
+  // İntibak state
+  const [intibakRows, setIntibakRows] = useState([])
+  const [intibakLoading, setIntibakLoading] = useState(false)
+  const [equivalencyRatio, setEquivalencyRatio] = useState(null)
+  const [rowModalOpen, setRowModalOpen] = useState(false)
+  const [editingRow, setEditingRow] = useState(null)
+  const [dualSource, setDualSource] = useState(false)
+  const [rowSaving, setRowSaving] = useState(false)
+  const [rowForm] = Form.useForm()
+
+  const fetchIntibak = async (applicationId) => {
+    setIntibakLoading(true)
+    try {
+      const data = await intibakApi.getIntibak(applicationId)
+      setIntibakRows(data.rows ?? [])
+      setEquivalencyRatio(data.equivalencyRatio)
+      if (data.conditionsMet === false) {
+        setConditionsDecision('rejected')
+        setShowConditionsWarning(true)
+      }
+    } catch {
+      setIntibakRows([])
+      setEquivalencyRatio(null)
+    } finally {
+      setIntibakLoading(false)
+    }
+  }
+
   const openEvaluationModal = (record) => {
     setSelectedStudent(record)
     setEvalNote('')
     setConditionsDecision('approved')
     setShowConditionsWarning(false)
+    setIntibakRows([])
+    setEquivalencyRatio(null)
     setEvaluationModal(true)
+    fetchIntibak(record.id)
   }
 
   const toggleEvaluatedExpand = (id) => {
@@ -65,6 +112,132 @@ const YGKDashboard = () => {
   const evaluatedExpandedKeys = Object.keys(expandedEvaluated)
     .filter(k => expandedEvaluated[k])
     .map(Number)
+
+  const openAddRow = () => {
+    setEditingRow(null)
+    setDualSource(false)
+    rowForm.resetFields()
+    setRowModalOpen(true)
+  }
+
+  const openEditRow = (row) => {
+    setEditingRow(row)
+    setDualSource(!!row.source2Code)
+    rowForm.setFieldsValue({
+      sourceCode: row.sourceCode,
+      sourceName: row.sourceName,
+      sourceCredit: row.sourceCredit,
+      sourceGrade: row.sourceGrade,
+      source2Code: row.source2Code,
+      source2Name: row.source2Name,
+      source2Credit: row.source2Credit,
+      source2Grade: row.source2Grade,
+      targetCode: row.targetCode,
+      targetName: row.targetName,
+      targetCredit: row.targetCredit,
+      targetGrade: row.targetGrade,
+      equivalencyStatus: row.equivalencyStatus,
+    })
+    setRowModalOpen(true)
+  }
+
+  const handleRowSubmit = async () => {
+    try {
+      const values = await rowForm.validateFields()
+      setRowSaving(true)
+      if (!dualSource) {
+        values.source2Code = null
+        values.source2Name = null
+        values.source2Credit = null
+        values.source2Grade = null
+      }
+      let updatedTable
+      if (editingRow) {
+        updatedTable = await intibakApi.updateRow(selectedStudent.id, editingRow.id, values)
+      } else {
+        updatedTable = await intibakApi.addRow(selectedStudent.id, values)
+      }
+      setIntibakRows(updatedTable.rows ?? [])
+      setEquivalencyRatio(updatedTable.equivalencyRatio)
+      setRowModalOpen(false)
+    } catch (err) {
+      if (err?.errorFields) return
+      message.error('İşlem başarısız: ' + (err?.response?.data?.message ?? 'Bir hata oluştu'))
+    } finally {
+      setRowSaving(false)
+    }
+  }
+
+  const handleDeleteRow = async (rowId) => {
+    try {
+      const updatedTable = await intibakApi.deleteRow(selectedStudent.id, rowId)
+      setIntibakRows(updatedTable.rows ?? [])
+      setEquivalencyRatio(updatedTable.equivalencyRatio)
+    } catch (err) {
+      message.error('Satır silinemedi: ' + (err?.response?.data?.message ?? 'Bir hata oluştu'))
+    }
+  }
+
+  const intibakColumns = [
+    {
+      title: 'Kaynak Kodu',
+      key: 'sourceCode',
+      width: 120,
+      render: (_, row) =>
+        row.source2Code ? (
+          <span>{row.sourceCode}<br /><Text type="secondary" style={{ fontSize: 11 }}>+ {row.source2Code}</Text></span>
+        ) : row.sourceCode,
+    },
+    {
+      title: 'Kaynak Ders Adı',
+      key: 'sourceName',
+      render: (_, row) =>
+        row.source2Name ? (
+          <span>{row.sourceName}<br /><Text type="secondary" style={{ fontSize: 11 }}>{row.source2Name}</Text></span>
+        ) : row.sourceName,
+    },
+    {
+      title: 'Kredi',
+      key: 'sourceCredit',
+      width: 60,
+      render: (_, row) =>
+        row.source2Credit != null
+          ? `${row.sourceCredit}+${row.source2Credit}`
+          : row.sourceCredit,
+    },
+    { title: 'Not', dataIndex: 'sourceGrade', key: 'sourceGrade', width: 55 },
+    { title: 'İYTE Kodu', dataIndex: 'targetCode', key: 'targetCode', width: 100 },
+    { title: 'İYTE Ders Adı', dataIndex: 'targetName', key: 'targetName' },
+    { title: 'İYTE Kredi', dataIndex: 'targetCredit', key: 'targetCredit', width: 80 },
+    {
+      title: 'Denklik',
+      dataIndex: 'equivalencyStatus',
+      key: 'equivalencyStatus',
+      width: 105,
+      render: (val) => {
+        const { label, tint } = EQUIVALENCY_DISPLAY[val] ?? { label: val, tint: TINT.gray }
+        return <Tag style={{ ...tint, border: 'none', borderRadius: 6 }}>{label}</Tag>
+      },
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 120,
+      render: (_, row) => (
+        <Space size={4}>
+          <Button size="small" onClick={() => openEditRow(row)}>Düzenle</Button>
+          <Popconfirm
+            title="Bu satırı silmek istiyor musunuz?"
+            onConfirm={() => handleDeleteRow(row.id)}
+            okText="Evet"
+            cancelText="İptal"
+          >
+            <Button size="small" danger>Sil</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ]
 
   const renderEvaluatedExpanded = (record) => (
     <div style={{ padding: '12px 24px', background: '#fafafa' }}>
@@ -220,11 +393,12 @@ const YGKDashboard = () => {
         />
       </div>
 
+      {/* ── Değerlendirme Modalı ── */}
       <Modal
         title="YGK Değerlendirmesi"
         open={evaluationModal}
         onCancel={() => setEvaluationModal(false)}
-        width={900}
+        width={960}
         style={{ top: 20 }}
         footer={[
           <Button key="cancel" onClick={() => setEvaluationModal(false)}>İptal</Button>,
@@ -343,29 +517,43 @@ const YGKDashboard = () => {
 
             <Divider />
 
+            {/* ── İntibak Tablosu ── */}
             <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Title level={4}>İntibak Tablosu (Ders Denklik Tablosu)</Title>
+              <Col span={24} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Title level={4} style={{ margin: 0 }}>İntibak Tablosu (Ders Denklik Tablosu)</Title>
+                {equivalencyRatio != null && (
+                  <Tag
+                    style={{
+                      ...(equivalencyRatio >= 0.8 ? TINT.green : equivalencyRatio >= 0.5 ? TINT.amber : TINT.red),
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      padding: '2px 10px',
+                    }}
+                  >
+                    Denklik Oranı: %{Math.round(equivalencyRatio * 100)}
+                  </Tag>
+                )}
               </Col>
               <Col span={24}>
                 <Table
-                  columns={[
-                    { title: 'Mevcut Ders Kodu', dataIndex: 'mevcutDersKodu', key: 'mevcutDersKodu' },
-                    { title: 'Mevcut Ders Adı', dataIndex: 'mevcutDersAdi', key: 'mevcutDersAdi' },
-                    { title: 'Kredi', dataIndex: 'kredi', key: 'kredi' },
-                    { title: 'İYTE Ders Kodu', dataIndex: 'iyeteDersKodu', key: 'iyeteDersKodu' },
-                    { title: 'İYTE Ders Adı', dataIndex: 'iyeteDersAdi', key: 'iyeteDersAdi' },
-                    { title: 'Kredi', dataIndex: 'iyteKredi', key: 'iyteKredi' },
-                    { title: 'Denklik', dataIndex: 'denklik', key: 'denklik' },
-                  ]}
-                  dataSource={INTIBAK_DATA}
+                  columns={intibakColumns}
+                  dataSource={intibakRows}
+                  rowKey="id"
+                  loading={intibakLoading}
                   pagination={false}
                   size="small"
                   bordered
+                  locale={{ emptyText: 'Henüz ders eklenmedi.' }}
                 />
               </Col>
-              <Col span={24} style={{ marginTop: 8 }}>
-                <Button type="primary" danger disabled={conditionsDecision === 'rejected'}>
+              <Col span={24}>
+                <Button
+                  type="primary"
+                  danger
+                  disabled={conditionsDecision === 'rejected'}
+                  onClick={openAddRow}
+                >
                   + Ders Ekle
                 </Button>
               </Col>
@@ -388,6 +576,117 @@ const YGKDashboard = () => {
             </Row>
           </div>
         )}
+      </Modal>
+
+      {/* ── Satır Ekle / Düzenle Modalı ── */}
+      <Modal
+        title={editingRow ? 'Dersi Düzenle' : 'Ders Ekle'}
+        open={rowModalOpen}
+        onCancel={() => setRowModalOpen(false)}
+        onOk={handleRowSubmit}
+        okText={editingRow ? 'Güncelle' : 'Ekle'}
+        cancelText="İptal"
+        confirmLoading={rowSaving}
+        width={680}
+        destroyOnClose
+      >
+        <Form form={rowForm} layout="vertical" style={{ marginTop: 8 }}>
+          <Divider orientation="left" orientationMargin={0} style={{ fontSize: 13, color: '#666' }}>
+            Kaynak Ders (Mevcut Üniversite)
+          </Divider>
+          <Row gutter={12}>
+            <Col span={8}>
+              <Form.Item name="sourceCode" label="Ders Kodu" rules={[{ required: true, message: 'Zorunlu' }]}>
+                <Input placeholder="BLM101" />
+              </Form.Item>
+            </Col>
+            <Col span={10}>
+              <Form.Item name="sourceName" label="Ders Adı" rules={[{ required: true, message: 'Zorunlu' }]}>
+                <Input placeholder="Programlamaya Giriş" />
+              </Form.Item>
+            </Col>
+            <Col span={3}>
+              <Form.Item name="sourceCredit" label="Kredi" rules={[{ required: true, message: 'Zorunlu' }]}>
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={3}>
+              <Form.Item name="sourceGrade" label="Not">
+                <Select options={GRADE_OPTIONS} placeholder="-" allowClear />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={dualSource}
+                onChange={(e) => setDualSource(e.target.checked)}
+              />
+              2→1 eşleştirme (iki kaynak dersi tek İYTE dersine denk)
+            </label>
+          </div>
+
+          {dualSource && (
+            <Row gutter={12}>
+              <Col span={8}>
+                <Form.Item name="source2Code" label="2. Ders Kodu" rules={[{ required: true, message: 'Zorunlu' }]}>
+                  <Input placeholder="BLM102" />
+                </Form.Item>
+              </Col>
+              <Col span={10}>
+                <Form.Item name="source2Name" label="2. Ders Adı" rules={[{ required: true, message: 'Zorunlu' }]}>
+                  <Input placeholder="Veri Yapıları" />
+                </Form.Item>
+              </Col>
+              <Col span={3}>
+                <Form.Item name="source2Credit" label="Kredi" rules={[{ required: true, message: 'Zorunlu' }]}>
+                  <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={3}>
+                <Form.Item name="source2Grade" label="Not" rules={[{ required: true, message: 'Zorunlu' }]}>
+                  <Select options={GRADE_OPTIONS} placeholder="-" />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
+
+          <Divider orientation="left" orientationMargin={0} style={{ fontSize: 13, color: '#666' }}>
+            İYTE Dersi
+          </Divider>
+          <Row gutter={12}>
+            <Col span={8}>
+              <Form.Item name="targetCode" label="Ders Kodu" rules={[{ required: true, message: 'Zorunlu' }]}>
+                <Input placeholder="CENG101" />
+              </Form.Item>
+            </Col>
+            <Col span={10}>
+              <Form.Item name="targetName" label="Ders Adı" rules={[{ required: true, message: 'Zorunlu' }]}>
+                <Input placeholder="Introduction to Programming" />
+              </Form.Item>
+            </Col>
+            <Col span={3}>
+              <Form.Item name="targetCredit" label="Kredi" rules={[{ required: true, message: 'Zorunlu' }]}>
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={3}>
+              <Form.Item name="targetGrade" label="Not">
+                <Select options={GRADE_OPTIONS} placeholder="-" allowClear />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="equivalencyStatus"
+            label="Denklik Durumu"
+            rules={[{ required: true, message: 'Denklik durumu seçiniz' }]}
+          >
+            <Select options={EQUIVALENCY_OPTIONS} placeholder="Seçiniz" />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   )

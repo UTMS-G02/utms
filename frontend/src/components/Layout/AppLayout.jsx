@@ -9,9 +9,9 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
 import { useAuth, ROLES } from '../../contexts/AuthContext'
-import NotificationBell from './NotificationBell'
 
 const STUDENT_ONLY_ROLES = [ROLES.STUDENT]
 
@@ -34,7 +34,6 @@ const MENU_CONFIG = {
   ],
   [ROLES.YGK]: [
     { key: '/ygk/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
-    { key: '/ygk/intibak', icon: <FileTextOutlined />, label: 'İntibak Tablosu' },
   ],
   [ROLES.DEAN_OFFICE]: [
     { key: '/dean/dashboard', icon: <HomeOutlined />, label: 'Ana Sayfa' },
