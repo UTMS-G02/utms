@@ -14,6 +14,7 @@ import edu.iztech.utms.g02.utms_app.dal.user.repository.UserRepository;
 import edu.iztech.utms.g02.utms_app.bl.notification.NotificationService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,6 +37,7 @@ import java.util.stream.Collectors;
  * (öğrenci her iki durumda da bilgilendirilir — TC-10.4).
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ResultService {
 
@@ -102,18 +104,26 @@ public class ResultService {
         return count;
     }
 
-    /** Yayınlanan sonucu öğrenciye in-app bildirir (TC-6.0 POST-2). E-posta entegrasyonu ayrı/ileride. */
+    /**
+     * Yayınlanan sonucu öğrenciye in-app bildirir (TC-6.0 POST-2).
+     * TC-6.3: Bildirim hatası yayın işlemini geri almaz — hata loglanır, yayın devam eder.
+     */
     private void notifyResult(Application app, String decision, String listType) {
         if (app.getStudent() == null || app.getStudent().getUserId() == null) return;
-        String message;
-        if ("ACCEPTED".equals(decision)) {
-            String liste = "WAITLIST".equals(listType) ? " (Yedek liste)"
-                    : "PRIMARY".equals(listType) ? " (Asil liste)" : "";
-            message = "Başvurunuz KABUL edildi" + liste + ". Sonuç ekranınızdan detayları görüntüleyebilirsiniz.";
-        } else {
-            message = "Başvurunuz REDDEDİLDİ. Sonuç ekranınızdan detayları görüntüleyebilirsiniz.";
+        try {
+            String message;
+            if ("ACCEPTED".equals(decision)) {
+                String liste = "WAITLIST".equals(listType) ? " (Yedek liste)"
+                        : "PRIMARY".equals(listType) ? " (Asil liste)" : "";
+                message = "Başvurunuz KABUL edildi" + liste + ". Sonuç ekranınızdan detayları görüntüleyebilirsiniz.";
+            } else {
+                message = "Başvurunuz REDDEDİLDİ. Sonuç ekranınızdan detayları görüntüleyebilirsiniz.";
+            }
+            notificationService.create(app.getStudent().getUserId(), "Başvuru Sonucu Yayınlandı", message);
+        } catch (Exception e) {
+            log.warn("Bildirim gönderilemedi — applicationId={}, karar={}, hata={}",
+                    app.getApplicationId(), decision, e.getMessage());
         }
-        notificationService.create(app.getStudent().getUserId(), "Başvuru Sonucu Yayınlandı", message);
     }
 
     /**
