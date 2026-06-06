@@ -96,11 +96,6 @@ public class DataInitializer implements CommandLineRunner {
             System.out.println("Test öğrencisi (ogrenci@iyte.edu.tr / test123) başarıyla eklendi.");
         }
 
-        // Geçmiş döneme (2025-2026) ait, REDDEDİLMİŞ örnek başvuru. Amaç: "Başvurularım"
-        // listesinde geçmiş kayıt + akademik yıl kolonu görünür olsun. Reddedilmiş statü
-        // olduğu için tek-program kuralını ihlal etmez; öğrenci 2026-2027'ye başvurabilir.
-        seedPastRejectedApplication("ogrenci@iyte.edu.tr");
-
         // YDYO panelini test edebilmek için YDYO_REVIEW aşamasında birkaç örnek başvuru.
         // Bir öğrenci yalnız tek aktif başvuru yapabildiğinden her başvuru ayrı test
         // öğrencisine bağlanır (hepsi active=true → giriş gerektirmez). YDYO bu kayıtları
