@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Tabs, Table, Button, Typography, Tag, Modal, Row, Col, Space, Input,
-  Radio, Divider, Alert, Form, Select, InputNumber, Popconfirm, message,
+  Radio, Divider, Alert, Form, Select, InputNumber, Popconfirm, message, Spin,
 } from 'antd'
 import { DownOutlined, UpOutlined } from '@ant-design/icons'
 import intibakApi from '../../api/intibak'
+import apiClient from '../../api/client'
 
 const { Title, Text } = Typography
 
@@ -45,17 +46,12 @@ const EQUIVALENCY_DISPLAY = {
   DENK_DEGIL: { label: 'Denk Değil', tint: TINT.red },
 }
 
-// Mock data
-const PENDING_STUDENTS = [
-  { id: 1, ad: 'Burak', soyad: 'Yıldız', email: 'burak.yildiz@example.edu.tr', tel: '+90 537 765 4321', bolum: 'Bilgisayar Mühendisliği', compositeScore: 90.5, otoSiralama: 'Asil Liste #1', ingilizce: 'Onaylandı', durum: 'Onaylandı', basvuruTarihi: '03.01.2024', gpa: 3.78, yksPuani: 498, mevcutUni: 'İTÜ', ingilizceDetay: 'Onaylandı - TOEFL iBT 95 - Yeterli seviye' },
-  { id: 2, ad: 'Deniz', soyad: 'Kaya', email: 'deniz.kaya@example.edu.tr', tel: '+90 538 123 4567', bolum: 'Makina Mühendisliği', compositeScore: 78.9, otoSiralama: 'Yedek Liste #5', ingilizce: 'Onaylandı', durum: 'Onaylandı', basvuruTarihi: '18.01.2024', gpa: 2.9, yksPuani: 420, mevcutUni: 'Gazi Üniversitesi', ingilizceDetay: 'Onaylandı - TOEFL iBT 85 - Yeterli seviye' },
-  { id: 3, ad: 'Ayşe', soyad: 'Yılmaz', email: 'ayse.yilmaz@example.edu.tr', tel: '+90 532 123 4567', bolum: 'İnşaat Mühendisliği', compositeScore: 85.3, otoSiralama: 'Asil Liste #2', ingilizce: 'Bekleniyor', durum: 'Bekleniyor', basvuruTarihi: '12.01.2024', gpa: 3.5, yksPuani: 480, mevcutUni: 'Orta Doğu Teknik Üniversitesi', ingilizceDetay: 'İngilizce Yeterlilik Sınıfında' },
-]
-
-const EVALUATED_STUDENTS = [
-  { id: 4, ad: 'Can', soyad: 'Öztürk', email: 'can.ozturk@example.edu.tr', tel: '+90 535 765 4321', bolum: 'Bilgisayar Mühendisliği', compositeScore: 82.5, otoSiralama: 'Asil Liste #3', ingilizce: 'Onaylandı', durum: 'Onaylandı', basvuruTarihi: '08.01.2024', gpa: 3.45, yksPuani: 485, mevcutUni: 'Gazi Üniversitesi', ygkNotu: 'Başarılı bir öğrencidir. Değerlendirme yapılmıştır.' },
-  { id: 5, ad: 'Elif', soyad: 'Şahin', email: 'elif.sahin@example.edu.tr', tel: '+90 536 123 4567', bolum: 'Elektrik Mühendisliği', compositeScore: 75.2, otoSiralama: 'Yedek Liste #8', ingilizce: 'Bekleniyor', durum: 'İnceleme Yapılmıştır', basvuruTarihi: '05.01.2024', gpa: 3.1, yksPuani: 450, mevcutUni: 'Teknik Üniversite', ygkNotu: 'Yedek liste kapsamında değerlendirilmiştir.' },
-]
+const formatRanking = (e) => {
+  if (!e.ranking) return '—'
+  const type = e.provisionalListType === 'PRIMARY' ? 'Asil Liste'
+    : e.provisionalListType === 'WAITLIST' ? 'Yedek Liste' : '?'
+  return `${type} #${e.ranking}`
+}
 
 const YGKDashboard = () => {
   const [activeTab, setActiveTab] = useState('pending')
@@ -65,6 +61,11 @@ const YGKDashboard = () => {
   const [conditionsDecision, setConditionsDecision] = useState('approved')
   const [showConditionsWarning, setShowConditionsWarning] = useState(false)
   const [expandedEvaluated, setExpandedEvaluated] = useState({})
+  const [submitting, setSubmitting] = useState(false)
+
+  const [pendingList, setPendingList] = useState([])
+  const [evaluatedList, setEvaluatedList] = useState([])
+  const [listLoading, setListLoading] = useState(false)
 
   // İntibak state
   const [intibakRows, setIntibakRows] = useState([])
@@ -77,35 +78,28 @@ const YGKDashboard = () => {
   const [rowForm] = Form.useForm()
   const watchedEquivalencyStatus = Form.useWatch('equivalencyStatus', rowForm)
 
-  const MOCK_INTIBAK = {
-    1: {
-      rows: [
-        { id: 1, sourceCode: 'BLM101', sourceName: 'Programlamaya Giriş', sourceCredit: 4, sourceGrade: 'AA', source2Code: null, targetCode: 'CENG101', targetName: 'Introduction to Programming', targetCredit: 4, targetGrade: 'AA', equivalencyStatus: 'TAM_DENKLIK' },
-        { id: 2, sourceCode: 'MAT201', sourceName: 'Diferansiyel Denklemler', sourceCredit: 3, sourceGrade: 'BA', source2Code: null, targetCode: 'MATH201', targetName: 'Differential Equations', targetCredit: 3, targetGrade: 'BA', equivalencyStatus: 'KISMI_DENKLIK' },
-      ],
-      equivalencyRatio: 0.87,
-      conditionsMet: true,
-    },
-    2: {
-      rows: [
-        { id: 3, sourceCode: 'BLM101', sourceName: 'Programlamaya Giriş', sourceCredit: 4, sourceGrade: 'CC', source2Code: null, targetCode: 'CENG101', targetName: 'Introduction to Programming', targetCredit: 4, targetGrade: 'CC', equivalencyStatus: 'KISMI_DENKLIK' },
-        { id: 4, sourceCode: 'BIO100', sourceName: 'Biology', sourceCredit: 2, sourceGrade: 'FF', source2Code: null, targetCode: null, targetName: null, targetCredit: null, targetGrade: null, equivalencyStatus: 'DENK_DEGIL' },
-      ],
-      equivalencyRatio: 0.62,
-      conditionsMet: true,
-    },
-    3: {
-      rows: [],
-      equivalencyRatio: null,
-      conditionsMet: true,
-    },
+  const fetchEvaluations = async () => {
+    setListLoading(true)
+    try {
+      // EVALUATION_QUEUE'daki başvuruları otomatik skorla; zaten skorlanmışlar etkilenmez.
+      await apiClient.post('/evaluations/score-all').catch(() => {})
+      const res = await apiClient.get('/evaluations')
+      const all = res.data ?? []
+      setPendingList(all.filter(e => e.status !== 'YGK_REVIEW_DONE'))
+      setEvaluatedList(all.filter(e => e.status === 'YGK_REVIEW_DONE'))
+    } catch {
+      message.error('Değerlendirmeler yüklenemedi.')
+    } finally {
+      setListLoading(false)
+    }
   }
+
+  useEffect(() => { fetchEvaluations() }, [])
 
   const fetchIntibak = async (applicationId) => {
     setIntibakLoading(true)
     try {
-      const mockData = MOCK_INTIBAK[applicationId]
-      const data = mockData ?? await intibakApi.getIntibak(applicationId)
+      const data = await intibakApi.getIntibak(applicationId)
       setIntibakRows(data.rows ?? [])
       setEquivalencyRatio(data.equivalencyRatio)
       if (data.conditionsMet === false) {
@@ -128,11 +122,29 @@ const YGKDashboard = () => {
     setIntibakRows([])
     setEquivalencyRatio(null)
     setEvaluationModal(true)
-    fetchIntibak(record.id)
+    fetchIntibak(record.applicationId)
   }
 
-  const toggleEvaluatedExpand = (id) => {
-    setExpandedEvaluated(prev => ({ ...prev, [id]: !prev[id] }))
+  const handleSubmitEvaluation = async () => {
+    if (!selectedStudent) return
+    setSubmitting(true)
+    try {
+      await apiClient.post(`/evaluations/${selectedStudent.applicationId}/submit`, {
+        conditionsMet: conditionsDecision === 'approved',
+        generalNote: evalNote,
+      })
+      message.success('Değerlendirme tamamlandı, Dekanlığa iletildi.')
+      setEvaluationModal(false)
+      fetchEvaluations()
+    } catch (err) {
+      message.error(err?.response?.data?.message ?? 'Değerlendirme gönderilemedi.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const toggleEvaluatedExpand = (applicationId) => {
+    setExpandedEvaluated(prev => ({ ...prev, [applicationId]: !prev[applicationId] }))
   }
 
   const evaluatedExpandedKeys = Object.keys(expandedEvaluated)
@@ -284,35 +296,29 @@ const YGKDashboard = () => {
         <Col span={6}>
           <div style={{ background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
             <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>YKS Puanı</Text>
-            <Text strong style={{ fontSize: 18 }}>{record.yksPuani}</Text>
+            <Text strong style={{ fontSize: 18 }}>{record.yksScore}</Text>
           </div>
         </Col>
         <Col span={6}>
           <div style={{ background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
             <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Composite Score</Text>
-            <Text strong style={{ fontSize: 18, color: '#8B1A2B' }}>{record.compositeScore}</Text>
+            <Text strong style={{ fontSize: 18, color: '#8B1A2B' }}>{record.compositeScore?.toFixed(2)}</Text>
           </div>
         </Col>
         <Col span={6}>
           <div style={{ background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
-            <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Oto. Sıralama</Text>
-            <Tag style={{ marginTop: 4, ...TINT.blue, border: 'none', borderRadius: 6 }}>{record.otoSiralama}</Tag>
+            <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Sıralama</Text>
+            <Tag style={{ marginTop: 4, ...TINT.blue, border: 'none', borderRadius: 6 }}>{formatRanking(record)}</Tag>
           </div>
         </Col>
-        <Col span={12}>
-          <Text strong>Mevcut Üniversite:</Text>
-          <Text style={{ marginLeft: 8 }}>{record.mevcutUni}</Text>
-        </Col>
-        <Col span={12}>
-          <Text strong>Başvuru Tarihi:</Text>
-          <Text style={{ marginLeft: 8 }}>{record.basvuruTarihi}</Text>
-        </Col>
-        <Col span={24}>
-          <Text strong>YGK Değerlendirme Notu:</Text>
-          <div style={{ marginTop: 8, background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
-            <Text>{record.ygkNotu}</Text>
-          </div>
-        </Col>
+        {record.generalNote && (
+          <Col span={24}>
+            <Text strong>YGK Değerlendirme Notu:</Text>
+            <div style={{ marginTop: 8, background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
+              <Text>{record.generalNote}</Text>
+            </div>
+          </Col>
+        )}
       </Row>
     </div>
   )
@@ -330,100 +336,91 @@ const YGKDashboard = () => {
           style={{ marginBottom: 24 }}
         />
 
-        <Tabs
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          items={[
-            {
-              key: 'pending',
-              label: `Değerlendirme Bekleyen ${PENDING_STUDENTS.length}`,
-              children: (
-                <Table
-                  dataSource={PENDING_STUDENTS}
-                  columns={[
-                    { title: 'Ad Soyad', dataIndex: 'ad', key: 'ad', render: (_, r) => `${r.ad} ${r.soyad}` },
-                    { title: 'Bölüm', dataIndex: 'bolum', key: 'bolum' },
-                    { title: 'Skoru', dataIndex: 'compositeScore', key: 'score' },
-                    {
-                      title: 'İngilizce',
-                      dataIndex: 'ingilizce',
-                      key: 'eng',
-                      render: (text) => (
-                        <Tag style={{ ...(text === 'Onaylandı' ? TINT.green : TINT.amber), border: 'none', borderRadius: 6 }}>
-                          {text}
-                        </Tag>
-                      ),
-                    },
-                    {
-                      title: 'İşlem',
-                      key: 'action',
-                      render: (_, record) => (
-                        <Button
-                          type="primary"
-                          size="small"
-                          style={{ background: '#8B1A2B', borderColor: '#8B1A2B' }}
-                          onClick={() => openEvaluationModal(record)}
-                        >
-                          Değerlendir
-                        </Button>
-                      ),
-                    },
-                  ]}
-                  rowKey="id"
-                  pagination={false}
-                  size="small"
-                />
-              ),
-            },
-            {
-              key: 'evaluated',
-              label: `Değerlendirilenler ${EVALUATED_STUDENTS.length}`,
-              children: (
-                <Table
-                  dataSource={EVALUATED_STUDENTS}
-                  columns={[
-                    { title: 'Ad Soyad', dataIndex: 'ad', key: 'ad', render: (_, r) => `${r.ad} ${r.soyad}` },
-                    { title: 'Bölüm', dataIndex: 'bolum', key: 'bolum' },
-                    { title: 'Skoru', dataIndex: 'compositeScore', key: 'score' },
-                    {
-                      title: 'Durum',
-                      dataIndex: 'durum',
-                      key: 'durum',
-                      render: (text) => {
-                        const tint = text === 'Onaylandı' ? TINT.green
-                          : text.includes('İnceleme') ? TINT.blue
-                          : TINT.amber
-                        return <Tag style={{ ...tint, border: 'none', borderRadius: 6 }}>{text}</Tag>
+        <Spin spinning={listLoading}>
+          <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            items={[
+              {
+                key: 'pending',
+                label: `Değerlendirme Bekleyen (${pendingList.length})`,
+                children: (
+                  <Table
+                    dataSource={pendingList}
+                    columns={[
+                      { title: 'Ad Soyad', dataIndex: 'studentName', key: 'name' },
+                      { title: 'Skor', dataIndex: 'compositeScore', key: 'score', render: (v) => v?.toFixed(2) ?? '—' },
+                      { title: 'Sıralama', key: 'ranking', render: (_, r) => formatRanking(r) },
+                      {
+                        title: 'İşlem',
+                        key: 'action',
+                        render: (_, record) => (
+                          <Button
+                            type="primary"
+                            size="small"
+                            style={{ background: '#8B1A2B', borderColor: '#8B1A2B' }}
+                            onClick={() => openEvaluationModal(record)}
+                          >
+                            Değerlendir
+                          </Button>
+                        ),
                       },
-                    },
-                    {
-                      title: '',
-                      key: 'expand',
-                      width: 48,
-                      render: (_, record) => (
-                        <Button
-                          type="text"
-                          icon={expandedEvaluated[record.id]
-                            ? <UpOutlined style={{ color: '#8B1A2B' }} />
-                            : <DownOutlined style={{ color: '#8B1A2B' }} />}
-                          onClick={() => toggleEvaluatedExpand(record.id)}
-                        />
-                      ),
-                    },
-                  ]}
-                  expandable={{
-                    expandedRowRender: renderEvaluatedExpanded,
-                    expandedRowKeys: evaluatedExpandedKeys,
-                    showExpandColumn: false,
-                  }}
-                  rowKey="id"
-                  pagination={false}
-                  size="small"
-                />
-              ),
-            },
-          ]}
-        />
+                    ]}
+                    rowKey="applicationId"
+                    pagination={false}
+                    size="small"
+                  />
+                ),
+              },
+              {
+                key: 'evaluated',
+                label: `Değerlendirilenler (${evaluatedList.length})`,
+                children: (
+                  <Table
+                    dataSource={evaluatedList}
+                    columns={[
+                      { title: 'Ad Soyad', dataIndex: 'studentName', key: 'name' },
+                      { title: 'Skor', dataIndex: 'compositeScore', key: 'score', render: (v) => v?.toFixed(2) ?? '—' },
+                      { title: 'Sıralama', key: 'ranking', render: (_, r) => formatRanking(r) },
+                      {
+                        title: 'Koşullar',
+                        dataIndex: 'conditionsMet',
+                        key: 'conditions',
+                        render: (v) => (
+                          <Tag style={{ ...(v ? TINT.green : TINT.red), border: 'none', borderRadius: 6 }}>
+                            {v ? 'Karşılandı' : 'Karşılanmadı'}
+                          </Tag>
+                        ),
+                      },
+                      {
+                        title: '',
+                        key: 'expand',
+                        width: 48,
+                        render: (_, record) => (
+                          <Button
+                            type="text"
+                            icon={expandedEvaluated[record.applicationId]
+                              ? <UpOutlined style={{ color: '#8B1A2B' }} />
+                              : <DownOutlined style={{ color: '#8B1A2B' }} />}
+                            onClick={() => toggleEvaluatedExpand(record.applicationId)}
+                          />
+                        ),
+                      },
+                    ]}
+                    expandable={{
+                      expandedRowRender: renderEvaluatedExpanded,
+                      expandedRowKeys: evaluatedExpandedKeys,
+                      showExpandColumn: false,
+                    }}
+                    rowKey="applicationId"
+                    pagination={false}
+                    size="small"
+                  />
+                ),
+              },
+            ]}
+          />
+        </Spin>
       </div>
 
       {/* ── Değerlendirme Modalı ── */}
@@ -435,40 +432,18 @@ const YGKDashboard = () => {
         style={{ top: 20 }}
         footer={[
           <Button key="cancel" onClick={() => setEvaluationModal(false)}>İptal</Button>,
-          <Button key="submit" type="primary" danger>Değerlendirmeyi Tamamla ve İlet</Button>,
+          <Button key="submit" type="primary" danger loading={submitting} onClick={handleSubmitEvaluation}>
+            Değerlendirmeyi Tamamla ve İlet
+          </Button>,
         ]}
       >
         {selectedStudent && (
           <div style={{ maxHeight: '75vh', overflowY: 'auto', overflowX: 'hidden', paddingRight: 10 }}>
             <Alert
-              message={`${selectedStudent.ad} ${selectedStudent.soyad} - ${selectedStudent.bolum}`}
+              message={selectedStudent.studentName}
               type="info"
               style={{ marginBottom: 16, marginTop: 8 }}
             />
-
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Title level={4}>Öğrenci Bilgileri</Title>
-              </Col>
-              <Col span={12}>
-                <Text strong>Mevcut Üniversite:</Text>
-                <Text style={{ marginLeft: 8 }}>{selectedStudent.mevcutUni}</Text>
-              </Col>
-              <Col span={12}>
-                <Text strong>Başvuru Tarihi:</Text>
-                <Text style={{ marginLeft: 8 }}>{selectedStudent.basvuruTarihi}</Text>
-              </Col>
-              <Col span={12}>
-                <Text strong>E-posta:</Text>
-                <Text style={{ marginLeft: 8 }}>{selectedStudent.email}</Text>
-              </Col>
-              <Col span={12}>
-                <Text strong>Telefon:</Text>
-                <Text style={{ marginLeft: 8 }}>{selectedStudent.tel}</Text>
-              </Col>
-            </Row>
-
-            <Divider />
 
             <Row gutter={[16, 16]}>
               <Col span={24}>
@@ -483,26 +458,20 @@ const YGKDashboard = () => {
               <Col span={6}>
                 <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
                   <Text strong style={{ display: 'block' }}>YKS Puanı</Text>
-                  <Text style={{ fontSize: 18, fontWeight: 'bold' }}>{selectedStudent.yksPuani}</Text>
+                  <Text style={{ fontSize: 18, fontWeight: 'bold' }}>{selectedStudent.yksScore}</Text>
                 </div>
               </Col>
               <Col span={6}>
                 <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
                   <Text strong style={{ display: 'block' }}>Composite Score</Text>
-                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#8B1A2B' }}>{selectedStudent.compositeScore}</Text>
+                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#8B1A2B' }}>{selectedStudent.compositeScore?.toFixed(2)}</Text>
                 </div>
               </Col>
               <Col span={6}>
                 <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
-                  <Text strong style={{ display: 'block' }}>Oto. Sıralama</Text>
-                  <Tag style={{ marginTop: 8, ...TINT.blue, border: 'none', borderRadius: 6 }}>{selectedStudent.otoSiralama}</Tag>
+                  <Text strong style={{ display: 'block' }}>Sıralama</Text>
+                  <Tag style={{ marginTop: 8, ...TINT.blue, border: 'none', borderRadius: 6 }}>{formatRanking(selectedStudent)}</Tag>
                 </div>
-              </Col>
-              <Col span={24} style={{ marginTop: 8 }}>
-                <Text strong>İngilizce Yeterlilik:</Text>
-                <Tag style={{ marginLeft: 8, ...(selectedStudent.ingilizce === 'Onaylandı' ? TINT.green : TINT.amber), border: 'none', borderRadius: 6 }}>
-                  {selectedStudent.ingilizceDetay}
-                </Tag>
               </Col>
             </Row>
 
