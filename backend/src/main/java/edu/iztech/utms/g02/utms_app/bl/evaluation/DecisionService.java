@@ -4,6 +4,7 @@ import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.DecisionRequest;
 import edu.iztech.utms.g02.utms_app.api.evaluation.dto.FacultyBoardDecisionResponse;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
+import edu.iztech.utms.g02.utms_app.bl.audit.AuditService;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
@@ -42,6 +43,7 @@ public class DecisionService {
     private final CommitteeDecisionRepository committeeDecisionRepository;
     private final ApplicationService applicationService;       // ApplicationResponse üretimi (Pair 2 public API)
     private final CourseEquivalencyService courseEquivalencyService; // denklik oranı (intibak redesign)
+    private final AuditService auditService;                   // denetim izi (TC-11.0 POST-4)
 
     @Transactional
     public FacultyBoardDecisionResponse recordFacultyBoardDecision(Integer applicationId, DecisionRequest req) {
@@ -74,6 +76,11 @@ public class DecisionService {
 
         log.info("Fakülte Kurulu kararı: applicationId={}, {} -> {}, decision={}, rejectionCode={}, by={}",
                 applicationId, previous, next, approved ? "APPROVED" : "REJECTED", rejectionCode, currentUser());
+
+        // Denetim izi (TC-11.0 POST-4): karar tipi + statü geçişi + ret kodu.
+        auditService.record("FACULTY_BOARD_DECISION", applicationId,
+                String.format("decision=%s, %s -> %s%s", approved ? "APPROVED" : "REJECTED",
+                        previous, next, rejectionCode != null ? ", rejectionCode=" + rejectionCode : ""));
 
         ApplicationResponse application = applicationService.getApplicationById(applicationId);
 

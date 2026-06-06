@@ -124,6 +124,12 @@ const DOCUMENT_TYPE_LABEL = {
   TRANSCRIPT: 'Transkript Belgesi',
   YKS_RESULT: 'YKS Sonuç Belgesi',
   LANGUAGE_CERT: 'Yabancı Dil Belgesi',
+  COURSE_CONTENTS: 'Ders İçerikleri', // <-- Eklenecek satır
+  OTHER_1: 'Ek belge 1', 
+  OTHER_2: 'Ek belge 2', 
+  OTHER_3: 'Ek belge 3', 
+  OTHER_4: 'Ek belge 4', 
+  OTHER_5: 'Ek belge 5', 
   ID_CARD: 'Kimlik Belgesi',
   OTHER: 'Diğer Belge',
 }
@@ -660,7 +666,7 @@ export default function OidbDashboard() {
           />
         </div>
         <div style={{ marginTop: 16 }}>
-          <Text strong>Düzeltme Notu</Text>
+          <Text strong>Düzeltme Notu <span style={{ color: 'red' }}>*</span></Text>
           <Input.TextArea
             style={{ marginTop: 6 }}
             rows={4}
@@ -771,6 +777,9 @@ export default function OidbDashboard() {
                           return (
                             <Timeline.Item key={`history-${index}`} color={info.color}>
                               <Text strong>{info.label}</Text>
+                              {entry.note && (
+                                <div style={{ marginTop: 2 }}>{entry.note}</div>
+                              )}
                               <div style={{ marginTop: 4, color: '#999' }}>{date}</div>
                             </Timeline.Item>
                           )

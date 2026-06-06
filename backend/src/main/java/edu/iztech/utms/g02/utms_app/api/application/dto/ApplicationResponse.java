@@ -77,6 +77,11 @@ public class ApplicationResponse {
     private Integer modifiedBy;
     private LocalDateTime modifiedAt;
 
+    // YDYO sonuçları "Sonuçları ÖİDB'ye İlet" ile resmen iletildi mi? ÖİDB paneli bu
+    // bayrak false iken YDYO_ACCEPTED/REJECTED kararını gizler (maskeler); YDYO paneli
+    // ise iletilen kayıtları salt-okunur (kilitli) gösterir.
+    private boolean ydyoForwardedToOidb;
+
     //EKLENDI: YÖKSİS ve YKS verileri
     private String currentUniversity;
     private String currentFaculty;
@@ -88,6 +93,9 @@ public class ApplicationResponse {
     // Belgeler — YDYO detay ekranı için hafif özet (indirme linki documentId ile kurulur)
     private List<DocumentSummary> documents;
 
+    // EKLENDİ: Frontend'deki Zaman Çizelgesini (Timeline) besleyecek statü geçmişi listesi
+    private List<StatusHistorySummary> statusHistory;
+
     // Fakülte/Dekanlık kısımlarını da buraya ekleyebilirsiniz...
 
     @Data
@@ -98,5 +106,16 @@ public class ApplicationResponse {
         private Integer documentId;
         private String documentType;
         private String fileName;
+    }
+
+    // EKLENDİ: Geçmiş kayıtlarını hafifletilmiş olarak taşımak için nested DTO
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StatusHistorySummary {
+        private String status;           // Frontend'deki STATUS_MAP anahtarlarıyla eşleşecek (Örn: OIDB_REVIEW)
+        private LocalDateTime changedAt; // Timeline altındaki tarih alanını dolduracak
+        private String note;             // Varsa o durum değişikliğine ait memur notu
     }
 }

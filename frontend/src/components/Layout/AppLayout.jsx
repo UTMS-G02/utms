@@ -92,6 +92,8 @@ export default function AppLayout() {
   const hideSidebarRoutes = [
   '/oidb',
   '/oidb/dashboard',
+  '/ydyo',
+  '/ydyo/dashboard',
   '/ygk',
   '/ygk/dashboard',
   '/dean',

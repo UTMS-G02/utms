@@ -93,9 +93,21 @@ const mapStatus = (status) => OIDB_STATUS_MAP[status] ?? status
 // Henüz gönderilmemiş / geri çekilmiş başvurular OİDB panelinde gösterilmez.
 const HIDDEN_STATUSES = ['DRAFT', 'WITHDRAWN']
 
+// YDYO kararları (ACCEPTED/REJECTED) ancak YDYO "Sonuçları ÖİDB'ye İlet" dedikten
+// sonra ÖİDB'ye yüzeye çıkar. İletilmeden önce karar DB'de olsa bile ÖİDB onu
+// görmemeli → "YDYO'da" (Değerlendiriliyor) olarak maskelenir ve aksiyon butonu çıkmaz.
+const YDYO_DECIDED_STATUSES = ['YDYO_ACCEPTED', 'YDYO_REJECTED']
+const oidbVisibleStatus = (dto) => {
+  if (YDYO_DECIDED_STATUSES.includes(dto.status) && !dto.ydyoForwardedToOidb) {
+    return 'YDYO_REVIEW'   // henüz iletilmedi → ÖİDB için hâlâ "YDYO'da"
+  }
+  return dto.status
+}
+
 // Backend ApplicationResponse → ÖİDB panelinin beklediği şekil.
 const mapOidbApplication = (dto) => {
   if (!dto) return dto
+  const visibleStatus = oidbVisibleStatus(dto)
   return {
     applicationId: dto.id,
     studentName: dto.studentName,
@@ -106,8 +118,8 @@ const mapOidbApplication = (dto) => {
     semester: dto.academicYear,
     targetDepartment: dto.targetDepartment,
     targetFaculty: dto.targetFaculty,
-    status: mapStatus(dto.status),
-    rawStatus: dto.status,                                  // panel "Öğrenci Güncelledi" rozetini türetmek için
+    status: mapStatus(visibleStatus),
+    rawStatus: visibleStatus,                               // panel "Öğrenci Güncelledi" rozetini türetmek için
     revisionRequestedBefore: dto.revisionRequestedBefore,   // bir kez düzeltme istendi mi? (buton + rozet)
     submittedAt: dto.submissionDate,
     createdAt: dto.submissionDate,
@@ -116,6 +128,17 @@ const mapOidbApplication = (dto) => {
       docType: d.documentType,
       fileName: d.fileName,
     })),
+    // Geçmiş (Timeline): backend ham statüleri en YENİ → en eski sırada döner.
+    // Kronolojik okunsun diye ters çeviriyoruz (eski → yeni) ve ham statüyü panel
+    // etiketine (STATUS_MAP anahtarı) çeviriyoruz; note açıklamayı taşır.
+    statusHistory: (dto.statusHistory ?? [])
+      .slice()
+      .reverse()
+      .map((h) => ({
+        status: mapStatus(h.status),
+        changedAt: h.changedAt,
+        note: h.note,
+      })),
   }
 }
 

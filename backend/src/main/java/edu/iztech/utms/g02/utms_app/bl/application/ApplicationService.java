@@ -65,6 +65,8 @@ public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
     private final ApplicationPeriodRepository applicationPeriodRepository;
+    // BURAYI EKLE:
+    private final ApplicationHistoryRepository applicationHistoryRepository;
 
     private final StudentRepository studentRepository; // EKLENDİ
     private final FacultyRepository facultyRepository;       // Pair 3: targetFaculty -> Faculty FK
@@ -198,6 +200,7 @@ public class ApplicationService {
 
         // 4. Veritabanına kaydet
         app = applicationRepository.save(app);
+        recordStatusChange(app, "Başvuru taslağı oluşturuldu."); // başvuru geçmişine ilk kayıt (DRAFT)
 
         // 5. e-Devlet/ÖSYM belgelerini (öğrenci belgesi, transkript, YKS sonuç belgesi)
         //    otomatik üret ve başvuruya iliştir — öğrenci bunları elle yüklemez.
@@ -292,6 +295,7 @@ public class ApplicationService {
             app.setSubmissionDate(LocalDate.now());
         }
         app = applicationRepository.save(app);
+        recordStatusChange(app, "Başvuru onaya gönderildi."); // geçmişe SUBMITTED kaydı
 
         return toResponse(app);
     }
@@ -347,6 +351,7 @@ public class ApplicationService {
         app.setOidbReviewedDate(LocalDateTime.now());
 
         Application saved = applicationRepository.save(app);
+        recordStatusChange(saved, req.isRequestRevision() ? req.getRevisionNotes() : req.getNotes()); // EKLENDİ
 
         // UC-15: ÖİDB ön inceleme sonucunu öğrenciye bildir (Güncel Durum ile birebir).
         switch (saved.getStatus()) {
@@ -384,6 +389,7 @@ public class ApplicationService {
         app.setOidbReviewedDate(LocalDateTime.now());
 
         Application saved = applicationRepository.save(app);
+        recordStatusChange(saved, req.getNotes()); // EKLENDİ
 
         // UC-15: YDYO sonucu öğrenciye ANCAK burada (ÖİDB post-YDYO işlemi) yüzeye çıkar.
         if (saved.getStatus() == ApplicationStatus.DEAN_OFFICE_REVIEW) {
@@ -449,6 +455,7 @@ public class ApplicationService {
         stampYdyoModification(app, wasDecided, req.getReviewer());
 
         app = applicationRepository.save(app);
+        recordStatusChange(app, req.getNotes()); // EKLENDİ
         return toResponse(app);
 
     }
@@ -486,11 +493,43 @@ public class ApplicationService {
             app.setStatus(ApplicationStatus.YDYO_REJECTED);   // sınavdan kaldı
         }
 
+        app = applicationRepository.save(app); // return satırından bir önce kaydetmeyi ayır
+        recordStatusChange(app, req.getNotes()); // EKLENDİ
+
         stampYdyoModification(app, wasDecided, req.getReviewer());
-        return toResponse(applicationRepository.save(app));
+        return toResponse(app);
     }
 
 
+
+    // --------------------------------------------------------
+    // YDYO: "SONUÇLARI ÖİDB'YE İLET"
+    //  - YDYO değerlendirmesini bitirip kararları (ACCEPTED/REJECTED) resmen ÖİDB'ye
+    //    iletir. İletilene dek ÖİDB bu kararları GÖREMEZ (panelde "YDYO'da" maskelenir).
+    //  - Bayrak DB'de kalıcıdır → yenileme/oturum kapatma sonrası geri dönmez.
+    //  - İŞ KURALI: listede hâlâ tamamlanmamış (REVIEW/EXAM_PENDING) kayıt varsa iletilemez.
+    // --------------------------------------------------------
+    @Transactional
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    public int forwardYdyoResultsToOidb() {
+        // Hâlâ değerlendirme süren kayıt varken iletime izin verme (frontend guard'ının backend karşılığı).
+        boolean hasPending = applicationRepository.existsByStatusIn(
+                List.of(ApplicationStatus.YDYO_REVIEW, ApplicationStatus.YDYO_EXAM_PENDING));
+        if (hasPending) {
+            throw new IllegalStateException("Tüm öğrenci kayıtları tamamlanmadan liste ÖİDB'ye iletilemez.");
+        }
+
+        // Karara bağlanmış ama henüz iletilmemiş kayıtları işaretle.
+        List<Application> toForward = applicationRepository.findByStatusInAndYdyoForwardedToOidb(
+                List.of(ApplicationStatus.YDYO_ACCEPTED, ApplicationStatus.YDYO_REJECTED), false);
+
+        for (Application app : toForward) {
+            app.setYdyoForwardedToOidb(true);
+        }
+        applicationRepository.saveAll(toForward);
+
+        return toForward.size();
+    }
 
     // --------------------------------------------------------
     // YDYO 2. AŞAMA: TOPLU CSV İLE SINAV SONUCU YÜKLEME
@@ -552,6 +591,7 @@ public class ApplicationService {
                         }
                         
                         applicationRepository.save(app);
+                        recordStatusChange(app, "YDYO sınav sonucu girildi."); // EKLENDİ
                         processedCount++;
                     }
 
@@ -650,6 +690,7 @@ public class ApplicationService {
 
         // 3. STATÜYÜ GÜNCELLE VE KAYDET
         app.setStatus(ApplicationStatus.WITHDRAWN);
+        recordStatusChange(app, "Öğrenci başvuruyu geri çekti."); // EKLENDİ
         app = applicationRepository.save(app);
 
         return toResponse(app);
@@ -680,6 +721,7 @@ public class ApplicationService {
         app.setOidbReviewedDate(LocalDateTime.now());
 
         Application saved = applicationRepository.save(app);
+        recordStatusChange(saved, "ÖİDB tarafından doğrudan reddedildi."); // EKLENDİ
 
         // UC-15: Doğrudan red sonucunu öğrenciye bildir.
         notifyStudent(saved, "Başvurunuz Reddedildi",
@@ -804,6 +846,9 @@ public class ApplicationService {
         response.setModifiedBy(app.getYdyoModifiedBy() != null ? app.getYdyoModifiedBy().getUserId() : null);
         response.setModifiedAt(app.getYdyoModifiedDate());
 
+        // YDYO sonuçları ÖİDB'ye iletildi mi? (ÖİDB görünürlüğünü + YDYO kilidini belirler)
+        response.setYdyoForwardedToOidb(app.isYdyoForwardedToOidb());
+
         // Türetilen YDYO alanları (entity'de saklanmıyor):
         //   ydyoApproved == true  → belge onaylı, muaf, sınav gerekmez (requiresExam=false)
         //   ydyoApproved == false → sınava yönlendirildi (requiresExam=true)
@@ -829,6 +874,17 @@ public class ApplicationService {
                             .documentId(d.getDocumentId())
                             .documentType(d.getDocumentType())
                             .fileName(d.getFileName())
+                            .build())
+                    .collect(Collectors.toList()));
+        }
+        // --- EKLENDİ: Frontend Timeline'ı için Geçmiş Listesi ---
+        List<ApplicationHistory> historyList = applicationHistoryRepository.findByApplicationIdOrderByChangedAtDesc(app.getApplicationId());
+        if (!historyList.isEmpty()) {
+            response.setStatusHistory(historyList.stream()
+                    .map(h -> ApplicationResponse.StatusHistorySummary.builder()
+                            .status(h.getStatus())
+                            .changedAt(h.getChangedAt())
+                            .note(h.getNote())
                             .build())
                     .collect(Collectors.toList()));
         }
@@ -870,5 +926,16 @@ public class ApplicationService {
             sb.append(student.getLastName());
         }
         return sb.toString().trim();
+    }
+
+    // --- EKLENDİ: Başvuru Geçmişi Kaydedici ---
+    private void recordStatusChange(Application app, String note) {
+        ApplicationHistory history = ApplicationHistory.builder()
+                .applicationId(app.getApplicationId())
+                .status(app.getStatus().name())
+                .changedAt(LocalDateTime.now())
+                .note(note)
+                .build();
+        applicationHistoryRepository.save(history);
     }
 }
