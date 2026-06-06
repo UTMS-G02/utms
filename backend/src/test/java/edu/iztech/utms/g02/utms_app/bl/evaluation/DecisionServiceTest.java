@@ -38,6 +38,8 @@ class DecisionServiceTest {
     @Mock private ApplicationService applicationService;
     @Mock private CourseEquivalencyService courseEquivalencyService; // recordFacultyBoardDecision denklik oranını sorar
 
+    @Mock private edu.iztech.utms.g02.utms_app.bl.audit.AuditService auditService;
+
     @InjectMocks private DecisionService decisionService;
 
     // ==========================================
