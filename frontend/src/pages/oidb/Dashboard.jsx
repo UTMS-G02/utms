@@ -52,6 +52,7 @@ const STATUS_MAP = {
   YDYO_APPROVED: { label: "YDYO Onaylı", color: 'green' },
   YDYO_REJECTED: { label: "YDYO Reddetti", color: 'magenta' },
   FACULTY_REVIEW: { label: 'Fakültede', color: 'gold' },
+  OIDB_FINAL: { label: 'Yayın Bekliyor', color: 'cyan' },
   ACCEPTED: { label: 'Onaylandı', color: 'success' },
   REJECTED: { label: 'Reddedildi', color: 'error' },
 }
@@ -80,6 +81,8 @@ const getStatusTint = (status) => {
       return TINT.red
     case 'FACULTY_REVIEW':
       return TINT.purple
+    case 'OIDB_FINAL':
+      return TINT.blue
     case 'ACCEPTED':
       return TINT.green
     case 'REJECTED':
@@ -106,6 +109,7 @@ const STATUS_OPTIONS = [
   { value: 'YDYO_APPROVED', label: "YDYO Onaylı" },
   { value: 'YDYO_REJECTED', label: "YDYO Reddetti" },
   { value: 'FACULTY_REVIEW', label: 'Fakültede' },
+  { value: 'OIDB_FINAL', label: 'Yayın Bekliyor' },
   { value: 'ACCEPTED', label: 'Onaylandı' },
   { value: 'REJECTED', label: 'Reddedildi' },
 ]
@@ -117,7 +121,7 @@ const FACULTY_OPTIONS = [
   { value: 'Mimarlık Fakültesi', label: 'Mimarlık Fakültesi' },
 ]
 
-const ANNOUNCEABLE_STATUSES = ['ACCEPTED', 'REJECTED']
+const ANNOUNCEABLE_STATUSES = ['OIDB_FINAL', 'ACCEPTED', 'REJECTED']
 
 const DOCUMENT_TYPE_LABEL = {
   STUDENT_CERTIFICATE: 'Öğrenci Belgesi',
