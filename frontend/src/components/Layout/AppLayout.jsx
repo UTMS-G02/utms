@@ -10,8 +10,9 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons'
-import { useAuth, ROLES } from '../../contexts/AuthContext'
+import { useAuth, ROLES, ROLE_HOME } from '../../contexts/AuthContext'
 import NotificationBell from './NotificationBell'
+import iyteLogo from '../../assets/iyte_logo.png'
 
 const STUDENT_ONLY_ROLES = [ROLES.STUDENT]
 
@@ -46,31 +47,18 @@ const MENU_CONFIG = {
   ],
 }
 
-function IyteLogo({ collapsed }) {
+function IyteLogo({ collapsed, homePath }) {
   return (
-    <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: '50%',
-          background: 'var(--color-primary)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>İ</span>
-      </div>
+    <Link to={homePath} style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+      <img
+        src={iyteLogo}
+        alt="İYTE"
+        style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+      />
       {!collapsed && (
         <div style={{ lineHeight: 1.2 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-primary)' }}>
-            İYTE
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', letterSpacing: '0.02em' }}>
-            UTMS
-          </div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-primary)' }}>İYTE</div>
+          <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', letterSpacing: '0.02em' }}>UTMS</div>
         </div>
       )}
     </Link>
@@ -84,16 +72,21 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
 
   const menuItems = MENU_CONFIG[user?.role] ?? []
+  const roleHome = ROLE_HOME[user?.role] ?? '/login'
 
-  const userDropdownItems = [
-    { key: 'profile', icon: <UserOutlined />, label: 'Profil' },
-    { type: 'divider' },
-    { key: 'logout', icon: <LogoutOutlined />, label: 'Çıkış Yap', danger: true },
-  ]
+  const userDropdownItems = user?.role === ROLES.STUDENT
+    ? [
+        { key: 'profile', icon: <UserOutlined />, label: 'Profil' },
+        { type: 'divider' },
+        { key: 'logout', icon: <LogoutOutlined />, label: 'Çıkış Yap', danger: true },
+      ]
+    : [
+        { key: 'logout', icon: <LogoutOutlined />, label: 'Çıkış Yap', danger: true },
+      ]
 
   const handleUserMenuClick = ({ key }) => {
     if (key === 'logout') logout()
-    if (key === 'profile') navigate(`/${user?.role?.toLowerCase()}/profile`)
+    if (key === 'profile') navigate('/student/profile')
   }
 
   const hideSidebarRoutes = [
@@ -142,7 +135,7 @@ export default function AppLayout() {
               borderBottom: '1px solid var(--color-border)',
             }}
           >
-            <IyteLogo collapsed={collapsed} />
+            <IyteLogo collapsed={collapsed} homePath={roleHome} />
           </div>
 
           {/* Navigation */}
@@ -220,7 +213,7 @@ export default function AppLayout() {
                 {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               </div>
             ) : (
-              <IyteLogo collapsed={false} />
+              <IyteLogo collapsed={false} homePath={roleHome} />
             )}
           </div>
 
