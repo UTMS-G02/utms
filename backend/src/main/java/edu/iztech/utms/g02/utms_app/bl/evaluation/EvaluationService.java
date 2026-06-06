@@ -197,6 +197,7 @@ public class EvaluationService {
 
     private EvaluationResponse toResponse(EvaluationResult result) {
         Application app = result.getApplication();
+        Integer quota = app.getDepartment() != null ? app.getDepartment().getQuota() : null;
         return EvaluationResponse.builder()
                 .applicationId(app.getApplicationId())
                 .studentName(buildFullName(app.getStudent()))
@@ -208,7 +209,14 @@ public class EvaluationService {
                 .calculatedAt(result.getCalculatedAt())
                 .conditionsMet(app.getYgkApproved())
                 .generalNote(result.getGeneralNote())
+                .provisionalListType(provisionalListType(result.getRanking(), quota))
                 .build();
+    }
+
+    /** Provizyonel asil/yedek: ranking ≤ quota → PRIMARY; quota null → sınırsız (PRIMARY); ranking null → null. */
+    static String provisionalListType(Integer ranking, Integer quota) {
+        if (ranking == null) return null;
+        return (quota == null || ranking <= quota) ? "PRIMARY" : "WAITLIST";
     }
 
     private String buildFullName(Student student) {
