@@ -53,6 +53,7 @@ class EvaluationServiceTest {
     @Mock private EvaluationResultRepository evaluationResultRepository;
     @Mock private CommitteeDecisionRepository committeeDecisionRepository;
     @Mock private StaffRepository staffRepository;
+    @Mock private edu.iztech.utms.g02.utms_app.bl.audit.AuditService auditService;
 
     @InjectMocks private EvaluationService evaluationService;
 

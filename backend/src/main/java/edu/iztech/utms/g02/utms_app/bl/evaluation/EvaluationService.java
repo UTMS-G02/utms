@@ -9,6 +9,7 @@ import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.CommitteeDecision;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.EvaluationResult;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.CommitteeDecisionRepository;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.EvaluationResultRepository;
+import edu.iztech.utms.g02.utms_app.bl.audit.AuditService;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Staff;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.StaffRepository;
@@ -46,6 +47,7 @@ public class EvaluationService {
     private final EvaluationResultRepository evaluationResultRepository;
     private final CommitteeDecisionRepository committeeDecisionRepository;
     private final StaffRepository staffRepository; // Pair 3: oturum açan YGK üyesinin bölümünü çözmek için
+    private final AuditService auditService;       // denetim izi (TC-8.0 POST-6)
 
     /**
      * Sıralama düzeni: yüksek compositeScore önce; eşit skorda tie-break uygulanır.
@@ -98,6 +100,8 @@ public class EvaluationService {
         }
 
         updateRankings(departmentId);
+        auditService.record("YGK_SCORE_ALL", null,
+                "departmentId=" + departmentId + ", count=" + pending.size());
         return pending.size();
     }
 
@@ -185,6 +189,9 @@ public class EvaluationService {
 
         log.info("YGK değerlendirmesi tamamlandı: applicationId={}, {} -> {}, conditionsMet={}, by={}",
                 applicationId, previous, ApplicationStatus.YGK_REVIEW_DONE, req.getConditionsMet(), currentUser());
+
+        auditService.record("YGK_EVALUATION_SUBMITTED", applicationId,
+                "conditionsMet=" + req.getConditionsMet());
 
         return toResponse(result);
     }
