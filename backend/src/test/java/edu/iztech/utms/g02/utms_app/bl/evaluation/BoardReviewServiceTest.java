@@ -48,7 +48,8 @@ class BoardReviewServiceTest {
         when(applicationService.getApplicationById(5))
                 .thenReturn(ApplicationResponse.builder().id(5).studentName("Ali Veli").build());
         when(courseEquivalencyService.getTable(5))
-                .thenReturn(IntibakTableResponse.builder().applicationId(5).conditionsMet(true).build());
+                .thenReturn(IntibakTableResponse.builder()
+                        .applicationId(5).conditionsMet(true).equivalencyRatio(0.86).build());
         when(evaluationResultRepository.findByApplication_ApplicationId(5))
                 .thenReturn(Optional.of(EvaluationResult.builder()
                         .compositeScore(371.59)
@@ -68,6 +69,9 @@ class BoardReviewServiceTest {
         assertThat(result.getConditionsMet()).isTrue();
         assertThat(result.getGeneralNote()).isEqualTo("Uygun.");
         assertThat(result.getIntibak().getApplicationId()).isEqualTo(5);
+        // Denklik oranı karardan önce görünür; %80 üstü → eşik altı DEĞİL
+        assertThat(result.getEquivalencyRatio()).isEqualTo(0.86);
+        assertThat(result.getBelowThreshold()).isFalse();
         // Karar geçmişi eskiden yeniye sıralı
         assertThat(result.getDecisions()).hasSize(2);
         assertThat(result.getDecisions().get(0).getDecisionBy()).isEqualTo("YGK");
@@ -92,6 +96,27 @@ class BoardReviewServiceTest {
         assertThat(result.getRanking()).isNull();
         assertThat(result.getDecisions()).isEmpty();
         assertThat(result.getApplication().getId()).isEqualTo(6);
+    }
+
+    @Test
+    void getReview_equivalencyBelow80_flagsBelowThreshold() {
+        Application app = Application.builder()
+                .applicationId(7)
+                .status(ApplicationStatus.FACULTY_BOARD_REVIEW)
+                .ygkApproved(true)
+                .build();
+        when(applicationRepository.findByApplicationId(7)).thenReturn(Optional.of(app));
+        when(applicationService.getApplicationById(7)).thenReturn(ApplicationResponse.builder().id(7).build());
+        when(courseEquivalencyService.getTable(7))
+                .thenReturn(IntibakTableResponse.builder()
+                        .applicationId(7).conditionsMet(true).equivalencyRatio(0.50).build());
+        when(evaluationResultRepository.findByApplication_ApplicationId(7)).thenReturn(Optional.empty());
+        when(committeeDecisionRepository.findByApplication_ApplicationId(7)).thenReturn(List.of());
+
+        BoardReviewResponse result = boardReviewService.getReview(7);
+
+        assertThat(result.getEquivalencyRatio()).isEqualTo(0.50);
+        assertThat(result.getBelowThreshold()).isTrue();
     }
 
     @Test

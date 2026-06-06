@@ -41,6 +41,9 @@ public class BoardReviewService {
             Comparator.comparing(CommitteeDecision::getDecidedAt,
                     Comparator.nullsLast(Comparator.<LocalDateTime>naturalOrder()));
 
+    /** İntibak denklik eşiği; altındaysa yumuşak uyarı (DecisionService ile aynı). */
+    private static final double EQUIVALENCY_THRESHOLD = 0.80;
+
     @Transactional(readOnly = true)
     public BoardReviewResponse getReview(Integer applicationId) {
         Application app = applicationRepository.findByApplicationId(applicationId)
@@ -59,6 +62,10 @@ public class BoardReviewService {
                 .map(this::toSummary)
                 .toList();
 
+        // Denklik oranı intibak'tan gelir (getTable hesaplar); %80 altı yumuşak uyarı.
+        Double equivalencyRatio = intibak != null ? intibak.getEquivalencyRatio() : null;
+        boolean belowThreshold = equivalencyRatio != null && equivalencyRatio < EQUIVALENCY_THRESHOLD;
+
         return BoardReviewResponse.builder()
                 .application(application)
                 .compositeScore(eval != null ? eval.getCompositeScore() : null)
@@ -67,6 +74,8 @@ public class BoardReviewService {
                 .generalNote(eval != null ? eval.getGeneralNote() : null)
                 .calculatedAt(eval != null ? eval.getCalculatedAt() : null)
                 .intibak(intibak)
+                .equivalencyRatio(equivalencyRatio)
+                .belowThreshold(belowThreshold)
                 .decisions(decisions)
                 .build();
     }

@@ -38,6 +38,10 @@ public class BoardReviewResponse {
     // İntibak tablosu
     private IntibakTableResponse intibak;
 
+    // Denklik oranı + %80 eşik bayrağı (intibak'tan türetilir; Fakülte Kurulu karardan ÖNCE görür — TC-11.0/11.1).
+    private Double equivalencyRatio;
+    private Boolean belowThreshold;
+
     // Komisyon karar geçmişi (eskiden yeniye)
     private List<CommitteeDecisionSummary> decisions;
 }
