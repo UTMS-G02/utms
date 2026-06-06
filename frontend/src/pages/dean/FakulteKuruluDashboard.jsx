@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { Tabs, Table, Button, Typography, Tag, Modal, Row, Col, Space, Input, Radio, Divider } from 'antd'
+import { useState, useEffect } from 'react'
+import { Tabs, Table, Button, Typography, Tag, Modal, Row, Col, Space, Input, Radio, Divider, message, Select, Alert, Spin } from 'antd'
 import { DownloadOutlined, DownOutlined, UpOutlined } from '@ant-design/icons'
+import apiClient from '../../api/client'
 
 const { Title, Text } = Typography
 
@@ -24,38 +25,171 @@ const styles = {
   },
 }
 
-// Mock data
-const PENDING_FACULTY_STUDENTS = [
-  { id: 1, ad: 'Burak', soyad: 'Yıldız', email: 'burak.yildiz@example.edu.tr', tel: '+90 537 765 4321', bolum: 'Bilgisayar Mühendisliği', compositeScore: 90.5, otoSiralama: 'Asil Liste #1', durum: 'Onay Bekleniyor', basvuruTarihi: '03.01.2024', gpa: 3.78, yksPuani: 498, mevcutUni: 'İTÜ', intibakStatus: 'Tamamlandı', ygkKarari: 'Asil Liste', ygkNotu: 'Öğrencinin transkripti incelenmiş, tüm dersler intibak edilebilir niteliktedir. Asil listeye alınması önerilmektedir.', intibakRaporu: 'İntibak Raporunu Görüntüle' },
-  { id: 2, ad: 'Deniz', soyad: 'Kaya', email: 'deniz.kaya@example.edu.tr', tel: '+90 538 123 4567', bolum: 'Makina Mühendisliği', compositeScore: 78.9, otoSiralama: 'Yedek Liste #5', durum: 'İnceleme Aşamasında', basvuruTarihi: '18.01.2024', gpa: 2.9, yksPuani: 420, mevcutUni: 'Gazi Üniversitesi', intibakStatus: 'Tamamlandı', ygkKarari: 'Yedek Liste', ygkNotu: 'Öğrenci ön koşulları yerine getirmiştir.', intibakRaporu: 'İntibak Raporunu Görüntüle' },
-  { id: 3, ad: 'Ayşe', soyad: 'Yılmaz', email: 'ayse.yilmaz@example.edu.tr', tel: '+90 532 123 4567', bolum: 'İnşaat Mühendisliği', compositeScore: 85.3, otoSiralama: 'Asil Liste #2', durum: 'Onay Bekleniyor', basvuruTarihi: '12.01.2024', gpa: 3.5, yksPuani: 480, mevcutUni: 'Orta Doğu Teknik Üniversitesi', intibakStatus: 'Tamamlandı', ygkKarari: 'Asil Liste', ygkNotu: 'Başarılı bir öğrencidir. Değerlendirme önerilir.', intibakRaporu: 'İntibak Raporunu Görüntüle' },
+const REJECTION_CODES = [
+  { value: 'DENKLIK_YETERSIZ', label: 'Ders denkliği %80 eşiğinin altında' },
+  { value: 'EKSIK_BELGE', label: 'Eksik veya geçersiz belge' },
+  { value: 'KOSULLAR_SAGLANAMADI', label: 'Bölüm koşulları karşılanamıyor' },
+  { value: 'DIGER', label: 'Diğer (nota açıklama ekle)' },
 ]
 
-const APPROVED_STUDENTS = [
-  { id: 4, ad: 'Can', soyad: 'Öztürk', email: 'can.ozturk@example.edu.tr', tel: '+90 535 765 4321', bolum: 'Bilgisayar Mühendisliği', compositeScore: 82.5, otoSiralama: 'Asil Liste #3', durum: 'Onaylandı', basvuruTarihi: '08.01.2024', gpa: 3.45, yksPuani: 485, mevcutUni: 'Gazi Üniversitesi', intibakStatus: 'Onaylandı', finalNot: 'YGK değerlendirmesi ve intibak raporu incelendi. Başvuru onaylanmıştır.', ygkKarari: 'Asil Liste', ygkNotu: 'İntibak raporu olumlu.', intibakRaporu: 'İntibak Raporunu Görüntüle' },
-  { id: 5, ad: 'Elif', soyad: 'Şahin', email: 'elif.sahin@example.edu.tr', tel: '+90 536 123 4567', bolum: 'Elektrik Mühendisliği', compositeScore: 75.2, otoSiralama: 'Yedek Liste #8', durum: 'Reddedildi', basvuruTarihi: '05.01.2024', gpa: 3.1, yksPuani: 450, mevcutUni: 'Teknik Üniversite', intibakStatus: 'Reddedildi', finalNot: 'Bölüm kapasitesi dolmuştur.', ygkKarari: 'Yedek Liste', ygkNotu: 'Eksik dersler tamamlanmalı.', intibakRaporu: 'İntibak Raporunu Görüntüle' },
-]
+const DENKLIK_LABELS = {
+  TAM_DENKLIK: { label: 'Tam Denklik', tint: TINT.green },
+  KISMI_DENKLIK: { label: 'Kısmi Denklik', tint: TINT.amber },
+  DENKLIK_YOK: { label: 'Denklik Yok', tint: TINT.red },
+}
 
-const INTIBAK_DATA = [
-  { mevcutDersKodu: 'BIL101', mevcutDersAdi: 'Programlama', kredi: 4, iyeteDersKodu: 'CENG102', iyeteDersAdi: 'Bilgisayar Pr', iyteKredi: 4, denklik: 'Tam Denk' },
-  { mevcutDersKodu: 'BIL102', mevcutDersAdi: 'İleri Programlama', kredi: 4, iyeteDersKodu: 'CENG103', iyeteDersAdi: 'İleri Programlama', iyteKredi: 4, denklik: 'Tam Denk' },
-]
+const handleError = (err) => {
+  const status = err?.response?.status
+  if (status === 400) message.error(err.response.data?.message || 'Geçersiz istek.')
+  else if (status === 403) message.error('Bu işlem için yetkiniz yok.')
+  else if (status === 404) message.error('Başvuru bulunamadı.')
+  else message.error('Sunucuya ulaşılamadı, lütfen tekrar deneyin.')
+}
 
 const FakulteKuruluDashboard = () => {
   const [activeTab, setActiveTab] = useState('pending')
+  const [pendingList, setPendingList] = useState([
+    {
+      id: 9999,
+      status: 'FACULTY_BOARD_REVIEW',
+      studentName: 'Ali Veli (MOCK)',
+      targetDepartment: 'Bilgisayar Mühendisliği',
+      gpa: 3.20,
+      sayYksScore: 420.50,
+      submissionDate: '2026-04-16',
+    },
+  ])
+  const [completedList, setCompletedList] = useState([])
+  const [listLoading, setListLoading] = useState(false)
+
   const [decisionModal, setDecisionModal] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
+  const [boardReview, setBoardReview] = useState(null)
+  const [modalLoading, setModalLoading] = useState(false)
+
   const [evalNote, setEvalNote] = useState('')
   const [decision, setDecision] = useState('approve')
+  const [rejectionCode, setRejectionCode] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [belowThresholdWarning, setBelowThresholdWarning] = useState(null)
+
   const [expandedApproved, setExpandedApproved] = useState({})
   const [intibakExpanded, setIntibakExpanded] = useState(false)
 
-  const openDecisionModal = (record) => {
+  useEffect(() => {
+    fetchLists()
+  }, [])
+
+  const fetchLists = async () => {
+    setListLoading(true)
+    try {
+      const [pendingRes, acceptedRes, rejectedRes] = await Promise.all([
+        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REVIEW', size: 500 } }),
+        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_ACCEPTED', size: 500 } }),
+        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REJECTED', size: 500 } }),
+      ])
+      setPendingList([
+        { id: 9999, status: 'FACULTY_BOARD_REVIEW', studentName: 'Ali Veli (MOCK)', targetDepartment: 'Bilgisayar Mühendisliği', gpa: 3.20, sayYksScore: 420.50, submissionDate: '2026-04-16' },
+        ...(pendingRes.data.content ?? []),
+      ])
+      setCompletedList([
+        ...(acceptedRes.data.content ?? []),
+        ...(rejectedRes.data.content ?? []),
+      ])
+    } catch (err) {
+      handleError(err)
+    } finally {
+      setListLoading(false)
+    }
+  }
+
+  const openDecisionModal = async (record) => {
     setSelectedStudent(record)
+    setBoardReview(null)
     setEvalNote('')
     setDecision('approve')
+    setRejectionCode(null)
+    setBelowThresholdWarning(null)
     setIntibakExpanded(false)
     setDecisionModal(true)
+    setModalLoading(true)
+    try {
+      let data
+      if (record.id === 9999) {
+        data = {
+          application: record,
+          compositeScore: 378.77,
+          ranking: 1,
+          conditionsMet: true,
+          generalNote: 'YGK notu örnek metin.',
+          intibak: {
+            applicationId: 9999,
+            conditionsMet: true,
+            rows: [
+              { id: 1, sourceCode: 'BLM101', sourceName: 'Programlamaya Giriş', sourceCredit: 4, sourceGrade: 'BB', targetCode: 'CENG101', targetName: 'Introduction to Programming', targetCredit: 4, targetGrade: 'BB', equivalencyStatus: 'TAM_DENKLIK' },
+              { id: 2, sourceCode: 'MAT201', sourceName: 'Diferansiyel Denklemler', sourceCredit: 3, sourceGrade: 'CC', targetCode: 'MATH201', targetName: 'Differential Equations', targetCredit: 3, targetGrade: 'CC', equivalencyStatus: 'KISMI_DENKLIK' },
+              { id: 3, sourceCode: 'BIO100', sourceName: 'Biology', sourceCredit: 2, sourceGrade: 'FF', targetCode: null, targetName: null, targetCredit: null, targetGrade: null, equivalencyStatus: 'DENKLIK_YOK' },
+            ],
+            equivalencyRatio: 0.87,
+          },
+          decisions: [],
+        }
+      } else {
+        data = await apiClient.get(`/applications/${record.id}/board-review`).then(r => r.data)
+      }
+      setBoardReview(data)
+    } catch (err) {
+      handleError(err)
+      setDecisionModal(false)
+    } finally {
+      setModalLoading(false)
+    }
+  }
+
+  const closeModal = () => {
+    setDecisionModal(false)
+    setBelowThresholdWarning(null)
+  }
+
+  const handleSubmit = async () => {
+    if (!selectedStudent || !boardReview) return
+    setSubmitting(true)
+    try {
+      if (selectedStudent.id === 9999) {
+        setPendingList(prev => prev.filter(s => s.id !== 9999))
+        closeModal()
+        message.success('(MOCK) Karar kaydedildi.')
+        return
+      }
+      const res = await apiClient
+        .patch(`/applications/${selectedStudent.id}/faculty-board-review`, {
+          approved: decision === 'approve',
+          notes: evalNote || null,
+          rejectionCode: decision === 'reject' ? rejectionCode : null,
+        })
+        .then(r => r.data)
+
+      if (res.belowThreshold) {
+        setBelowThresholdWarning(res.equivalencyRatio)
+      } else {
+        closeModal()
+      }
+
+      // Pending listeden kaldır, tamamlananlar listesini yenile
+      setPendingList(prev => prev.filter(s => s.id !== selectedStudent.id))
+      const [acceptedRes, rejectedRes] = await Promise.all([
+        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_ACCEPTED', size: 500 } }),
+        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REJECTED', size: 500 } }),
+      ])
+      setCompletedList([
+        ...(acceptedRes.data.content ?? []),
+        ...(rejectedRes.data.content ?? []),
+      ])
+    } catch (err) {
+      handleError(err)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const toggleApprovedExpand = (id) => {
@@ -78,43 +212,24 @@ const FakulteKuruluDashboard = () => {
         <Col span={6}>
           <div style={{ background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
             <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>YKS Puanı</Text>
-            <Text strong style={{ fontSize: 18 }}>{record.yksPuani}</Text>
-          </div>
-        </Col>
-        <Col span={6}>
-          <div style={{ background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
-            <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Composite Score</Text>
-            <Text strong style={{ fontSize: 18, color: '#8B1A2B' }}>{record.compositeScore}</Text>
-          </div>
-        </Col>
-        <Col span={6}>
-          <div style={{ background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
-            <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Oto. Sıralama</Text>
-            <Tag style={{ marginTop: 4, ...TINT.blue, border: 'none', borderRadius: 6 }}>{record.otoSiralama}</Tag>
+            <Text strong style={{ fontSize: 18 }}>{record.sayYksScore}</Text>
           </div>
         </Col>
         <Col span={12}>
-          <Text strong>Mevcut Üniversite:</Text>
-          <Text style={{ marginLeft: 8 }}>{record.mevcutUni}</Text>
-        </Col>
-        <Col span={12}>
-          <Text strong>YGK Kararı:</Text>
-          <Tag style={{ marginLeft: 8, ...(record.ygkKarari === 'Asil Liste' ? TINT.green : TINT.amber), border: 'none', borderRadius: 6 }}>
-            {record.ygkKarari}
-          </Tag>
-        </Col>
-        <Col span={24}>
-          <Button type="link" icon={<DownloadOutlined />} style={{ paddingLeft: 0 }}>{record.intibakRaporu}</Button>
-        </Col>
-        <Col span={24}>
-          <Text strong>Kurul Notu:</Text>
-          <div style={{ marginTop: 8, background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
-            <Text>{record.finalNot}</Text>
+          <div style={{ background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
+            <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Başvuru Tarihi</Text>
+            <Text strong>{record.submissionDate}</Text>
           </div>
         </Col>
       </Row>
     </div>
   )
+
+  const equivalencyRatio = boardReview?.intibak?.equivalencyRatio ?? null
+  const conditionsMet = boardReview?.intibak?.conditionsMet ?? true
+  const intibakRows = boardReview?.intibak?.rows ?? []
+
+  const isSubmitDisabled = decision === 'reject' && !rejectionCode
 
   return (
     <div style={styles.page}>
@@ -127,23 +242,36 @@ const FakulteKuruluDashboard = () => {
           items={[
             {
               key: 'pending',
-              label: `Karar Bekleniyor ${PENDING_FACULTY_STUDENTS.length}`,
+              label: `Karar Bekleniyor (${pendingList.length})`,
               children: (
                 <Table
-                  dataSource={PENDING_FACULTY_STUDENTS}
+                  dataSource={pendingList}
+                  loading={listLoading}
                   columns={[
-                    { title: 'Ad Soyad', dataIndex: 'ad', key: 'ad', render: (_, r) => `${r.ad} ${r.soyad}` },
-                    { title: 'Bölüm', dataIndex: 'bolum', key: 'bolum' },
-                    { title: 'Skoru', dataIndex: 'compositeScore', key: 'score' },
                     {
-                      title: 'İntibak',
-                      dataIndex: 'intibakStatus',
-                      key: 'intibak',
-                      render: (text) => (
-                        <Tag style={{ ...(text === 'Tamamlandı' ? TINT.green : TINT.amber), border: 'none', borderRadius: 6 }}>
-                          {text}
-                        </Tag>
-                      ),
+                      title: 'Ad Soyad',
+                      dataIndex: 'studentName',
+                      key: 'studentName',
+                    },
+                    {
+                      title: 'Bölüm',
+                      dataIndex: 'targetDepartment',
+                      key: 'targetDepartment',
+                    },
+                    {
+                      title: 'GPA',
+                      dataIndex: 'gpa',
+                      key: 'gpa',
+                    },
+                    {
+                      title: 'YKS Puanı',
+                      dataIndex: 'sayYksScore',
+                      key: 'sayYksScore',
+                    },
+                    {
+                      title: 'Başvuru Tarihi',
+                      dataIndex: 'submissionDate',
+                      key: 'submissionDate',
                     },
                     {
                       title: 'İşlem',
@@ -168,21 +296,36 @@ const FakulteKuruluDashboard = () => {
             },
             {
               key: 'approved',
-              label: `Sonuçlandırılanlar ${APPROVED_STUDENTS.length}`,
+              label: `Sonuçlandırılanlar (${completedList.length})`,
               children: (
                 <Table
-                  dataSource={APPROVED_STUDENTS}
+                  dataSource={completedList}
+                  loading={listLoading}
                   columns={[
-                    { title: 'Ad Soyad', dataIndex: 'ad', key: 'ad', render: (_, r) => `${r.ad} ${r.soyad}` },
-                    { title: 'Bölüm', dataIndex: 'bolum', key: 'bolum' },
-                    { title: 'Skoru', dataIndex: 'compositeScore', key: 'score' },
+                    {
+                      title: 'Ad Soyad',
+                      dataIndex: 'studentName',
+                      key: 'studentName',
+                    },
+                    {
+                      title: 'Bölüm',
+                      dataIndex: 'targetDepartment',
+                      key: 'targetDepartment',
+                    },
+                    {
+                      title: 'GPA',
+                      dataIndex: 'gpa',
+                      key: 'gpa',
+                    },
                     {
                       title: 'Karar',
-                      dataIndex: 'durum',
-                      key: 'durum',
-                      render: (text) => {
-                        const tint = text === 'Onaylandı' ? TINT.green : text === 'Reddedildi' ? TINT.red : TINT.amber
-                        return <Tag style={{ ...tint, border: 'none', borderRadius: 6 }}>{text}</Tag>
+                      dataIndex: 'status',
+                      key: 'status',
+                      render: (status) => {
+                        const isAccepted = status === 'FACULTY_BOARD_ACCEPTED'
+                        const tint = isAccepted ? TINT.green : TINT.red
+                        const label = isAccepted ? 'Onaylandı' : 'Reddedildi'
+                        return <Tag style={{ ...tint, border: 'none', borderRadius: 6 }}>{label}</Tag>
                       },
                     },
                     {
@@ -218,35 +361,59 @@ const FakulteKuruluDashboard = () => {
       <Modal
         title="Başvuru Değerlendirmesi"
         open={decisionModal}
-        onCancel={() => setDecisionModal(false)}
+        onCancel={closeModal}
         width={800}
         style={{ top: 20 }}
         footer={[
-          <Button key="cancel" onClick={() => setDecisionModal(false)}>İptal</Button>,
-          <Button key="submit" type="primary" danger>Değerlendirmeyi Tamamla ve İlet</Button>,
+          <Button key="cancel" onClick={closeModal}>İptal</Button>,
+          <Button
+            key="submit"
+            type="primary"
+            danger
+            loading={submitting}
+            disabled={isSubmitDisabled || modalLoading}
+            onClick={handleSubmit}
+          >
+            Değerlendirmeyi Tamamla ve İlet
+          </Button>,
         ]}
       >
-        {selectedStudent && (
+        {modalLoading ? (
+          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+            <Spin size="large" />
+          </div>
+        ) : boardReview && (
           <div style={{ maxHeight: '75vh', overflowY: 'auto', overflowX: 'hidden', paddingRight: 10 }}>
+
+            {/* belowThreshold uyarısı */}
+            {belowThresholdWarning != null && (
+              <Alert
+                style={{ marginBottom: 16 }}
+                type="warning"
+                showIcon
+                message={`Karar kaydedildi. Ancak denklik oranı (%${Math.round(belowThresholdWarning * 100)}) %80 eşiğinin altında.`}
+              />
+            )}
+
             <Row gutter={[16, 16]}>
               <Col span={24}>
                 <Title level={4} style={{ marginTop: 16 }}>Öğrenci Bilgileri</Title>
               </Col>
               <Col span={12}>
                 <Text strong>Ad Soyad:</Text>
-                <Text style={{ marginLeft: 8 }}>{selectedStudent.ad} {selectedStudent.soyad}</Text>
+                <Text style={{ marginLeft: 8 }}>{boardReview.application?.studentName}</Text>
               </Col>
               <Col span={12}>
                 <Text strong>Bölüm:</Text>
-                <Text style={{ marginLeft: 8 }}>{selectedStudent.bolum}</Text>
-              </Col>
-              <Col span={12}>
-                <Text strong>Mevcut Üniversite:</Text>
-                <Text style={{ marginLeft: 8 }}>{selectedStudent.mevcutUni}</Text>
+                <Text style={{ marginLeft: 8 }}>{boardReview.application?.targetDepartment}</Text>
               </Col>
               <Col span={12}>
                 <Text strong>GPA:</Text>
-                <Text style={{ marginLeft: 8 }}>{selectedStudent.gpa}</Text>
+                <Text style={{ marginLeft: 8 }}>{boardReview.application?.gpa}</Text>
+              </Col>
+              <Col span={12}>
+                <Text strong>YKS Puanı:</Text>
+                <Text style={{ marginLeft: 8 }}>{boardReview.application?.sayYksScore}</Text>
               </Col>
             </Row>
 
@@ -256,47 +423,100 @@ const FakulteKuruluDashboard = () => {
               <Col span={24}>
                 <Title level={4}>YGK Değerlendirmesi</Title>
               </Col>
-              <Col span={24}>
-                <Text strong>YGK Kararı:</Text>
-                <Tag style={{ marginLeft: 8, ...(selectedStudent.ygkKarari === 'Asil Liste' ? TINT.green : TINT.amber), border: 'none', borderRadius: 6 }}>
-                  {selectedStudent.ygkKarari}
-                </Tag>
-              </Col>
-              <Col span={24}>
-                <Text strong>YGK Notu:</Text>
-                <div style={{ marginTop: 8, background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
-                  <Text>{selectedStudent.ygkNotu}</Text>
+              <Col span={8}>
+                <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Kompozit Skor</Text>
+                  <Text strong style={{ fontSize: 18, color: '#8B1A2B' }}>{boardReview.compositeScore}</Text>
                 </div>
               </Col>
-              <Col span={24}>
+              <Col span={8}>
+                <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Sıralama</Text>
+                  <Text strong style={{ fontSize: 18 }}>#{boardReview.ranking}</Text>
+                </div>
+              </Col>
+              <Col span={8}>
+                <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
+                  <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>Koşullar</Text>
+                  <Tag
+                    style={{
+                      marginTop: 4,
+                      ...(boardReview.conditionsMet ? TINT.green : TINT.red),
+                      border: 'none',
+                      borderRadius: 6,
+                    }}
+                  >
+                    {boardReview.conditionsMet ? 'Sağlandı' : 'Sağlanamadı'}
+                  </Tag>
+                </div>
+              </Col>
+              {boardReview.generalNote && (
+                <Col span={24}>
+                  <Text strong>YGK Notu:</Text>
+                  <div style={{ marginTop: 8, background: '#f5f5f5', padding: 12, borderRadius: 6 }}>
+                    <Text>{boardReview.generalNote}</Text>
+                  </div>
+                </Col>
+              )}
+            </Row>
+
+            <Divider />
+
+            {/* İntibak Tablosu */}
+            <Row gutter={[16, 16]}>
+              <Col span={24} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Button
                   type="link"
                   icon={intibakExpanded ? <UpOutlined /> : <DownOutlined />}
-                  style={{ paddingLeft: 0 }}
+                  style={{ paddingLeft: 0, fontWeight: 600, fontSize: 16 }}
                   onClick={() => setIntibakExpanded(prev => !prev)}
                 >
-                  {selectedStudent.intibakRaporu}
+                  İntibak Raporu
                 </Button>
-                {intibakExpanded && (
-                  <div style={{ marginTop: 12 }}>
-                    <Table
-                      columns={[
-                        { title: 'Mevcut Ders Kodu', dataIndex: 'mevcutDersKodu', key: 'mevcutDersKodu' },
-                        { title: 'Mevcut Ders Adı', dataIndex: 'mevcutDersAdi', key: 'mevcutDersAdi' },
-                        { title: 'Kredi', dataIndex: 'kredi', key: 'kredi' },
-                        { title: 'İYTE Ders Kodu', dataIndex: 'iyeteDersKodu', key: 'iyeteDersKodu' },
-                        { title: 'İYTE Ders Adı', dataIndex: 'iyeteDersAdi', key: 'iyeteDersAdi' },
-                        { title: 'Kredi', dataIndex: 'iyteKredi', key: 'iyteKredi' },
-                        { title: 'Denklik', dataIndex: 'denklik', key: 'denklik' },
-                      ]}
-                      dataSource={INTIBAK_DATA}
-                      pagination={false}
-                      size="small"
-                      bordered
-                    />
-                  </div>
+                {conditionsMet && equivalencyRatio != null && (
+                  <Tag
+                    style={{
+                      ...(equivalencyRatio >= 0.8 ? TINT.green : equivalencyRatio >= 0.5 ? TINT.amber : TINT.red),
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      padding: '2px 10px',
+                    }}
+                  >
+                    Denklik Oranı: %{Math.round(equivalencyRatio * 100)}
+                  </Tag>
                 )}
               </Col>
+              {intibakExpanded && (
+                <Col span={24}>
+                  <Table
+                    columns={[
+                      { title: 'Mevcut Ders Kodu', dataIndex: 'sourceCode', key: 'sourceCode' },
+                      { title: 'Mevcut Ders Adı', dataIndex: 'sourceName', key: 'sourceName' },
+                      { title: 'Kredi', dataIndex: 'sourceCredit', key: 'sourceCredit' },
+                      { title: 'Not', dataIndex: 'sourceGrade', key: 'sourceGrade' },
+                      { title: 'İYTE Ders Kodu', dataIndex: 'targetCode', key: 'targetCode', render: (v) => v ?? '—' },
+                      { title: 'İYTE Ders Adı', dataIndex: 'targetName', key: 'targetName', render: (v) => v ?? '—' },
+                      { title: 'Kredi', dataIndex: 'targetCredit', key: 'targetCredit', render: (v) => v ?? '—' },
+                      { title: 'İYTE Not', dataIndex: 'targetGrade', key: 'targetGrade', render: (v) => v ?? '—' },
+                      {
+                        title: 'Denklik',
+                        dataIndex: 'equivalencyStatus',
+                        key: 'equivalencyStatus',
+                        render: (status) => {
+                          const info = DENKLIK_LABELS[status] ?? { label: status, tint: TINT.gray }
+                          return <Tag style={{ ...info.tint, border: 'none', borderRadius: 6 }}>{info.label}</Tag>
+                        },
+                      },
+                    ]}
+                    dataSource={intibakRows}
+                    rowKey="id"
+                    pagination={false}
+                    size="small"
+                    bordered
+                  />
+                </Col>
+              )}
             </Row>
 
             <Divider />
@@ -306,13 +526,27 @@ const FakulteKuruluDashboard = () => {
                 <Title level={4}>Kurul Kararı</Title>
               </Col>
               <Col span={24}>
-                <Radio.Group value={decision} onChange={(e) => setDecision(e.target.value)}>
+                <Radio.Group value={decision} onChange={(e) => { setDecision(e.target.value); setRejectionCode(null) }}>
                   <Space direction="vertical">
-                    <Radio value="approve">Değerlendirmeyi Onayla</Radio>
-                    <Radio value="reject">Değerlendirmeyi Reddet</Radio>
+                    <Radio value="approve">Başvuruyu Onayla</Radio>
+                    <Radio value="reject">Başvuruyu Reddet</Radio>
                   </Space>
                 </Radio.Group>
               </Col>
+              {decision === 'reject' && (
+                <Col span={24}>
+                  <Text strong>
+                    Ret Gerekçesi <span style={{ color: '#B91C1C' }}>*</span>
+                  </Text>
+                  <Select
+                    style={{ width: '100%', marginTop: 8 }}
+                    placeholder="Gerekçe seçiniz..."
+                    value={rejectionCode}
+                    onChange={setRejectionCode}
+                    options={REJECTION_CODES}
+                  />
+                </Col>
+              )}
             </Row>
 
             <Divider />
