@@ -75,11 +75,37 @@ const YGKDashboard = () => {
   const [dualSource, setDualSource] = useState(false)
   const [rowSaving, setRowSaving] = useState(false)
   const [rowForm] = Form.useForm()
+  const watchedEquivalencyStatus = Form.useWatch('equivalencyStatus', rowForm)
+
+  const MOCK_INTIBAK = {
+    1: {
+      rows: [
+        { id: 1, sourceCode: 'BLM101', sourceName: 'Programlamaya Giriş', sourceCredit: 4, sourceGrade: 'AA', source2Code: null, targetCode: 'CENG101', targetName: 'Introduction to Programming', targetCredit: 4, targetGrade: 'AA', equivalencyStatus: 'TAM_DENKLIK' },
+        { id: 2, sourceCode: 'MAT201', sourceName: 'Diferansiyel Denklemler', sourceCredit: 3, sourceGrade: 'BA', source2Code: null, targetCode: 'MATH201', targetName: 'Differential Equations', targetCredit: 3, targetGrade: 'BA', equivalencyStatus: 'KISMI_DENKLIK' },
+      ],
+      equivalencyRatio: 0.87,
+      conditionsMet: true,
+    },
+    2: {
+      rows: [
+        { id: 3, sourceCode: 'BLM101', sourceName: 'Programlamaya Giriş', sourceCredit: 4, sourceGrade: 'CC', source2Code: null, targetCode: 'CENG101', targetName: 'Introduction to Programming', targetCredit: 4, targetGrade: 'CC', equivalencyStatus: 'KISMI_DENKLIK' },
+        { id: 4, sourceCode: 'BIO100', sourceName: 'Biology', sourceCredit: 2, sourceGrade: 'FF', source2Code: null, targetCode: null, targetName: null, targetCredit: null, targetGrade: null, equivalencyStatus: 'DENK_DEGIL' },
+      ],
+      equivalencyRatio: 0.62,
+      conditionsMet: true,
+    },
+    3: {
+      rows: [],
+      equivalencyRatio: null,
+      conditionsMet: true,
+    },
+  }
 
   const fetchIntibak = async (applicationId) => {
     setIntibakLoading(true)
     try {
-      const data = await intibakApi.getIntibak(applicationId)
+      const mockData = MOCK_INTIBAK[applicationId]
+      const data = mockData ?? await intibakApi.getIntibak(applicationId)
       setIntibakRows(data.rows ?? [])
       setEquivalencyRatio(data.equivalencyRatio)
       if (data.conditionsMet === false) {
@@ -151,6 +177,12 @@ const YGKDashboard = () => {
         values.source2Credit = null
         values.source2Grade = null
       }
+      if (values.equivalencyStatus === 'DENK_DEGIL') {
+        values.targetCode = null
+        values.targetName = null
+        values.targetCredit = null
+        values.targetGrade = null
+      }
       let updatedTable
       if (editingRow) {
         updatedTable = await intibakApi.updateRow(selectedStudent.id, editingRow.id, values)
@@ -206,9 +238,10 @@ const YGKDashboard = () => {
           : row.sourceCredit,
     },
     { title: 'Not', dataIndex: 'sourceGrade', key: 'sourceGrade', width: 55 },
-    { title: 'İYTE Kodu', dataIndex: 'targetCode', key: 'targetCode', width: 100 },
-    { title: 'İYTE Ders Adı', dataIndex: 'targetName', key: 'targetName' },
-    { title: 'İYTE Kredi', dataIndex: 'targetCredit', key: 'targetCredit', width: 80 },
+    { title: 'İYTE Kodu', dataIndex: 'targetCode', key: 'targetCode', width: 100, render: (v) => v ?? '—' },
+    { title: 'İYTE Ders Adı', dataIndex: 'targetName', key: 'targetName', render: (v) => v ?? '—' },
+    { title: 'İYTE Kredi', dataIndex: 'targetCredit', key: 'targetCredit', width: 80, render: (v) => v ?? '—' },
+    { title: 'İYTE Not', dataIndex: 'targetGrade', key: 'targetGrade', width: 75, render: (v) => v ?? '—' },
     {
       title: 'Denklik',
       dataIndex: 'equivalencyStatus',
@@ -535,6 +568,15 @@ const YGKDashboard = () => {
                   </Tag>
                 )}
               </Col>
+              {equivalencyRatio != null && equivalencyRatio < 0.8 && (
+                <Col span={24}>
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message={`Denklik oranı (%${Math.round(equivalencyRatio * 100)}) %80 eşiğinin altında — bu öğrenci yatay geçiş yapamaz.`}
+                  />
+                </Col>
+              )}
               <Col span={24}>
                 <Table
                   columns={intibakColumns}
@@ -656,28 +698,37 @@ const YGKDashboard = () => {
           <Divider orientation="left" orientationMargin={0} style={{ fontSize: 13, color: '#666' }}>
             İYTE Dersi
           </Divider>
-          <Row gutter={12}>
-            <Col span={8}>
-              <Form.Item name="targetCode" label="Ders Kodu" rules={[{ required: true, message: 'Zorunlu' }]}>
-                <Input placeholder="CENG101" />
-              </Form.Item>
-            </Col>
-            <Col span={10}>
-              <Form.Item name="targetName" label="Ders Adı" rules={[{ required: true, message: 'Zorunlu' }]}>
-                <Input placeholder="Introduction to Programming" />
-              </Form.Item>
-            </Col>
-            <Col span={3}>
-              <Form.Item name="targetCredit" label="Kredi" rules={[{ required: true, message: 'Zorunlu' }]}>
-                <InputNumber min={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={3}>
-              <Form.Item name="targetGrade" label="Not">
-                <Select options={GRADE_OPTIONS} placeholder="-" allowClear />
-              </Form.Item>
-            </Col>
-          </Row>
+          {watchedEquivalencyStatus === 'DENK_DEGIL' ? (
+            <Alert
+              type="info"
+              showIcon
+              message="Denk Değil seçildiğinde İYTE dersi girilmez."
+              style={{ marginBottom: 16 }}
+            />
+          ) : (
+            <Row gutter={12}>
+              <Col span={8}>
+                <Form.Item name="targetCode" label="Ders Kodu" rules={[{ required: true, message: 'Zorunlu' }]}>
+                  <Input placeholder="CENG101" />
+                </Form.Item>
+              </Col>
+              <Col span={10}>
+                <Form.Item name="targetName" label="Ders Adı" rules={[{ required: true, message: 'Zorunlu' }]}>
+                  <Input placeholder="Introduction to Programming" />
+                </Form.Item>
+              </Col>
+              <Col span={3}>
+                <Form.Item name="targetCredit" label="Kredi" rules={[{ required: true, message: 'Zorunlu' }]}>
+                  <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={3}>
+                <Form.Item name="targetGrade" label="Not">
+                  <Select options={GRADE_OPTIONS} placeholder="-" allowClear />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
 
           <Form.Item
             name="equivalencyStatus"

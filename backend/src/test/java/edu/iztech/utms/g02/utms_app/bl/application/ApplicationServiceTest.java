@@ -150,7 +150,7 @@ class ApplicationServiceTest {
 
         assertThatThrownBy(() -> applicationService.create(request))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("2.50'nin altındadır"); // Baraj uyarısını görmeliyiz
+                .hasMessageContaining("yatay geçiş barajı"); // GPA barajı uyarısını görmeliyiz (4/100 sistem)
 
         verify(applicationRepository, never()).save(any(Application.class));
     }
@@ -173,9 +173,58 @@ class ApplicationServiceTest {
         // Eylem ve Doğrulama
         assertThatThrownBy(() -> applicationService.create(request))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("şu an 2. veya 4. yarıyılı tamamlıyor olmalısınız"); 
+                .hasMessageContaining("Yalnızca 3. veya 5. yarıyıla başvuru yapılabilir.");
 
         verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    @Test
+    void create_yksRankAboveEngineeringLimit_throwsIllegalArgumentException() {
+        Student student = buildStudent();
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
+
+        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
+
+        // GPA yeterli (3.5) ama Mühendislik hedefi için sıralama 320.000 > 300.000 → REDDEDİLMELİ.
+        when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
+                .thenReturn(new YoksisStudentResponse(
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 3.5, 410.0, 320000, 4
+                ));
+
+        ApplicationCreateRequest request = buildCreateRequest(); // hedef: Mühendislik Fakültesi
+
+        assertThatThrownBy(() -> applicationService.create(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("YKS başarı sıralamanız");
+
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    @Test
+    void create_gpaOn100Scale_savesApplication() {
+        Student student = buildStudent();
+        setupSecurityContext("student@iyte.edu.tr", "ROLE_STUDENT");
+
+        when(studentRepository.findByEmail("student@iyte.edu.tr")).thenReturn(Optional.of(student));
+
+        // 100'lük sistemde 75 → 4'lüğe çevrilir: 2.50 + (75-70)*0.05 = 2.75 (>= 2.50) → GEÇER.
+        when(yoksisIntegrationService.fetchAcademicDataByTckn("12345678901"))
+                .thenReturn(new YoksisStudentResponse(
+                        "İYTE", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği", 2, 75.0, 410.0, 12345, 100
+                ));
+        when(applicationRepository.save(any(Application.class))).thenAnswer(invocation -> {
+            Application application = invocation.getArgument(0);
+            application.setApplicationId(11);
+            return application;
+        });
+
+        ApplicationResponse response = applicationService.create(buildCreateRequest());
+
+        // Kaydedilen GPA 4'lük sisteme normalize edilmiş değer olmalı (75/100 -> 2.75/4.00).
+        ArgumentCaptor<Application> captor = ArgumentCaptor.forClass(Application.class);
+        verify(applicationRepository).save(captor.capture());
+        assertThat(captor.getValue().getGpa()).isEqualTo(2.75);
+        assertThat(response.getId()).isEqualTo(11);
     }
 
     // ==========================================

@@ -174,6 +174,32 @@ class ResultServiceTest {
         verify(publishedResultRepository, never()).save(any());
     }
 
+    @Test
+    void publish_notificationFailure_doesNotRollbackPublish() {
+        // TC-6.3: Bildirim hatası yayını geri almamalı — sonuç kaydedilmeli, hata loglanmalı.
+        loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
+        Application app = buildApp(99, ApplicationStatus.OIDB_FINAL_REVIEW);
+        when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.FACULTY_BOARD_REVIEW), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(app)));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.ACCEPTED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.REJECTED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(publishedResultRepository.existsByApplication_ApplicationId(99)).thenReturn(false);
+        when(publishedResultRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.doThrow(new RuntimeException("SMTP bağlantısı kesildi"))
+                .when(notificationService).create(any(), any(), any());
+
+        int count = resultService.publishResults();
+
+        assertThat(count).isEqualTo(1);
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.ACCEPTED);
+        verify(publishedResultRepository).save(any());
+    }
+
     // ==========================================
     // SONUÇ GÖRÜNTÜLEME — getResults()
     // ==========================================

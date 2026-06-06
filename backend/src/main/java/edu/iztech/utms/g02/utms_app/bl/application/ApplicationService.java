@@ -13,6 +13,7 @@ import edu.iztech.utms.g02.utms_app.dal.department.repository.DepartmentReposito
 
 import edu.iztech.utms.g02.utms_app.integration.yoksis.YoksisIntegrationService; // EKLENDİ
 import edu.iztech.utms.g02.utms_app.integration.yoksis.dto.YoksisStudentResponse; // EKLENDİ
+import edu.iztech.utms.g02.utms_app.integration.yoksis.GpaScaleConverter; // GPA 100'lük -> 4'lük normalizasyonu
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -115,6 +117,25 @@ public class ApplicationService {
             throw new IllegalArgumentException("Yalnızca bir program için yatay geçiş başvurusu yapabilirsiniz. Devam eden bir başvurunuz bulunduğu için yeni başvuru oluşturamazsınız.");
         }
 
+        // 2. Diğer geçerlilik kontrolleri
+        if (!Boolean.TRUE.equals(req.getKvkkAccepted())) {
+            throw new IllegalArgumentException("KVKK onayı zorunludur.");
+        }
+
+        // 3. Dış Sistem Entegrasyonu: YÖKSİS'ten akademik verileri çek
+        YoksisStudentResponse yoksisData = yoksisIntegrationService.fetchAcademicDataByTckn(currentStudent.getTckn());
+
+        // 3b. NORMALİZASYON: YÖKSİS GPA'yı 100'lük sistemde dönmüş olsa bile sistemin tek
+        //     standardı olan 4'lük ölçeğe çeviririz. Bundan sonra her yerde (doğrulama,
+        //     kayıt, frontend) yalnızca 4'lük değer kullanılır.
+        double normalizedGpa = GpaScaleConverter.toFourScale(yoksisData.gpa(), yoksisData.gpaScale());
+
+        // 4. AKADEMİK YETERLİLİK BARAJLARI (GPA + YKS sıralaması) — kayıttan/taslaktan ÖNCE.
+        //    Hedef program (Mühendislik/Mimarlık) değiştiğinde sıralama barajı da değişeceği
+        //    için bu kontrol taslak yeniden kullanımından ÖNCE çalışmalıdır; aksi halde
+        //    önceden onaylı bir taslak farklı bir hedefe taşınarak baraj atlatılabilir.
+        validateApplicationConditions(req, normalizedGpa, yoksisData);
+
         // Yarım kalmış bir taslak varsa onu YENİDEN KULLAN (yeni taslak üretme). Hedef program
         // değişmiş olabileceğinden taslağın hedef/dönem alanlarını güncelleriz. Böylece belge
         // yükleme/iptal gibi sebeplerle yarıda kalan akış öğrenciyi kilitlemez.
@@ -130,26 +151,15 @@ public class ApplicationService {
             return toResponse(applicationRepository.save(draft));
         }
 
-        //2. Diğer geçerlilik kontrolleri // gerekli miiii?
-        if (!Boolean.TRUE.equals(req.getKvkkAccepted())) {
-            throw new IllegalArgumentException("KVKK onayı zorunludur.");
-        }
-
-        // 3. Dış Sistem Entegrasyonu: YÖKSİS'ten akademik verileri çek
-        YoksisStudentResponse yoksisData = yoksisIntegrationService.fetchAcademicDataByTckn(currentStudent.getTckn());
-
-        // YENİ EKLENEN: Akademik Yeterlilik Barajı (Minimum 2.50 GPA)
-        if (yoksisData.gpa() < 2.50) {
-            throw new IllegalArgumentException("Başvurunuz reddedildi: Genel not ortalamanız (GPA) IZTECH yatay geçiş barajı olan 2.50'nin altındadır.");
-        }
-
         // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü
         // (Not: Yoksis'ten gelen field ismine göre yoksisData.semester(), grade() veya year() gibi kendi record'ındaki ismi kullanmalısın)
         // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü (Integer Tipi ile)
         Integer currentSemester = yoksisData.semester(); 
         
+        // Yalnızca 1. sınıf (2. yarıyıl tamamlamış → 3. yarıyıla) ve 2. sınıf (4. yarıyıl
+        // tamamlamış → 5. yarıyıla) başvurabilir. 3./4. sınıf (yarıyıl 6/8) reddedilir.
         if (currentSemester == null || (currentSemester != 2 && currentSemester != 4)) {
-            throw new IllegalArgumentException("Başvurunuz reddedildi: Yatay geçiş başvuruları yalnızca 3. veya 5. yarıyıllara yapılabilir. Başvuru yapabilmek için şu an 2. veya 4. yarıyılı tamamlıyor olmalısınız.");
+            throw new IllegalArgumentException("Yalnızca 3. veya 5. yarıyıla başvuru yapılabilir.");
         }
 
         // YENİ: Öğrencinin seçtiği hedef yarıyıl (3/5), YÖKSİS'teki mevcut yarıyıl ile tutarlı olmalı.
@@ -179,7 +189,7 @@ public class ApplicationService {
                 .currentUniversity(yoksisData.currentUniversity())
                 .currentFaculty(yoksisData.currentFaculty())
                 .currentDepartment(yoksisData.currentDepartment())
-                .gpa(yoksisData.gpa())
+                .gpa(normalizedGpa) // her zaman 4'lük sistemde saklanır (100'lük gelse bile çevrilmiştir)
 
                 .build();
 
@@ -210,6 +220,56 @@ public class ApplicationService {
                 : facultyRepository.findByName(app.getTargetFaculty()).orElse(null));
         app.setDepartment(app.getTargetDepartment() == null ? null
                 : departmentRepository.findByName(app.getTargetDepartment()).orElse(null));
+    }
+
+    /**
+     * Akademik başvuru koşullarını (iş kuralları) kayıttan ÖNCE doğrular. Bir kural
+     * sağlanmazsa {@link IllegalArgumentException} fırlatılır → {@code GlobalExceptionHandler}
+     * bunu 400 Bad Request + açıklayıcı mesaj olarak döndürür; başvuru veritabanına HİÇ gitmez.
+     *
+     * <p>Kurallar:
+     * <ol>
+     *   <li><b>GPA barajı:</b> 4'lük sistemde &ge; 2.50. (100'lük gelen notlar bu noktaya
+     *       kadar {@link GpaScaleConverter} ile 4'lüğe çevrilmiş olur; {@code gpa4} parametresi
+     *       her zaman 4'lük ölçektedir.)</li>
+     *   <li><b>YKS başarı sıralaması:</b> hedef Mühendislik ise &le; 300.000,
+     *       hedef Mimarlık ise &le; 250.000.</li>
+     * </ol>
+     */
+    private void validateApplicationConditions(ApplicationCreateRequest req, double gpa4, YoksisStudentResponse yoksisData) {
+        // --- KURAL 1: Not Ortalaması (GPA) — 4'lük sisteme normalize edilmiş değer ---
+        if (gpa4 < 2.50) {
+            throw new IllegalArgumentException(String.format(Locale.ROOT,
+                    "Başvurunuz reddedildi: Genel not ortalamanız (%.2f/4.00), yatay geçiş barajı olan 2.50/4.00 değerinin altındadır.",
+                    gpa4));
+        }
+
+        // --- KURAL 2: ÖSYS/YKS Başarı Sıralaması (hedef programa göre) ---
+        Integer rankLimit = resolveYksRankLimit(req.getTargetFaculty(), req.getTargetDepartment());
+        if (rankLimit != null) {
+            Integer rank = yoksisData.yksRank();
+            if (rank == null || rank > rankLimit) {
+                throw new IllegalArgumentException(String.format(Locale.ROOT,
+                        "Başvurunuz reddedildi: Seçtiğiniz program için YKS başarı sıralamanız en fazla %,d olmalıdır (mevcut sıralamanız: %s).",
+                        rankLimit, (rank == null ? "bilinmiyor" : String.format(Locale.ROOT, "%,d", rank))));
+            }
+        }
+    }
+
+    /**
+     * Hedef fakülte/bölüm metninden YKS sıralama barajını çözer:
+     * <ul>
+     *   <li>"Mühendislik" içeren hedefler &rarr; 300.000</li>
+     *   <li>"Mimarlık" içeren hedefler &rarr; 250.000</li>
+     *   <li>diğerleri &rarr; {@code null} (bu kural uygulanmaz)</li>
+     * </ul>
+     */
+    private Integer resolveYksRankLimit(String targetFaculty, String targetDepartment) {
+        String hay = ((targetFaculty == null ? "" : targetFaculty) + " "
+                + (targetDepartment == null ? "" : targetDepartment)).toLowerCase(Locale.ROOT);
+        if (hay.contains("mühendis")) return 300_000;   // Mühendislik programları
+        if (hay.contains("mimar"))    return 250_000;   // Mimarlık programları
+        return null;
     }
 
     @Transactional
