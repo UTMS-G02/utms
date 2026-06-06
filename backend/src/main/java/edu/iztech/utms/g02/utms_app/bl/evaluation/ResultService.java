@@ -4,7 +4,9 @@ import edu.iztech.utms.g02.utms_app.api.evaluation.dto.PublishedResultResponse;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
+import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.EvaluationResult;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.PublishedResult;
+import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.EvaluationResultRepository;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.PublishedResultRepository;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.User;
@@ -18,7 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -35,6 +40,7 @@ public class ResultService {
 
     private final ApplicationRepository applicationRepository;
     private final PublishedResultRepository publishedResultRepository;
+    private final EvaluationResultRepository evaluationResultRepository; // asil/yedek için bölüm-içi ranking
     private final UserRepository userRepository;
 
     /**
@@ -48,6 +54,9 @@ public class ResultService {
         User publisher = resolveCurrentUser();
         int count = 0;
 
+        // Asil/Yedek: bölüm bazında kabul edilenleri ranking'e göre sıralayıp ata (Department.quota).
+        Map<Integer, String> listTypeByApp = computeListTypes();
+
         // Kabul edilenler: Dekanlık, Fakülte Kurulu'nca kabul edilen başvuruyu ÖİDB'ye iletince
         // statü OIDB_FINAL_REVIEW olur; ÖİDB yayınlayınca OIDB_FINAL_REVIEW → ACCEPTED.
         for (Application app : findByStatus(ApplicationStatus.OIDB_FINAL_REVIEW)) {
@@ -57,6 +66,7 @@ public class ResultService {
             publishedResultRepository.save(PublishedResult.builder()
                     .application(app)
                     .finalDecision("ACCEPTED")
+                    .listType(listTypeByApp.get(app.getApplicationId()))
                     .publishedBy(publisher)
                     .build());
             app.setStatus(ApplicationStatus.ACCEPTED);
@@ -79,6 +89,41 @@ public class ResultService {
         }
 
         return count;
+    }
+
+    /**
+     * Bölüm bazında asil/yedek atar: kabul edilen başvuruları (yeni {@code OIDB_FINAL_REVIEW} +
+     * önceden {@code ACCEPTED}) bölüm-içi {@code EvaluationResult.ranking}'e göre sıralar; ilk
+     * {@code Department.quota} → PRIMARY (asil), gerisi → WAITLIST (yedek). Quota null ise sınırsız
+     * (hepsi asil). Bölümü olmayan başvuru atama dışı kalır (listType null).
+     */
+    private Map<Integer, String> computeListTypes() {
+        List<Application> accepted = new ArrayList<>();
+        accepted.addAll(findByStatus(ApplicationStatus.OIDB_FINAL_REVIEW));
+        accepted.addAll(findByStatus(ApplicationStatus.ACCEPTED));
+
+        Map<Integer, List<Application>> byDepartment = accepted.stream()
+                .filter(a -> a.getDepartment() != null)
+                .collect(Collectors.groupingBy(a -> a.getDepartment().getDepartmentId()));
+
+        Map<Integer, String> listTypeByApp = new HashMap<>();
+        for (List<Application> deptApps : byDepartment.values()) {
+            deptApps.sort(Comparator.comparing(this::rankingOf,
+                    Comparator.nullsLast(Comparator.naturalOrder())));
+            Integer quota = deptApps.get(0).getDepartment().getQuota();
+            for (int i = 0; i < deptApps.size(); i++) {
+                boolean asil = quota == null || i < quota;
+                listTypeByApp.put(deptApps.get(i).getApplicationId(), asil ? "PRIMARY" : "WAITLIST");
+            }
+        }
+        return listTypeByApp;
+    }
+
+    /** Başvurunun bölüm-içi sıralaması (yoksa null → sona). */
+    private Integer rankingOf(Application app) {
+        return evaluationResultRepository.findByApplication_ApplicationId(app.getApplicationId())
+                .map(EvaluationResult::getRanking)
+                .orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -110,6 +155,7 @@ public class ResultService {
                 .applicationId(app.getApplicationId())
                 .studentName(buildFullName(app.getStudent()))
                 .finalDecision(result.getFinalDecision())
+                .listType(result.getListType())
                 .publishedAt(result.getPublishedAt())
                 .build();
     }

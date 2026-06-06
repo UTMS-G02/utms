@@ -22,4 +22,9 @@ public class Department {
     @ManyToOne
     @JoinColumn(name = "faculty_id", nullable = false)
     private Faculty faculty;
+
+    // Pair 3: bölüm asil kontenjanı. Yayında bölüm-içi sıralamada ilk `quota` asil, gerisi yedek.
+    // Additive + nullable (mevcut satırları bozmaz). Null = sınırsız (hepsi asil).
+    @Column
+    private Integer quota;
 }

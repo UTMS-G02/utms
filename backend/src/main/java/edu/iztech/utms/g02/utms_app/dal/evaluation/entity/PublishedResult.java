@@ -33,6 +33,10 @@ public class PublishedResult {
     @Column(nullable = false, length = 20)
     private String finalDecision;
 
+    // Asil/Yedek: "PRIMARY" (asil) / "WAITLIST" (yedek). Kabul edilenlere atanır; red için null.
+    @Column(length = 20)
+    private String listType;
+
     @CreationTimestamp
     private LocalDateTime publishedAt;
 

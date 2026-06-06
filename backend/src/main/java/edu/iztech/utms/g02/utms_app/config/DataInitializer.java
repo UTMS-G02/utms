@@ -57,9 +57,13 @@ public class DataInitializer implements CommandLineRunner {
     private final NotificationRepository notificationRepository;
     private final PasswordEncoder passwordEncoder;
 
+    // Pair 3: seed/backfill için varsayılan bölüm kontenjanı (ayarlanabilir).
+    private static final int DEFAULT_QUOTA = 5;
+
     @Override
     public void run(String... args) throws Exception {
         seedFacultiesAndDepartments();
+        backfillDepartmentQuota();
 
         if (userRepository.count() == 0) {
             String encodedPassword = passwordEncoder.encode("test123");
@@ -102,6 +106,20 @@ public class DataInitializer implements CommandLineRunner {
 
         // UC-15: Her kullanıcıya örnek bildirimler (idempotent — bir kısmı okunmamış).
         seedNotifications();
+    }
+
+    /**
+     * Pair 3: kontenjanı (quota) boş olan bölümleri varsayılan değerle doldurur. Yeni DB'de
+     * bölümler kontenjansız oluşturulur; bu hem onları hem eski kayıtları doldurur (asil/yedek için).
+     * İleride gerçek kontenjanlar buradan/DB'den ayarlanabilir.
+     */
+    private void backfillDepartmentQuota() {
+        departmentRepository.findAll().forEach(dept -> {
+            if (dept.getQuota() == null) {
+                dept.setQuota(DEFAULT_QUOTA);
+                departmentRepository.save(dept);
+            }
+        });
     }
 
     /**
