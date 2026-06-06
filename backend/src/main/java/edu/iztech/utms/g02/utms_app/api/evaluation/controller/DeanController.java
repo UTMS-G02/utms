@@ -36,6 +36,13 @@ public class DeanController {
         return ResponseEntity.ok(deanQueueService.list(queue));
     }
 
+    /** ÖİDB'den gelen başvuruyu ilgili bölümün YGK'sına iletir (TC-10.0, fakülte-kapsamlı). */
+    @PreAuthorize("hasRole('DEAN_OFFICE')")
+    @PatchMapping("/applications/{id}/forward-to-ygk")
+    public ResponseEntity<ApplicationResponse> forwardToYgk(@PathVariable Integer id) {
+        return ResponseEntity.ok(deanForwardService.forwardToYgk(id));
+    }
+
     /** YGK'dan gelen başvuruyu Fakülte Kurulu'na iletir (karar yok, fakülte-kapsamlı). */
     @PreAuthorize("hasRole('DEAN_OFFICE')")
     @PatchMapping("/applications/{id}/forward-to-faculty-board")

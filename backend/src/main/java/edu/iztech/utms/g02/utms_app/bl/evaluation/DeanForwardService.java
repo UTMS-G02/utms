@@ -33,6 +33,12 @@ public class DeanForwardService {
     private final ApplicationService applicationService;
     private final DeanIdentity deanIdentity;
 
+    /** ÖİDB'den gelen başvuruyu (ilgili bölümün) YGK'sına iletir — TC-10.0 (karar yok). */
+    @Transactional
+    public ApplicationResponse forwardToYgk(Integer applicationId) {
+        return forward(applicationId, ApplicationStatus.DEAN_OFFICE_REVIEW, ApplicationStatus.EVALUATION_QUEUE);
+    }
+
     /** YGK'dan gelen başvuruyu Fakülte Kurulu'na iletir (karar yok). */
     @Transactional
     public ApplicationResponse forwardToFacultyBoard(Integer applicationId) {

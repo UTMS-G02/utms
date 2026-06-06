@@ -33,11 +33,11 @@ class DeanQueueServiceTest {
     @InjectMocks private DeanQueueService service;
 
     @Test
-    void list_fromOidb_scopesToDeanFaculty_andUsesEvaluationQueueStatus() {
+    void list_fromOidb_scopesToDeanFaculty_andUsesDeanOfficeReviewStatus() {
         when(deanIdentity.currentFacultyId()).thenReturn(10);
         Application app = Application.builder().applicationId(1).build();
         when(applicationRepository.findByStatusInAndFaculty_FacultyId(
-                eq(List.of(ApplicationStatus.EVALUATION_QUEUE)), eq(10), any(Pageable.class)))
+                eq(List.of(ApplicationStatus.DEAN_OFFICE_REVIEW)), eq(10), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(app)));
         when(applicationService.getApplicationById(1)).thenReturn(ApplicationResponse.builder().id(1).build());
 
@@ -63,7 +63,7 @@ class DeanQueueServiceTest {
     @Test
     void queueEnum_mapsToExpectedStatuses() {
         assertThat(DeanQueueService.Queue.FROM_OIDB.statuses)
-                .containsExactly(ApplicationStatus.EVALUATION_QUEUE);
+                .containsExactly(ApplicationStatus.DEAN_OFFICE_REVIEW);
         assertThat(DeanQueueService.Queue.FROM_YGK.statuses)
                 .containsExactly(ApplicationStatus.YGK_REVIEW_DONE);
         assertThat(DeanQueueService.Queue.FROM_FACULTY.statuses)
