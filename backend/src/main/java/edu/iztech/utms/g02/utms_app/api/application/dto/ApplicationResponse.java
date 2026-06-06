@@ -77,6 +77,11 @@ public class ApplicationResponse {
     private Integer modifiedBy;
     private LocalDateTime modifiedAt;
 
+    // YDYO sonuçları "Sonuçları ÖİDB'ye İlet" ile resmen iletildi mi? ÖİDB paneli bu
+    // bayrak false iken YDYO_ACCEPTED/REJECTED kararını gizler (maskeler); YDYO paneli
+    // ise iletilen kayıtları salt-okunur (kilitli) gösterir.
+    private boolean ydyoForwardedToOidb;
+
     //EKLENDI: YÖKSİS ve YKS verileri
     private String currentUniversity;
     private String currentFaculty;

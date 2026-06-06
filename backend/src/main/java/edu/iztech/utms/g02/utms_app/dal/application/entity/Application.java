@@ -137,6 +137,17 @@ public class Application {
 
     private LocalDateTime ydyoModifiedDate;
 
+    // YDYO değerlendirmesi "Sonuçları ÖİDB'ye İlet" ile resmen ÖİDB'ye iletildi mi?
+    // false iken: YDYO kararı (ACCEPTED/REJECTED) DB'de olsa bile ÖİDB'ye GÖRÜNMEZ
+    // (ÖİDB panelinde "Değerlendiriliyor / YDYO'da" olarak maskelenir). YDYO ilet
+    // butonuna basınca true olur ve KALICI hâle gelir — sayfa yenilense/oturum kapanıp
+    // açılsa da geri dönmez (eski hata: iletim yalnız frontend state'iydi).
+    // columnDefinition'daki "default false": ddl-auto=update ile mevcut satırların
+    // NOT NULL kolonda null kalmasını önler (krş. ydyoDecisionModified).
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean ydyoForwardedToOidb = false;
+
     // YGK incelemesi — ancak YGK incelediğinde dolar
     private String ygkNotes;
 

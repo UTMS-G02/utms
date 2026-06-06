@@ -184,7 +184,6 @@ export default function YdyoDashboard() {
   const [examFilter, setExamFilter] = useState(ALL)
   const [exemptionFilter, setExemptionFilter] = useState(ALL)
   const [selected, setSelected] = useState(null)   // application shown in the modal
-  const [transmitted, setTransmitted] = useState(false)   // ÖİDB'ye iletildi → liste kilitli (YDYO Completed)
   const { message, modal } = App.useApp()
 
   // No status param → mock returns every YDYO stage for the board.
@@ -210,6 +209,14 @@ export default function YdyoDashboard() {
 
   const academicYears = useMemo(
     () => [...new Set(applications.map((a) => a.academicYear).filter(Boolean))],
+    [applications]
+  )
+
+  // "İletildi" durumu artık backend'den türetilir (forwardedToOidb) → sayfa yenilense
+  // veya oturum kapanıp açılsa da KORUNUR. Liste kilidi/buton ancak tüm kayıtlar
+  // iletildiğinde aktifleşir. (Eski hata: yalnız yerel React state idi, yenilemede sıfırlanıyordu.)
+  const transmitted = useMemo(
+    () => applications.length > 0 && applications.every((a) => a.forwardedToOidb),
     [applications]
   )
 
@@ -253,7 +260,7 @@ export default function YdyoDashboard() {
     message.success('Liste CSV olarak indirildi.')
   }
 
-  // ── "Sonuçları ÖİDB'ye İlet" → client-side guard only (no backend endpoint) ──
+  // ── "Sonuçları ÖİDB'ye İlet" → backend'e kalıcı iletim + listeyi tazele ──
   const handleForwardToOidb = () => {
     const unfinished = applications.filter((a) => PENDING_YDYO_STATUSES.includes(a.status))
     if (unfinished.length > 0) {
@@ -266,11 +273,16 @@ export default function YdyoDashboard() {
       okText: 'İlet',
       cancelText: 'Vazgeç',
       okButtonProps: { style: { background: '#8B1A2B', borderColor: '#8B1A2B' } },
-      // Mock: iletim sonrası kayıtlar "YDYO Completed" sayılır ve liste kilitlenir.
-      // TODO: real → backend transmit endpoint + YDYO_COMPLETED status geçişi (Arda).
-      onOk: () => {
-        setTransmitted(true)
-        message.success('Liste başarıyla ÖİDB\'ye iletildi.')
+      // İletim backend'de kalıcı işaretlenir; listeyi tazeleyince forwardedToOidb=true
+      // gelir ve `transmitted` türetilmiş değeri kilidi devreye alır.
+      onOk: async () => {
+        try {
+          await ydyoApi.forwardToOidb()
+          await loadApplications()
+          message.success('Liste başarıyla ÖİDB\'ye iletildi.')
+        } catch {
+          message.error('Sonuçlar ÖİDB\'ye iletilemedi. Lütfen tekrar deneyin.')
+        }
       },
     })
   }
@@ -553,7 +565,7 @@ export default function YdyoDashboard() {
               <YdyoApplicationDetail
                 application={selected}
                 embedded
-                locked={transmitted}
+                locked={selected?.forwardedToOidb === true}
                 onChange={() => {
                   // Değerlendirme kaydedilince listeyi tazele ve modalı kapat (listeye döner).
                   loadApplications()

@@ -253,6 +253,20 @@ const mockApi = {
     return { content: clone(list) }
   },
 
+  // Mock: kararları "iletildi" işaretle (gerçek backend'in forward endpoint'ine karşılık).
+  // Karara bağlı (ACCEPTED/REJECTED) kayıtların forwardedToOidb bayrağını true yapar.
+  forwardToOidb: async () => {
+    await delay(300)
+    let count = 0
+    mockApplications.forEach((a) => {
+      if (wasDecided(a) && !a.forwardedToOidb) {
+        a.forwardedToOidb = true
+        count++
+      }
+    })
+    return `${count} başvuru sonucu ÖİDB'ye iletildi.`
+  },
+
   // GET /api/applications/{id} (ApplicationResponse)
   // TODO: replace with real API call →
   //   apiClient.get(`/applications/${id}`).then((r) => r.data)
@@ -361,6 +375,9 @@ const mapApplication = (dto) => {
     modified: dto.modified,
     modifiedBy: dto.modifiedBy,
     modifiedAt: dto.modifiedAt,
+    // Bu kayıt "Sonuçları ÖİDB'ye İlet" ile iletildi mi? İletilen kayıt YDYO panelinde
+    // salt-okunur (kilitli) görünür; iletim DB'de saklandığı için yenilemede sıfırlanmaz.
+    forwardedToOidb: dto.ydyoForwardedToOidb === true,
   }
 }
 
@@ -419,6 +436,11 @@ const realApi = {
       return mapApplication(r2.data)
     }
   },
+
+  // "Sonuçları ÖİDB'ye İlet" → backend kararları resmen ÖİDB'ye iletir (kalıcı).
+  // Çağrı sonrası liste yeniden çekilir; iletilen kayıtlar forwardedToOidb=true gelir.
+  forwardToOidb: async () =>
+    apiClient.post('/applications/ydyo-forward-to-oidb').then((r) => r.data),
 }
 
 // Varsayılan: MOCK. Gerçek backend'e geçmek için .env'de VITE_USE_MOCK=false.
