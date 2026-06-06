@@ -128,11 +128,16 @@ const FakulteKuruluDashboard = () => {
         })
         .then(r => r.data)
 
+      // Karar KESİN: PATCH başarılıysa başvuru artık FACULTY_BOARD_ACCEPTED/REJECTED.
+      // Modalı HER DURUMDA kapat — aksi halde (denklik <%80'de modal açık kaldığından)
+      // aynı başvuruya ikinci karar denenip "uygun aşamada değil" hatası alınıyordu.
+      // %80 altı uyarısı artık toast olarak gösterilir.
       if (res.belowThreshold) {
-        setBelowThresholdWarning(res.equivalencyRatio)
-      } else {
-        closeModal()
+        message.warning(
+          `Karar kaydedildi. Denklik oranı (%${Math.round(res.equivalencyRatio * 100)}) %80 eşiğinin altında.`
+        )
       }
+      closeModal()
 
       // Pending listeden kaldır, tamamlananlar listesini yenile
       setPendingList(prev => prev.filter(s => s.id !== selectedStudent.id))
