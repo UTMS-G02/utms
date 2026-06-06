@@ -48,17 +48,7 @@ const handleError = (err) => {
 
 const FakulteKuruluDashboard = () => {
   const [activeTab, setActiveTab] = useState('pending')
-  const [pendingList, setPendingList] = useState([
-    {
-      id: 9999,
-      status: 'FACULTY_BOARD_REVIEW',
-      studentName: 'Ali Veli (MOCK)',
-      targetDepartment: 'Bilgisayar Mühendisliği',
-      gpa: 3.20,
-      sayYksScore: 420.50,
-      submissionDate: '2026-04-16',
-    },
-  ])
+  const [pendingList, setPendingList] = useState([])
   const [completedList, setCompletedList] = useState([])
   const [listLoading, setListLoading] = useState(false)
 
@@ -88,10 +78,7 @@ const FakulteKuruluDashboard = () => {
         apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_ACCEPTED', size: 500 } }),
         apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REJECTED', size: 500 } }),
       ])
-      setPendingList([
-        { id: 9999, status: 'FACULTY_BOARD_REVIEW', studentName: 'Ali Veli (MOCK)', targetDepartment: 'Bilgisayar Mühendisliği', gpa: 3.20, sayYksScore: 420.50, submissionDate: '2026-04-16' },
-        ...(pendingRes.data.content ?? []),
-      ])
+      setPendingList(pendingRes.data.content ?? [])
       setCompletedList([
         ...(acceptedRes.data.content ?? []),
         ...(rejectedRes.data.content ?? []),
@@ -114,29 +101,7 @@ const FakulteKuruluDashboard = () => {
     setDecisionModal(true)
     setModalLoading(true)
     try {
-      let data
-      if (record.id === 9999) {
-        data = {
-          application: record,
-          compositeScore: 378.77,
-          ranking: 1,
-          conditionsMet: true,
-          generalNote: 'YGK notu örnek metin.',
-          intibak: {
-            applicationId: 9999,
-            conditionsMet: true,
-            rows: [
-              { id: 1, sourceCode: 'BLM101', sourceName: 'Programlamaya Giriş', sourceCredit: 4, sourceGrade: 'BB', targetCode: 'CENG101', targetName: 'Introduction to Programming', targetCredit: 4, targetGrade: 'BB', equivalencyStatus: 'TAM_DENKLIK' },
-              { id: 2, sourceCode: 'MAT201', sourceName: 'Diferansiyel Denklemler', sourceCredit: 3, sourceGrade: 'CC', targetCode: 'MATH201', targetName: 'Differential Equations', targetCredit: 3, targetGrade: 'CC', equivalencyStatus: 'KISMI_DENKLIK' },
-              { id: 3, sourceCode: 'BIO100', sourceName: 'Biology', sourceCredit: 2, sourceGrade: 'FF', targetCode: null, targetName: null, targetCredit: null, targetGrade: null, equivalencyStatus: 'DENKLIK_YOK' },
-            ],
-            equivalencyRatio: 0.87,
-          },
-          decisions: [],
-        }
-      } else {
-        data = await apiClient.get(`/applications/${record.id}/board-review`).then(r => r.data)
-      }
+      const data = await apiClient.get(`/applications/${record.id}/board-review`).then(r => r.data)
       setBoardReview(data)
     } catch (err) {
       handleError(err)
@@ -155,12 +120,6 @@ const FakulteKuruluDashboard = () => {
     if (!selectedStudent || !boardReview) return
     setSubmitting(true)
     try {
-      if (selectedStudent.id === 9999) {
-        setPendingList(prev => prev.filter(s => s.id !== 9999))
-        closeModal()
-        message.success('(MOCK) Karar kaydedildi.')
-        return
-      }
       const res = await apiClient
         .patch(`/applications/${selectedStudent.id}/faculty-board-review`, {
           approved: decision === 'approve',

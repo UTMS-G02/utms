@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { Tabs, Table, Button, Typography, Tag, Row, Col, Input, Select } from 'antd'
+import { useState, useEffect } from 'react'
+import { Tabs, Table, Button, Typography, Tag, Row, Col, Input, message, Spin } from 'antd'
 import { DownloadOutlined, DownOutlined, UpOutlined } from '@ant-design/icons'
+import apiClient from '../../api/client'
 
 const { Title, Text } = Typography
 
@@ -25,22 +26,32 @@ const styles = {
   },
 }
 
-// Mock data
-const OIDB_STUDENTS = [
-  { id: 1, ad: 'Ayşe', soyad: 'Yılmaz', email: 'ayse.yilmaz@example.edu.tr', tel: '+90 532 123 4567', bolum: 'Bilgisayar Mühendisliği', durum: 'Akademik İnceleme Bekliyor', basvuruTarihi: '15.01.2024', fakulte: 'Mühendislik Fakültesi' },
-  { id: 2, ad: 'Mehmet', soyad: 'Demir', email: 'mehmet.demir@example.edu.tr', tel: '+90 533 765 4321', bolum: 'Makina Mühendisliği', durum: 'Akademik İnceleme Bekliyor', basvuruTarihi: '12.01.2024', fakulte: 'Mühendislik Fakültesi' },
-  { id: 3, ad: 'Zeynep', soyad: 'Aydın', email: 'zeynep.aydin@example.edu.tr', tel: '+90 534 123 4567', bolum: 'Bilgisayar Mühendisliği', durum: 'Akademik İnceleme Bekliyor', basvuruTarihi: '10.01.2024', fakulte: 'Mühendislik Fakültesi' },
-]
+const STATUS_LABEL = {
+  DEAN_OFFICE_REVIEW: 'Akademik İnceleme Bekliyor',
+  YGK_REVIEW_DONE: 'YGK Değerlendirmesi Tamamlandı',
+  FACULTY_BOARD_ACCEPTED: 'Fakülte Kurulu: Onaylandı',
+  FACULTY_BOARD_REJECTED: 'Fakülte Kurulu: Reddedildi',
+}
 
-const YGK_STUDENTS = [
-  { id: 4, ad: 'Can', soyad: 'Öztürk', email: 'can.ozturk@example.edu.tr', tel: '+90 535 765 4321', bolum: 'Bilgisayar Mühendisliği', durum: 'YGK Değerlendirmesi Tamamlandı', basvuruTarihi: '08.01.2024', fakulte: 'Mühendislik Fakültesi', ygkKarari: 'Asil Liste', intibakRaporu: 'İntibak Raporunu Görüntüle', ygkNotu: 'Öğrencinin transkripti incelenmiş, tüm dersler intibak edilebilir niteliktedir. Asil listeye alınması önerilmektedir.' },
-  { id: 5, ad: 'Elif', soyad: 'Şahin', email: 'elif.sahin@example.edu.tr', tel: '+90 536 123 4567', bolum: 'Makina Mühendisliği', durum: 'YGK Değerlendirmesi Tamamlandı', basvuruTarihi: '05.01.2024', fakulte: 'Mühendislik Fakültesi', ygkKarari: 'Yedek Liste', intibakRaporu: 'İntibak Raporunu Görüntüle', ygkNotu: 'Öğrenci ön koşulları yerine getirmiştir.' },
-]
+const BATCH_ACTION = {
+  oidb: 'TO_YGK',
+  ygk: 'TO_FACULTY_BOARD',
+  faculty: 'TO_OIDB',
+}
 
-const FACULTY_STUDENTS = [
-  { id: 6, ad: 'Burak', soyad: 'Yıldız', email: 'burak.yildiz@example.edu.tr', tel: '+90 537 765 4321', bolum: 'Bilgisayar Mühendisliği', durum: 'Onaylandı', basvuruTarihi: '03.01.2024', fakulte: 'Mühendislik Fakültesi', ygkKarari: 'Asil Liste', kurulKarari: 'Onaylandı', kurulNotu: "YGK değerlendirmesi ve intibak raporu incelendi. Başvuru onaylanmıştır. ÖIDB'ye iletilmesi uygun görülmüştür." },
-  { id: 7, ad: 'Deniz', soyad: 'Kaya', email: 'deniz.kaya@example.edu.tr', tel: '+90 538 123 4567', bolum: 'Makina Mühendisliği', durum: 'Reddedildi', basvuruTarihi: '18.01.2024', fakulte: 'Mühendislik Fakültesi', ygkKarari: 'Yedek Liste', kurulKarari: 'Reddedildi', kurulNotu: 'Bölüm kapasite dolmuştur. Başvuru reddedilmiştir.' },
-]
+const mapApp = (dto) => ({
+  id: dto.id,
+  name: dto.studentName,
+  email: dto.email,
+  tel: dto.phoneNumber,
+  bolum: dto.targetDepartment,
+  fakulte: dto.targetFaculty,
+  gpa: dto.gpa,
+  yksScore: dto.sayYksScore,
+  basvuruTarihi: dto.submissionDate,
+  durum: STATUS_LABEL[dto.status] ?? dto.status,
+  rawStatus: dto.status,
+})
 
 function StatusBadge({ durum }) {
   let tint
@@ -67,8 +78,33 @@ const DekanlikOfisi = () => {
   const [activeTab, setActiveTab] = useState('oidb')
   const [expandedRows, setExpandedRows] = useState({})
   const [searchText, setSearchText] = useState('')
-  const [filterType, setFilterType] = useState('tumu')
   const [selectedRowKeys, setSelectedRowKeys] = useState([])
+  const [forwarding, setForwarding] = useState(false)
+
+  const [oidbList, setOidbList] = useState([])
+  const [ygkList, setYgkList] = useState([])
+  const [facultyList, setFacultyList] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const fetchLists = async () => {
+    setLoading(true)
+    try {
+      const [oidbRes, ygkRes, facRes] = await Promise.all([
+        apiClient.get('/dean/applications', { params: { queue: 'FROM_OIDB' } }),
+        apiClient.get('/dean/applications', { params: { queue: 'FROM_YGK' } }),
+        apiClient.get('/dean/applications', { params: { queue: 'FROM_FACULTY' } }),
+      ])
+      setOidbList((oidbRes.data ?? []).map(mapApp))
+      setYgkList((ygkRes.data ?? []).map(mapApp))
+      setFacultyList((facRes.data ?? []).map(mapApp))
+    } catch {
+      message.error('Başvurular yüklenemedi.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchLists() }, [])
 
   const toggleExpand = (id) => {
     setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }))
@@ -81,7 +117,7 @@ const DekanlikOfisi = () => {
 
   const rowSelection = {
     selectedRowKeys,
-    onChange: (newSelectedRowKeys) => setSelectedRowKeys(newSelectedRowKeys),
+    onChange: (keys) => setSelectedRowKeys(keys),
   }
 
   const getActionButtonText = () => {
@@ -92,23 +128,39 @@ const DekanlikOfisi = () => {
     return `İşlem Yap (${count})`
   }
 
-  const expandedRowKeys = Object.keys(expandedRows)
-    .filter(k => expandedRows[k])
-    .map(Number)
+  const handleForward = async () => {
+    if (selectedRowKeys.length === 0) return
+    setForwarding(true)
+    try {
+      await apiClient.post('/dean/applications/batch-forward', {
+        ids: selectedRowKeys,
+        action: BATCH_ACTION[activeTab],
+      })
+      message.success(`${selectedRowKeys.length} başvuru iletildi.`)
+      setSelectedRowKeys([])
+      fetchLists()
+    } catch (err) {
+      message.error(err?.response?.data?.message ?? 'İletim başarısız.')
+    } finally {
+      setForwarding(false)
+    }
+  }
+
+  const expandedRowKeys = Object.keys(expandedRows).filter(k => expandedRows[k]).map(Number)
 
   const filterBySearch = (list) => {
     const q = searchText.trim().toLowerCase()
     if (!q) return list
     return list.filter(s =>
-      `${s.ad} ${s.soyad}`.toLowerCase().includes(q) ||
-      s.email.toLowerCase().includes(q) ||
-      s.bolum.toLowerCase().includes(q)
+      (s.name ?? '').toLowerCase().includes(q) ||
+      (s.email ?? '').toLowerCase().includes(q) ||
+      (s.bolum ?? '').toLowerCase().includes(q)
     )
   }
 
-  const filteredOIDB = filterBySearch(OIDB_STUDENTS)
-  const filteredYGK = filterBySearch(YGK_STUDENTS)
-  const filteredFaculty = filterBySearch(FACULTY_STUDENTS)
+  const filteredOIDB = filterBySearch(oidbList)
+  const filteredYGK = filterBySearch(ygkList)
+  const filteredFaculty = filterBySearch(facultyList)
 
   const expandToggleCol = {
     title: '',
@@ -126,7 +178,7 @@ const DekanlikOfisi = () => {
   }
 
   const commonColumns = [
-    { title: 'Ad Soyad', dataIndex: 'ad', key: 'ad', render: (_, r) => `${r.ad} ${r.soyad}` },
+    { title: 'Ad Soyad', dataIndex: 'name', key: 'name' },
     { title: 'E-posta', dataIndex: 'email', key: 'email' },
     { title: 'Telefon', dataIndex: 'tel', key: 'tel' },
     { title: 'Bölüm', dataIndex: 'bolum', key: 'bolum' },
@@ -144,6 +196,8 @@ const DekanlikOfisi = () => {
     <div style={{ padding: '12px 24px', background: '#fafafa' }}>
       <Row gutter={[16, 8]}>
         <Col span={12}><Text strong>Fakülte:</Text><Text style={{ marginLeft: 8 }}>{record.fakulte}</Text></Col>
+        <Col span={12}><Text strong>GPA:</Text><Text style={{ marginLeft: 8 }}>{record.gpa}</Text></Col>
+        <Col span={12}><Text strong>YKS Puanı:</Text><Text style={{ marginLeft: 8 }}>{record.yksScore}</Text></Col>
         <Col span={12}><Text strong>Başvuru Tarihi:</Text><Text style={{ marginLeft: 8 }}>{record.basvuruTarihi}</Text></Col>
       </Row>
     </div>
@@ -153,51 +207,33 @@ const DekanlikOfisi = () => {
     <div style={{ padding: '12px 24px', background: '#fafafa' }}>
       <Row gutter={[16, 12]}>
         <Col span={12}><Text strong>Fakülte:</Text><Text style={{ marginLeft: 8 }}>{record.fakulte}</Text></Col>
-        <Col span={12}>
-          <Text strong>YGK Kararı:</Text>
-          <Tag style={{ marginLeft: 8, ...(record.ygkKarari === 'Asil Liste' ? TINT.green : TINT.amber), border: 'none', borderRadius: 6 }}>
-            {record.ygkKarari}
-          </Tag>
-        </Col>
-        <Col span={24}>
-          <Text strong>İntibak Raporu:</Text>
-          <Button type="link" icon={<DownloadOutlined />} style={{ paddingLeft: 8 }}>{record.intibakRaporu}</Button>
-        </Col>
-        <Col span={24}>
-          <Text strong>YGK Notu:</Text>
-          <div style={{ marginTop: 8, background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
-            <Text>{record.ygkNotu}</Text>
-          </div>
-        </Col>
+        <Col span={12}><Text strong>GPA:</Text><Text style={{ marginLeft: 8 }}>{record.gpa}</Text></Col>
+        <Col span={12}><Text strong>YKS Puanı:</Text><Text style={{ marginLeft: 8 }}>{record.yksScore}</Text></Col>
+        <Col span={12}><Text strong>Başvuru Tarihi:</Text><Text style={{ marginLeft: 8 }}>{record.basvuruTarihi}</Text></Col>
       </Row>
     </div>
   )
 
-  const renderFacultyExpanded = (record) => (
-    <div style={{ padding: '12px 24px', background: '#fafafa' }}>
-      <Row gutter={[16, 12]}>
-        <Col span={12}><Text strong>Fakülte:</Text><Text style={{ marginLeft: 8 }}>{record.fakulte}</Text></Col>
-        <Col span={12}>
-          <Text strong>YGK Kararı:</Text>
-          <Tag style={{ marginLeft: 8, ...(record.ygkKarari === 'Asil Liste' ? TINT.green : TINT.amber), border: 'none', borderRadius: 6 }}>
-            {record.ygkKarari}
-          </Tag>
-        </Col>
-        <Col span={12}>
-          <Text strong>Kurul Kararı:</Text>
-          <Tag style={{ marginLeft: 8, ...(record.kurulKarari === 'Onaylandı' ? TINT.green : TINT.red), border: 'none', borderRadius: 6 }}>
-            {record.kurulKarari}
-          </Tag>
-        </Col>
-        <Col span={24}>
-          <Text strong>Kurul Notu:</Text>
-          <div style={{ marginTop: 8, background: '#fff', padding: 12, borderRadius: 6, border: '1px solid #f0f0f0' }}>
-            <Text>{record.kurulNotu}</Text>
-          </div>
-        </Col>
-      </Row>
-    </div>
-  )
+  const renderFacultyExpanded = (record) => {
+    const accepted = record.rawStatus === 'FACULTY_BOARD_ACCEPTED'
+    return (
+      <div style={{ padding: '12px 24px', background: '#fafafa' }}>
+        <Row gutter={[16, 12]}>
+          <Col span={12}><Text strong>Fakülte:</Text><Text style={{ marginLeft: 8 }}>{record.fakulte}</Text></Col>
+          <Col span={12}>
+            <Text strong>Kurul Kararı:</Text>
+            <Tag style={{ marginLeft: 8, ...(accepted ? TINT.green : TINT.red), border: 'none', borderRadius: 6 }}>
+              {accepted ? 'Onaylandı' : 'Reddedildi'}
+            </Tag>
+          </Col>
+          <Col span={12}><Text strong>GPA:</Text><Text style={{ marginLeft: 8 }}>{record.gpa}</Text></Col>
+          <Col span={12}><Text strong>YKS Puanı:</Text><Text style={{ marginLeft: 8 }}>{record.yksScore}</Text></Col>
+        </Row>
+      </div>
+    )
+  }
+
+  const currentCount = activeTab === 'oidb' ? filteredOIDB.length : activeTab === 'ygk' ? filteredYGK.length : filteredFaculty.length
 
   return (
     <div style={styles.page}>
@@ -207,13 +243,12 @@ const DekanlikOfisi = () => {
         <Row gutter={16} style={{ marginBottom: 16 }}>
           <Col span={8}>
             <Input
-              placeholder="Ad, Soyad veya Numara ile ara..."
+              placeholder="Ad, Soyad veya Bölüm ile ara..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
             />
           </Col>
-          <Col span={8}>
-          </Col>
+          <Col span={8} />
           <Col span={8} style={{ textAlign: 'right' }}>
             <Button
               type="primary"
@@ -222,81 +257,85 @@ const DekanlikOfisi = () => {
                 borderColor: selectedRowKeys.length > 0 ? '#8B1A2B' : undefined,
               }}
               disabled={selectedRowKeys.length === 0}
+              loading={forwarding}
+              onClick={handleForward}
             >
               {getActionButtonText()}
             </Button>
           </Col>
         </Row>
 
-        <Tabs
-          activeKey={activeTab}
-          onChange={handleTabChange}
-          items={[
-            {
-              key: 'oidb',
-              label: `ÖİDB'den Gelen ${filteredOIDB.length}`,
-              children: (
-                <Table
-                  columns={commonColumns}
-                  dataSource={filteredOIDB}
-                  pagination={false}
-                  rowKey="id"
-                  rowSelection={rowSelection}
-                  expandable={{
-                    expandedRowRender: renderOIDBExpanded,
-                    expandedRowKeys,
-                    showExpandColumn: false,
-                  }}
-                  size="small"
-                />
-              ),
-            },
-            {
-              key: 'ygk',
-              label: `YGK'dan Gelen ${filteredYGK.length}`,
-              children: (
-                <Table
-                  columns={commonColumns}
-                  dataSource={filteredYGK}
-                  pagination={false}
-                  rowKey="id"
-                  rowSelection={rowSelection}
-                  expandable={{
-                    expandedRowRender: renderYGKExpanded,
-                    expandedRowKeys,
-                    showExpandColumn: false,
-                  }}
-                  size="small"
-                />
-              ),
-            },
-            {
-              key: 'faculty',
-              label: `Fakülte Kurulu'ndan Gelen ${filteredFaculty.length}`,
-              children: (
-                <Table
-                  columns={commonColumns}
-                  dataSource={filteredFaculty}
-                  pagination={false}
-                  rowKey="id"
-                  rowSelection={rowSelection}
-                  expandable={{
-                    expandedRowRender: renderFacultyExpanded,
-                    expandedRowKeys,
-                    showExpandColumn: false,
-                  }}
-                  size="small"
-                />
-              ),
-            },
-          ]}
-        />
+        <Spin spinning={loading}>
+          <Tabs
+            activeKey={activeTab}
+            onChange={handleTabChange}
+            items={[
+              {
+                key: 'oidb',
+                label: `ÖİDB'den Gelen (${filteredOIDB.length})`,
+                children: (
+                  <Table
+                    columns={commonColumns}
+                    dataSource={filteredOIDB}
+                    pagination={false}
+                    rowKey="id"
+                    rowSelection={rowSelection}
+                    expandable={{
+                      expandedRowRender: renderOIDBExpanded,
+                      expandedRowKeys,
+                      showExpandColumn: false,
+                    }}
+                    size="small"
+                  />
+                ),
+              },
+              {
+                key: 'ygk',
+                label: `YGK'dan Gelen (${filteredYGK.length})`,
+                children: (
+                  <Table
+                    columns={commonColumns}
+                    dataSource={filteredYGK}
+                    pagination={false}
+                    rowKey="id"
+                    rowSelection={rowSelection}
+                    expandable={{
+                      expandedRowRender: renderYGKExpanded,
+                      expandedRowKeys,
+                      showExpandColumn: false,
+                    }}
+                    size="small"
+                  />
+                ),
+              },
+              {
+                key: 'faculty',
+                label: `Fakülte Kurulu'ndan Gelen (${filteredFaculty.length})`,
+                children: (
+                  <Table
+                    columns={commonColumns}
+                    dataSource={filteredFaculty}
+                    pagination={false}
+                    rowKey="id"
+                    rowSelection={rowSelection}
+                    expandable={{
+                      expandedRowRender: renderFacultyExpanded,
+                      expandedRowKeys,
+                      showExpandColumn: false,
+                    }}
+                    size="small"
+                  />
+                ),
+              },
+            ]}
+          />
+        </Spin>
 
         <div style={{ marginTop: 16 }}>
           <Text type="secondary">
             {selectedRowKeys.length > 0
               ? `${selectedRowKeys.length} başvuru seçildi`
-              : `${activeTab === 'oidb' ? filteredOIDB.length : activeTab === 'ygk' ? filteredYGK.length : filteredFaculty.length} başvuru gösteriliyor`}
+              : `${currentCount} başvuru gösteriliyor`}
           </Text>
         </div>
       </div>
