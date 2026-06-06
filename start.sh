@@ -11,9 +11,11 @@ until docker exec utms-postgres pg_isready -U utms_user -d utms_db > /dev/null 2
 done
 echo "    Database hazır."
 
-echo "==> Backend başlatılıyor..."
+echo "==> Backend derleniyor..."
 cd "$ROOT_DIR/backend"
-./mvnw spring-boot:run > "$ROOT_DIR/backend.log" 2>&1 &
+./mvnw package -DskipTests -q
+echo "==> Backend başlatılıyor..."
+java -jar target/utms-app-0.0.1-SNAPSHOT.jar > "$ROOT_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 echo "    Backend PID: $BACKEND_PID"
 

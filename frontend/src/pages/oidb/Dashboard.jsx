@@ -49,7 +49,7 @@ const STATUS_MAP = {
   OIDB_REVIEW: { label: 'İnceleniyor', color: 'blue' },
   REQUEST_UPDATE: { label: 'Güncelleme Gerekli', color: 'volcano' },
   YDYO_REVIEW: { label: "YDYO'da", color: 'purple' },
-  YDYO_APPROVED: { label: "YDYO Onaylı", color: 'green' },
+  YDYO_ACCEPTED: { label: "YDYO Onaylı", color: 'green' },
   YDYO_REJECTED: { label: "YDYO Reddetti", color: 'magenta' },
   FACULTY_REVIEW: { label: 'Fakültede', color: 'gold' },
   OIDB_FINAL: { label: 'Yayın Bekliyor', color: 'cyan' },
@@ -75,7 +75,7 @@ const getStatusTint = (status) => {
       return TINT.amber
     case 'YDYO_REVIEW':
       return TINT.purple
-    case 'YDYO_APPROVED':
+    case 'YDYO_ACCEPTED':
       return TINT.green
     case 'YDYO_REJECTED':
       return TINT.red
@@ -106,7 +106,7 @@ const STATUS_OPTIONS = [
   { value: 'OIDB_REVIEW', label: 'İnceleniyor' },
   { value: 'REQUEST_UPDATE', label: 'Güncelleme Gerekli' },
   { value: 'YDYO_REVIEW', label: "YDYO'da" },
-  { value: 'YDYO_APPROVED', label: "YDYO Onaylı" },
+  { value: 'YDYO_ACCEPTED', label: "YDYO Onaylı" },
   { value: 'YDYO_REJECTED', label: "YDYO Reddetti" },
   { value: 'FACULTY_REVIEW', label: 'Fakültede' },
   { value: 'OIDB_FINAL', label: 'Yayın Bekliyor' },
@@ -149,7 +149,7 @@ const ACTION_CONFIG = {
     { key: 'reject_application', label: 'Reddet', type: 'default', danger: true },
     { key: 'send_ydyo', label: "YDYO'ya Gönder", type: 'primary' },
   ],
-  YDYO_APPROVED: [
+  YDYO_ACCEPTED: [
     { key: 'forward_to_faculty', label: 'Fakülteye Gönder', type: 'primary' },
   ],
   YDYO_REJECTED: [
