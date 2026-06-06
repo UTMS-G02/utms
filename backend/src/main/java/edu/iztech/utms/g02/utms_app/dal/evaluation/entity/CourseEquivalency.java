@@ -43,17 +43,17 @@ public class CourseEquivalency {
     @Column(length = 2)
     private String source2Grade;
 
-    // Hedef İYTE dersi
-    @Column(nullable = false, length = 100)
+    // Hedef İYTE dersi — DENK_DEGIL satırlarında boş bırakılabilir
+    @Column(length = 100)
     private String targetCode;
 
-    @Column(nullable = false, length = 200)
+    @Column(length = 200)
     private String targetName;
 
-    @Column(nullable = false)
+    @Column
     private Integer targetCredit;
 
-    @Column(nullable = false, length = 2)
+    @Column(length = 2)
     private String targetGrade;
 
     @Enumerated(EnumType.STRING)
