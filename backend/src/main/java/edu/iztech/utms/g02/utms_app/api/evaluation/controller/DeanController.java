@@ -1,6 +1,8 @@
 package edu.iztech.utms.g02.utms_app.api.evaluation.controller;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.BatchForwardRequest;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.BatchForwardResponse;
 import edu.iztech.utms.g02.utms_app.bl.evaluation.DeanForwardService;
 import edu.iztech.utms.g02.utms_app.bl.evaluation.DeanQueueService;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +11,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -55,5 +59,12 @@ public class DeanController {
     @PatchMapping("/applications/{id}/forward-to-oidb")
     public ResponseEntity<ApplicationResponse> forwardToOidb(@PathVariable Integer id) {
         return ResponseEntity.ok(deanForwardService.forwardToOidb(id));
+    }
+
+    /** TC-10.7: Birden fazla başvuruyu tek işlemde iletir (toplu seçim). */
+    @PreAuthorize("hasRole('DEAN_OFFICE')")
+    @PostMapping("/applications/batch-forward")
+    public ResponseEntity<BatchForwardResponse> batchForward(@RequestBody BatchForwardRequest req) {
+        return ResponseEntity.ok(deanForwardService.batchForward(req));
     }
 }
