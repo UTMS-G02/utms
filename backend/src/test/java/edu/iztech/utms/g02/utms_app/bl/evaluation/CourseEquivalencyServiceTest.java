@@ -178,6 +178,29 @@ class CourseEquivalencyServiceTest {
     }
 
     @Test
+    void saveTable_denkDegil_targetFieldsOptional_doesNotThrow() {
+        // TC-9.0: DENK_DEGIL satırında hedef ders bilgisi boş bırakılabilir.
+        Application app = buildApp(51);
+        CourseEquivalencyRow denkDegil = CourseEquivalencyRow.builder()
+                .sourceCode("BIO100").sourceName("Biology").sourceCredit(2).sourceGrade("CC")
+                .equivalencyStatus(EquivalencyStatus.DENK_DEGIL)
+                .build(); // targetCode/Name/Credit/Grade deliberately null
+
+        IntibakTableRequest req = new IntibakTableRequest(true, null, List.of(denkDegil));
+
+        when(applicationRepository.findByApplicationId(51)).thenReturn(Optional.of(app));
+        when(applicationRepository.save(any())).thenReturn(app);
+        when(courseEquivalencyRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        IntibakTableResponse response = courseEquivalencyService.saveTable(51, req);
+
+        assertThat(response.getRows()).hasSize(1);
+        assertThat(response.getRows().get(0).getEquivalencyStatus()).isEqualTo(EquivalencyStatus.DENK_DEGIL);
+        assertThat(response.getRows().get(0).getTargetCode()).isNull();
+        verify(courseEquivalencyRepository).saveAll(any());
+    }
+
+    @Test
     void saveTable_conditionsMet_xssSanitizesTextFields() {
         Application app = buildApp(6);
         IntibakTableRequest req = new IntibakTableRequest(true, null, List.of(

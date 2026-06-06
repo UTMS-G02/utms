@@ -183,14 +183,18 @@ public class CourseEquivalencyService {
 
         validateSource2(row, rowNo);
 
-        requireText(row.getTargetCode(), rowNo, "hedef ders kodu");
-        requireText(row.getTargetName(), rowNo, "hedef ders adı");
-        requirePositive(row.getTargetCredit(), rowNo, "hedef kredi");
-        requireGrade(row.getTargetGrade(), rowNo, "hedef not");
-
         if (row.getEquivalencyStatus() == null) {
             throw new IllegalArgumentException(
                     "İntibak tablosu eksik: " + rowNo + ". satırda denklik durumu seçilmelidir.");
+        }
+
+        // Hedef ders alanları yalnızca TAM_DENKLIK ve KISMI_DENKLIK satırlarında zorunludur.
+        // DENK_DEGIL satırlarında hedef bilgisi olmayabilir (TC-9.0).
+        if (row.getEquivalencyStatus() != EquivalencyStatus.DENK_DEGIL) {
+            requireText(row.getTargetCode(), rowNo, "hedef ders kodu");
+            requireText(row.getTargetName(), rowNo, "hedef ders adı");
+            requirePositive(row.getTargetCredit(), rowNo, "hedef kredi");
+            requireGrade(row.getTargetGrade(), rowNo, "hedef not");
         }
     }
 
@@ -285,8 +289,8 @@ public class CourseEquivalencyService {
                 .source2Name(row.getSource2Name() != null ? HtmlUtils.htmlEscape(row.getSource2Name()) : null)
                 .source2Credit(row.getSource2Credit())
                 .source2Grade(row.getSource2Grade())
-                .targetCode(HtmlUtils.htmlEscape(row.getTargetCode()))
-                .targetName(HtmlUtils.htmlEscape(row.getTargetName()))
+                .targetCode(row.getTargetCode() != null ? HtmlUtils.htmlEscape(row.getTargetCode()) : null)
+                .targetName(row.getTargetName() != null ? HtmlUtils.htmlEscape(row.getTargetName()) : null)
                 .targetCredit(row.getTargetCredit())
                 .targetGrade(row.getTargetGrade())
                 .equivalencyStatus(row.getEquivalencyStatus())
