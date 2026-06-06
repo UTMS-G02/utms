@@ -5,6 +5,7 @@ import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.StudentRepository;
 import edu.iztech.utms.g02.utms_app.integration.edevlet.EgovDocumentService;
 import edu.iztech.utms.g02.utms_app.integration.yoksis.YoksisIntegrationService;
+import edu.iztech.utms.g02.utms_app.integration.yoksis.GpaScaleConverter;
 import edu.iztech.utms.g02.utms_app.integration.yoksis.dto.YoksisStudentResponse;
 
 import jakarta.persistence.EntityNotFoundException;
@@ -34,13 +35,18 @@ public class YoksisService {
         YoksisStudentResponse data = yoksisIntegrationService.fetchAcademicDataByTckn(student.getTckn());
         Integer currentClass = data.semester() == null ? null : (data.semester() + 1) / 2;
 
+        // GPA'yı forma 4'lük sistemde yansıt: YÖKSİS 100'lük dönmüş olsa bile çevrilir.
+        // Böylece formda görünen değer ile create() sırasında kaydedilen/doğrulanan değer
+        // aynı (4'lük) ölçektedir.
+        double normalizedGpa = GpaScaleConverter.toFourScale(data.gpa(), data.gpaScale());
+
         return new YoksisMeResponse(
                 data.currentUniversity(),
                 data.currentFaculty(),
                 data.currentDepartment(),
                 data.semester(),
                 currentClass,
-                data.gpa(),
+                normalizedGpa,
                 data.yksScore(),
                 data.yksRank()
         );

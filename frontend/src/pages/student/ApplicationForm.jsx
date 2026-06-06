@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Form, Input, Button, Typography, Row, Col, Select,
-  InputNumber, DatePicker, Checkbox, Space, App, Upload, Alert,
+  InputNumber, DatePicker, Checkbox, Space, App, Upload, Alert, Tooltip,
 } from 'antd'
 import { UploadOutlined, CheckCircleOutlined, EyeOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -40,6 +40,55 @@ const FACULTY_DEPARTMENTS = {
 }
 
 const TARGET_FACULTY_OPTIONS = Object.keys(FACULTY_DEPARTMENTS)
+
+// --- Akademik başvuru koşulları (backend ApplicationService ile birebir aynı kurallar) ---
+// 1) YKS başarı sıralaması barajı, HEDEF programa göre değişir.
+const ENGINEERING_RANK_LIMIT = 300000 // Mühendislik: <= 300.000
+const ARCHITECTURE_RANK_LIMIT = 250000 // Mimarlık: <= 250.000
+
+// Hedef fakülte/bölüme göre sıralama barajını çöz (eşleşme yoksa baraj uygulanmaz).
+const resolveRankLimit = (targetFaculty, targetDepartment) => {
+  const hay = `${targetFaculty ?? ''} ${targetDepartment ?? ''}`.toLocaleLowerCase('tr')
+  if (hay.includes('mühendis')) return ENGINEERING_RANK_LIMIT
+  if (hay.includes('mimar')) return ARCHITECTURE_RANK_LIMIT
+  return null
+}
+
+// GPA barajı: 4'lük sistemde 2.50. YÖKSİS 100'lük dönse bile backend 4'lüğe çevirip
+// gönderdiği için frontend her zaman 4'lük değer üzerinden kontrol eder.
+const GPA_MIN = 2.5
+
+// Yatay geçiş yalnızca 3. veya 5. yarıyıla yapılabilir (1. sınıf → 3., 2. sınıf → 5.).
+// 3./4. sınıf öğrencileri (hedef yarıyıl 7/9) başvuramaz.
+const VALID_TARGET_SEMESTERS = ['3', '5']
+
+// Akademik koşulları kontrol eder; sağlanmayan her kural için bir uyarı mesajı döndürür.
+// Boş dizi => tüm koşullar sağlanıyor (başvuru yapılabilir).
+const getEligibilityErrors = ({ gpa, yksRank, targetFaculty, targetDepartment, targetSemester }) => {
+  const errors = []
+
+  // KURAL 0: Yarıyıl — yalnızca 3. veya 5. yarıyıl (1./2. sınıf)
+  if (targetSemester != null && targetSemester !== '' && !VALID_TARGET_SEMESTERS.includes(String(targetSemester))) {
+    errors.push('Yalnızca 3. veya 5. yarıyıla başvuru yapılabilir.')
+  }
+
+  // KURAL 1: GPA (4'lük sistem) >= 2.50
+  if (gpa != null && gpa < GPA_MIN) {
+    errors.push(
+      `Genel not ortalamanız (${gpa}/4.00), yatay geçiş barajı olan ${GPA_MIN.toFixed(2)}/4.00 değerinin altında olduğu için başvuru yapamazsınız.`
+    )
+  }
+
+  // KURAL 2: YKS sıralaması — hedef programa göre baraj
+  const rankLimit = resolveRankLimit(targetFaculty, targetDepartment)
+  if (rankLimit != null && yksRank != null && yksRank > rankLimit) {
+    errors.push(
+      `Seçtiğiniz program için YKS başarı sıralamanız en fazla ${rankLimit.toLocaleString('tr')} olmalıdır; mevcut sıralamanız ${yksRank.toLocaleString('tr')}.`
+    )
+  }
+
+  return errors
+}
 
 // Başvurular yalnızca içinde bulunulan akademik yıla (2026-2027) yapılabilir.
 const ACTIVE_ACADEMIC_YEAR = '2026-2027'
@@ -126,6 +175,24 @@ export default function ApplicationForm() {
   const selectedFaculty = Form.useWatch('targetFaculty', form)
   const departmentOptions = FACULTY_DEPARTMENTS[selectedFaculty] ?? []
 
+  // Akademik koşulları (GPA + YKS sıralaması) canlı kontrol etmek için ilgili
+  // alanları izliyoruz. Hedef program seçimi sıralama barajını etkilediği için
+  // targetFaculty/targetDepartment de izlenir.
+  const gpa = Form.useWatch('gpa', form)
+  const yksRank = Form.useWatch('yksRanking', form)
+  const targetDepartment = Form.useWatch('targetDepartment', form)
+  const targetSemester = Form.useWatch('semester', form)
+
+  const eligibilityErrors = getEligibilityErrors({
+    gpa,
+    yksRank,
+    targetFaculty: selectedFaculty,
+    targetDepartment,
+    targetSemester,
+  })
+  // YÖKSİS verisi yüklenirken butonu kilitleme; veriler gelince koşullar uygulanır.
+  const isEligible = eligibilityErrors.length === 0
+
   // Kişisel bilgiler kayıt sırasında verilen değerlerle (auth /me) otomatik
   // doldurulur ve salt-okunur gösterilir; öğrenci başvuru formunda değiştiremez.
   useEffect(() => {
@@ -159,7 +226,7 @@ export default function ApplicationForm() {
           currentUniversity: data.currentUniversity,
           currentDept: data.currentDepartment,
           currentYear: data.currentClass != null ? `${data.currentClass}. Sınıf` : '',
-          gpa: data.gpa,
+          gpa: data.gpa, // backend tarafından 4'lük sisteme normalize edilmiş değer
           // YKS verileri de ÖSYM'den (mock) otomatik gelir; salt-okunur gösterilir.
           yksScore: data.yksScore,
           yksRanking: data.yksRank,
@@ -446,7 +513,7 @@ export default function ApplicationForm() {
               <Form.Item
                 label="Genel Not Ortalaması (GPA)"
                 name="gpa"
-                extra="Yatay geçiş için minimum 2.50 ortalama gereklidir; altındaki başvurular kabul edilmez."
+                extra="Yatay geçiş için minimum 2.50/4.00 gereklidir; altındaki başvurular kabul edilmez."
               >
                 <InputNumber
                   style={{ width: '100%', ...styles.readonlyInput }}
@@ -632,20 +699,50 @@ export default function ApplicationForm() {
           </Form.Item>
         </div>
 
+        {/* Akademik koşul uyarısı — GPA veya YKS sıralaması yetersizse başvuru engellenir */}
+        {!yoksisLoading && !isEligible && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Başvuru koşulları sağlanmıyor"
+            description={
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {eligibilityErrors.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            }
+          />
+        )}
+
         {/* Footer */}
         <div style={styles.footer}>
           <Space>
             <Button onClick={() => navigate('/student/dashboard')}>
               Geri Dön
             </Button>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={submitting}
-              style={{ background: '#8B1A2B', borderColor: '#8B1A2B', fontWeight: 600 }}
+            <Tooltip
+              title={
+                !isEligible
+                  ? 'Akademik başvuru koşullarını sağlamadığınız için başvuru yapamazsınız.'
+                  : ''
+              }
             >
-              Başvuruyu Oluştur
-            </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={submitting}
+                disabled={yoksisLoading || !isEligible}
+                style={
+                  yoksisLoading || !isEligible
+                    ? { fontWeight: 600 }
+                    : { background: '#8B1A2B', borderColor: '#8B1A2B', fontWeight: 600 }
+                }
+              >
+                Başvuruyu Oluştur
+              </Button>
+            </Tooltip>
           </Space>
         </div>
       </Form>
