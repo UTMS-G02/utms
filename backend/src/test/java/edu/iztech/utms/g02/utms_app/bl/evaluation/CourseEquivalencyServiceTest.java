@@ -150,6 +150,57 @@ class CourseEquivalencyServiceTest {
     }
 
     @Test
+    void saveTable_tc90_allThreeEquivalencyStatuses_persistedCorrectly() {
+        // TC-9.0: TAM_DENKLIK + KISMI_DENKLIK + DENK_DEGIL üçü birlikte doğru kaydedilmeli.
+        Application app = buildApp(50);
+        IntibakTableRequest req = new IntibakTableRequest(true, null, List.of(
+                buildRow("MAT101", "Calculus I",    4, "MATH111", "Calculus I",    4, EquivalencyStatus.TAM_DENKLIK),
+                buildRow("FIZ101", "Physics I",     3, "PHYS101", "Physics I",     4, EquivalencyStatus.KISMI_DENKLIK),
+                buildRow("BIO100", "Biology",       2, "BIO001",  "Biology Intro", 2, EquivalencyStatus.DENK_DEGIL)
+        ));
+
+        when(applicationRepository.findByApplicationId(50)).thenReturn(Optional.of(app));
+        when(applicationRepository.save(any())).thenReturn(app);
+        when(courseEquivalencyRepository.saveAll(any())).thenAnswer(inv -> {
+            List<CourseEquivalency> saved = inv.getArgument(0);
+            assertThat(saved).hasSize(3);
+            assertThat(saved.get(0).getEquivalencyStatus()).isEqualTo(EquivalencyStatus.TAM_DENKLIK);
+            assertThat(saved.get(1).getEquivalencyStatus()).isEqualTo(EquivalencyStatus.KISMI_DENKLIK);
+            assertThat(saved.get(2).getEquivalencyStatus()).isEqualTo(EquivalencyStatus.DENK_DEGIL);
+            return saved;
+        });
+
+        IntibakTableResponse response = courseEquivalencyService.saveTable(50, req);
+
+        assertThat(response.getRows()).hasSize(3);
+        verify(courseEquivalencyRepository).deleteByApplication_ApplicationId(50);
+        verify(courseEquivalencyRepository).saveAll(any());
+    }
+
+    @Test
+    void saveTable_denkDegil_targetFieldsOptional_doesNotThrow() {
+        // TC-9.0: DENK_DEGIL satırında hedef ders bilgisi boş bırakılabilir.
+        Application app = buildApp(51);
+        CourseEquivalencyRow denkDegil = CourseEquivalencyRow.builder()
+                .sourceCode("BIO100").sourceName("Biology").sourceCredit(2).sourceGrade("CC")
+                .equivalencyStatus(EquivalencyStatus.DENK_DEGIL)
+                .build(); // targetCode/Name/Credit/Grade deliberately null
+
+        IntibakTableRequest req = new IntibakTableRequest(true, null, List.of(denkDegil));
+
+        when(applicationRepository.findByApplicationId(51)).thenReturn(Optional.of(app));
+        when(applicationRepository.save(any())).thenReturn(app);
+        when(courseEquivalencyRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        IntibakTableResponse response = courseEquivalencyService.saveTable(51, req);
+
+        assertThat(response.getRows()).hasSize(1);
+        assertThat(response.getRows().get(0).getEquivalencyStatus()).isEqualTo(EquivalencyStatus.DENK_DEGIL);
+        assertThat(response.getRows().get(0).getTargetCode()).isNull();
+        verify(courseEquivalencyRepository).saveAll(any());
+    }
+
+    @Test
     void saveTable_conditionsMet_xssSanitizesTextFields() {
         Application app = buildApp(6);
         IntibakTableRequest req = new IntibakTableRequest(true, null, List.of(
@@ -472,6 +523,23 @@ class CourseEquivalencyServiceTest {
         when(courseEquivalencyRepository.findByApplication_ApplicationIdOrderByRowOrderAsc(32)).thenReturn(rows);
 
         assertThat(courseEquivalencyService.calculateEquivalencyRatio(32)).isEqualTo(0.6);
+    }
+
+    @Test
+    void calculateRatio_kismiDenklik_countedAsEquivalent_notAsDenkDegil() {
+        // TC-9.0: KISMI_DENKLIK kısmen denk sayılır → orana dahil edilir (DENK_DEGIL gibi sıfır saymaz).
+        // 4 kredi KISMI_DENKLIK + 4 kredi DENK_DEGIL → 4/8 = 0.5
+        Application app = buildApp(36);
+        app.setYgkApproved(true);
+        List<CourseEquivalency> rows = List.of(
+                buildEntity(app, "FIZ101", "Physics I", 4, "PHYS101", "Physics I", 4, EquivalencyStatus.KISMI_DENKLIK, 0),
+                buildEntity(app, "BIO100", "Biology",   4, "",        "",          0, EquivalencyStatus.DENK_DEGIL,   1)
+        );
+
+        when(applicationRepository.findByApplicationId(36)).thenReturn(Optional.of(app));
+        when(courseEquivalencyRepository.findByApplication_ApplicationIdOrderByRowOrderAsc(36)).thenReturn(rows);
+
+        assertThat(courseEquivalencyService.calculateEquivalencyRatio(36)).isEqualTo(0.5);
     }
 
     @Test

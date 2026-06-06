@@ -16,5 +16,6 @@ public class PublishedResultResponse {
     private Integer applicationId;
     private String studentName;
     private String finalDecision;
+    private String listType;        // "PRIMARY" (asil) / "WAITLIST" (yedek) / null (red)
     private LocalDateTime publishedAt;
 }

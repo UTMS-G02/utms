@@ -9,9 +9,9 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  BellOutlined,
 } from '@ant-design/icons'
 import { useAuth, ROLES } from '../../contexts/AuthContext'
+import NotificationBell from './NotificationBell'
 
 const STUDENT_ONLY_ROLES = [ROLES.STUDENT]
 
@@ -226,11 +226,7 @@ export default function AppLayout() {
 
           {/* Right side: bell + user */}
           <Space size={16}>
-            {STUDENT_ONLY_ROLES.includes(user?.role) && (
-              <BellOutlined
-                style={{ fontSize: 18, color: 'var(--color-text-secondary)', cursor: 'pointer' }}
-              />
-            )}
+            {STUDENT_ONLY_ROLES.includes(user?.role) && <NotificationBell />}
             <Dropdown
               menu={{ items: userDropdownItems, onClick: handleUserMenuClick }}
               placement="bottomRight"

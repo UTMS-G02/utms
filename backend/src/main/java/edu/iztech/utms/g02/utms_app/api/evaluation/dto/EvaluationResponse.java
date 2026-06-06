@@ -26,4 +26,8 @@ public class EvaluationResponse {
     // UC-8 YGK değerlendirmesi — submit sonrası dolar
     private Boolean conditionsMet;   // Application.ygkApproved
     private String generalNote;      // EvaluationResult.generalNote
+
+    // Provizyonel asil/yedek (ranking + Department.quota): "PRIMARY" / "WAITLIST" / null.
+    // İnceleme aşaması göstergesidir; nihai liste yayında (ResultService) kesinleşir.
+    private String provisionalListType;
 }

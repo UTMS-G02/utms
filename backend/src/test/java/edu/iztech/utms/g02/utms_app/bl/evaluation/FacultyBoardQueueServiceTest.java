@@ -21,52 +21,50 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
- * Dekan listesi: yalnızca dekanın fakültesindeki başvurular + kuyruk→statü eşlemesi.
+ * Fakülte Kurulu listesi: yalnızca kurulun fakültesindeki başvurular + sekme→statü eşlemesi.
  */
 @ExtendWith(MockitoExtension.class)
-class DeanQueueServiceTest {
+class FacultyBoardQueueServiceTest {
 
     @Mock private ApplicationRepository applicationRepository;
     @Mock private ApplicationService applicationService;
-    @Mock private DeanIdentity deanIdentity;
+    @Mock private DeanIdentity facultyIdentity;
 
-    @InjectMocks private DeanQueueService service;
+    @InjectMocks private FacultyBoardQueueService service;
 
     @Test
-    void list_fromOidb_scopesToDeanFaculty_andUsesDeanOfficeReviewStatus() {
-        when(deanIdentity.currentFacultyId()).thenReturn(10);
+    void list_pending_scopesToFaculty_andUsesFacultyBoardReviewStatus() {
+        when(facultyIdentity.currentFacultyId()).thenReturn(3);
         Application app = Application.builder().applicationId(1).build();
         when(applicationRepository.findByStatusInAndFaculty_FacultyId(
-                eq(List.of(ApplicationStatus.DEAN_OFFICE_REVIEW)), eq(10), any(Pageable.class)))
+                eq(List.of(ApplicationStatus.FACULTY_BOARD_REVIEW)), eq(3), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(app)));
         when(applicationService.getApplicationById(1)).thenReturn(ApplicationResponse.builder().id(1).build());
 
-        List<ApplicationResponse> result = service.list(DeanQueueService.Queue.FROM_OIDB);
+        List<ApplicationResponse> result = service.list(FacultyBoardQueueService.Queue.PENDING);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getId()).isEqualTo(1);
     }
 
     @Test
-    void list_fromFaculty_includesBothAcceptedAndRejected() {
-        when(deanIdentity.currentFacultyId()).thenReturn(7);
+    void list_decided_includesAcceptedAndRejected() {
+        when(facultyIdentity.currentFacultyId()).thenReturn(3);
         when(applicationRepository.findByStatusInAndFaculty_FacultyId(
                 eq(List.of(ApplicationStatus.FACULTY_BOARD_ACCEPTED, ApplicationStatus.FACULTY_BOARD_REJECTED)),
-                eq(7), any(Pageable.class)))
+                eq(3), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        List<ApplicationResponse> result = service.list(DeanQueueService.Queue.FROM_FACULTY);
+        List<ApplicationResponse> result = service.list(FacultyBoardQueueService.Queue.DECIDED);
 
         assertThat(result).isEmpty();
     }
 
     @Test
     void queueEnum_mapsToExpectedStatuses() {
-        assertThat(DeanQueueService.Queue.FROM_OIDB.statuses)
-                .containsExactly(ApplicationStatus.DEAN_OFFICE_REVIEW);
-        assertThat(DeanQueueService.Queue.FROM_YGK.statuses)
-                .containsExactly(ApplicationStatus.YGK_REVIEW_DONE);
-        assertThat(DeanQueueService.Queue.FROM_FACULTY.statuses)
+        assertThat(FacultyBoardQueueService.Queue.PENDING.statuses)
+                .containsExactly(ApplicationStatus.FACULTY_BOARD_REVIEW);
+        assertThat(FacultyBoardQueueService.Queue.DECIDED.statuses)
                 .containsExactly(ApplicationStatus.FACULTY_BOARD_ACCEPTED, ApplicationStatus.FACULTY_BOARD_REJECTED);
     }
 }
