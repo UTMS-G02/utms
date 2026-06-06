@@ -101,6 +101,14 @@ const SEMESTER_OPTIONS = [
   { value: '5', label: '5. Yarıyıl' },
 ]
 
+// Öğrenci sınıfını kendisi seçer; hedef yarıyıl bundan TÜRETİLİR (gösterim salt-okunur):
+// 1. sınıf → 3. yarıyıl, 2. sınıf → 5. yarıyıl.
+const CLASS_OPTIONS = [
+  { value: 1, label: '1. Sınıf' },
+  { value: 2, label: '2. Sınıf' },
+]
+const SEMESTER_BY_CLASS = { 1: '3', 2: '5' }
+
 // e-Devlet/ÖSYM'den "otomatik alınan" belgeler. Başvuru oluşturulmadan önce
 // önizleme ucu (GET /yoksis/documents/{type}/preview) ile görüntülenebilir.
 const EGOV_DOCUMENTS = [
@@ -217,17 +225,13 @@ export default function ApplicationForm() {
       .getMyYoksisData()
       .then((data) => {
         if (!active) return
-        // Hedef yarıyıl YÖKSİS'teki mevcut yarıyıldan türetilir ve değiştirilemez:
-        // 2. yarıyılı (1. sınıf) tamamlayan → 3., 4. yarıyılı (2. sınıf) tamamlayan → 5.
-        const targetSemester = data.semester != null ? String(data.semester + 1) : undefined
+        // Sadece YÖKSİS/ÖSYM kaynaklı salt-okunur alanlar doldurulur. Sınıf, yarıyıl ve
+        // GPA artık öğrenci tarafından girilir (prefill yapılmaz).
         form.setFieldsValue({
           academicYear: ACTIVE_ACADEMIC_YEAR,
-          semester: targetSemester,
           currentUniversity: data.currentUniversity,
           currentDept: data.currentDepartment,
-          currentYear: data.currentClass != null ? `${data.currentClass}. Sınıf` : '',
-          gpa: data.gpa, // backend tarafından 4'lük sisteme normalize edilmiş değer
-          // YKS verileri de ÖSYM'den (mock) otomatik gelir; salt-okunur gösterilir.
+          // YKS verileri ÖSYM'den (mock) otomatik gelir; salt-okunur gösterilir.
           yksScore: data.yksScore,
           yksRanking: data.yksRank,
         })
@@ -297,7 +301,8 @@ export default function ApplicationForm() {
     // create sırasında YÖKSİS'ten çeker. semester backend'de Integer beklenir.
     const payload = {
       academicYear: values.academicYear,
-      semester: Number(values.semester),
+      semester: Number(values.semester),   // sınıftan türetilir (1→3, 2→5)
+      gpa: values.gpa,                      // öğrencinin elle girdiği GPA (4'lük sistem)
       targetFaculty: values.targetFaculty,
       targetDepartment: values.targetDepartment,
       sayYksScore: values.yksScore,
@@ -459,6 +464,7 @@ export default function ApplicationForm() {
             Mevcut akademik durumunuz ve tercihleriniz
           </Text>
           <Row gutter={16}>
+            {/* — Öğrenci girişli alanlar — */}
             <Col xs={24} md={12}>
               <Form.Item
                 label="Akademik Yıl"
@@ -476,57 +482,53 @@ export default function ApplicationForm() {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item
+                label="Sınıf"
+                name="studentClass"
+                rules={[{ required: true, message: 'Sınıf seçimi zorunludur.' }]}
+                extra="1. sınıf → 3. yarıyıl, 2. sınıf → 5. yarıyıl başvurusu yapılır."
+              >
+                <Select
+                  placeholder="Seçiniz"
+                  onChange={(val) => form.setFieldsValue({ semester: SEMESTER_BY_CLASS[val] })}
+                >
+                  {CLASS_OPTIONS.map((c) => (
+                    <Option key={c.value} value={c.value}>{c.label}</Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
                 label="Başvurulan Yarıyıl"
                 name="semester"
-                rules={[{ required: true, message: 'Yarıyıl zorunludur.' }]}
-                extra="Sınıfınıza göre YÖKSİS'ten otomatik belirlenir: 1. sınıf → 3. yarıyıl, 2. sınıf → 5. yarıyıl. Yalnızca bu geçişler kabul edilir."
+                rules={[{ required: true, message: 'Önce sınıf seçiniz.' }]}
+                extra="Seçtiğiniz sınıfa göre otomatik belirlenir (1 → 3. yarıyıl, 2 → 5. yarıyıl)."
               >
-                <Select disabled placeholder={yoksisLoading ? 'YÖKSİS\'ten belirleniyor...' : 'Seçiniz'}>
+                <Select disabled placeholder="Önce sınıf seçiniz">
                   {SEMESTER_OPTIONS.map((s) => (
                     <Option key={s.value} value={s.value}>{s.label}</Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
-            {/* YÖKSİS'ten otomatik gelen, salt-okunur akademik alanlar. */}
-            <Col xs={24}>
-              <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                Aşağıdaki bilgiler YÖKSİS'ten otomatik alınmıştır ve düzenlenemez.
-              </Text>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Kayıtlı Olduğunuz Üniversite" name="currentUniversity">
-                <Input
-                  readOnly
-                  disabled={yoksisLoading}
-                  placeholder={yoksisLoading ? 'YÖKSİS\'ten alınıyor...' : ''}
-                  style={styles.readonlyInput}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Sınıf" name="currentYear">
-                <Input readOnly disabled={yoksisLoading} style={styles.readonlyInput} />
-              </Form.Item>
-            </Col>
             <Col xs={24} md={12}>
               <Form.Item
                 label="Genel Not Ortalaması (GPA)"
                 name="gpa"
-                extra="Yatay geçiş için minimum 2.50/4.00 gereklidir; altındaki başvurular kabul edilmez."
+                rules={[
+                  { required: true, message: 'Not ortalaması zorunludur.' },
+                  { type: 'number', min: 0, max: 4, message: 'GPA 0.00 ile 4.00 arasında olmalıdır.' },
+                ]}
+                extra="4'lük sistemde girin. Yatay geçiş için minimum 2.50/4.00 gereklidir; altındaki başvurular kabul edilmez."
               >
                 <InputNumber
-                  style={{ width: '100%', ...styles.readonlyInput }}
-                  readOnly
-                  disabled={yoksisLoading}
+                  style={{ width: '100%' }}
+                  min={0}
+                  max={4}
+                  step={0.01}
                   precision={2}
-                  placeholder="0.00"
+                  placeholder="Örn: 3.25"
                 />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Mevcut Bölümünüz" name="currentDept">
-                <Input readOnly disabled={yoksisLoading} style={styles.readonlyInput} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -559,6 +561,28 @@ export default function ApplicationForm() {
                     <Option key={d} value={d}>{d}</Option>
                   ))}
                 </Select>
+              </Form.Item>
+            </Col>
+
+            {/* — YÖKSİS / ÖSYM'den otomatik gelen salt-okunur alanlar — */}
+            <Col xs={24}>
+              <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                Aşağıdaki bilgiler YÖKSİS/ÖSYM'den otomatik alınmıştır ve düzenlenemez.
+              </Text>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Kayıtlı Olduğunuz Üniversite" name="currentUniversity">
+                <Input
+                  readOnly
+                  disabled={yoksisLoading}
+                  placeholder={yoksisLoading ? 'YÖKSİS\'ten alınıyor...' : ''}
+                  style={styles.readonlyInput}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Mevcut Bölümünüz" name="currentDept">
+                <Input readOnly disabled={yoksisLoading} style={styles.readonlyInput} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>

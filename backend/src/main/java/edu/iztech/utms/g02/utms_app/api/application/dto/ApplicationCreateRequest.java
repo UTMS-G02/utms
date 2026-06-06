@@ -33,10 +33,17 @@ public class ApplicationCreateRequest {
     @NotBlank(message = "Hedef bölüm boş bırakılamaz.")
     private String targetDepartment;
 
-    // Öğrencinin başvurduğu hedef yarıyıl (3 veya 5). YÖKSİS'teki mevcut yarıyıl
-    // ile tutarlılığı ApplicationService.create içinde doğrulanır.
+    // Öğrencinin başvurduğu hedef yarıyıl (3 veya 5). Öğrencinin seçtiği sınıftan
+    // türetilir (1. sınıf → 3, 2. sınıf → 5); yalnızca 3/5 ApplicationService.create
+    // içinde doğrulanır.
     @NotNull(message = "Başvurulan yarıyıl boş bırakılamaz (3 veya 5).")
     private Integer semester;
+
+    // Genel not ortalaması (GPA) — artık öğrenci tarafından ELLE girilir (4'lük sistem).
+    // YÖKSİS'ten türetilmez. 0.00–4.00 aralığı + 2.50 barajı ApplicationService.create
+    // içinde doğrulanır.
+    @NotNull(message = "Genel not ortalaması (GPA) boş bırakılamaz.")
+    private Double gpa;
 
     //@NotNull(message = "KVKK onayı zorunludur.")
     private Boolean kvkkAccepted;

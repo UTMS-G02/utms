@@ -13,7 +13,6 @@ import edu.iztech.utms.g02.utms_app.dal.department.repository.DepartmentReposito
 
 import edu.iztech.utms.g02.utms_app.integration.yoksis.YoksisIntegrationService; // EKLENDİ
 import edu.iztech.utms.g02.utms_app.integration.yoksis.dto.YoksisStudentResponse; // EKLENDİ
-import edu.iztech.utms.g02.utms_app.integration.yoksis.GpaScaleConverter; // GPA 100'lük -> 4'lük normalizasyonu
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -127,16 +126,28 @@ public class ApplicationService {
         // 3. Dış Sistem Entegrasyonu: YÖKSİS'ten akademik verileri çek
         YoksisStudentResponse yoksisData = yoksisIntegrationService.fetchAcademicDataByTckn(currentStudent.getTckn());
 
-        // 3b. NORMALİZASYON: YÖKSİS GPA'yı 100'lük sistemde dönmüş olsa bile sistemin tek
-        //     standardı olan 4'lük ölçeğe çeviririz. Bundan sonra her yerde (doğrulama,
-        //     kayıt, frontend) yalnızca 4'lük değer kullanılır.
-        double normalizedGpa = GpaScaleConverter.toFourScale(yoksisData.gpa(), yoksisData.gpaScale());
+        // 3b. GPA artık öğrenci tarafından ELLE girilir (4'lük sistem) — YÖKSİS'ten türetilmez.
+        //     Önce geçerli aralık (0.00–4.00) kontrol edilir; 2.50 barajı aşağıda
+        //     validateApplicationConditions içinde uygulanır.
+        Double enteredGpa = req.getGpa();
+        if (enteredGpa == null || enteredGpa < 0.0 || enteredGpa > 4.0) {
+            throw new IllegalArgumentException("Genel not ortalaması (GPA) 0.00 ile 4.00 arasında girilmelidir.");
+        }
+
+        // 3c. Hedef yarıyıl yalnızca 3 veya 5 olabilir (öğrenci sınıfını kendisi seçer:
+        //     1. sınıf → 3, 2. sınıf → 5). Eskiden YÖKSİS'teki tamamlanan döneme göre
+        //     kısıtlanıyordu; artık seçimi öğrenci yaptığı için o kısıt kaldırıldı.
+        //     Taslak yeniden kullanımı da bu kontrolden geçsin diye draft branch'inden ÖNCE.
+        Integer targetSemester = req.getSemester();
+        if (targetSemester == null || (targetSemester != 3 && targetSemester != 5)) {
+            throw new IllegalArgumentException("Yalnızca 3. veya 5. yarıyıla başvuru yapılabilir.");
+        }
 
         // 4. AKADEMİK YETERLİLİK BARAJLARI (GPA + YKS sıralaması) — kayıttan/taslaktan ÖNCE.
         //    Hedef program (Mühendislik/Mimarlık) değiştiğinde sıralama barajı da değişeceği
         //    için bu kontrol taslak yeniden kullanımından ÖNCE çalışmalıdır; aksi halde
         //    önceden onaylı bir taslak farklı bir hedefe taşınarak baraj atlatılabilir.
-        validateApplicationConditions(req, normalizedGpa, yoksisData);
+        validateApplicationConditions(req, enteredGpa, yoksisData);
 
         // Yarım kalmış bir taslak varsa onu YENİDEN KULLAN (yeni taslak üretme). Hedef program
         // değişmiş olabileceğinden taslağın hedef/dönem alanlarını güncelleriz. Böylece belge
@@ -149,28 +160,9 @@ public class ApplicationService {
             draft.setSemester(String.valueOf(req.getSemester()));
             draft.setTargetDepartment(req.getTargetDepartment());
             draft.setTargetFaculty(req.getTargetFaculty());
+            draft.setGpa(enteredGpa); // öğrencinin elle girdiği güncel GPA
             linkTargetOrgUnits(draft);
             return toResponse(applicationRepository.save(draft));
-        }
-
-        // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü
-        // (Not: Yoksis'ten gelen field ismine göre yoksisData.semester(), grade() veya year() gibi kendi record'ındaki ismi kullanmalısın)
-        // YENİ EKLENEN: 3. ve 5. Yarıyıl (Semester) Kontrolü (Integer Tipi ile)
-        Integer currentSemester = yoksisData.semester(); 
-        
-        // Yalnızca 1. sınıf (2. yarıyıl tamamlamış → 3. yarıyıla) ve 2. sınıf (4. yarıyıl
-        // tamamlamış → 5. yarıyıla) başvurabilir. 3./4. sınıf (yarıyıl 6/8) reddedilir.
-        if (currentSemester == null || (currentSemester != 2 && currentSemester != 4)) {
-            throw new IllegalArgumentException("Yalnızca 3. veya 5. yarıyıla başvuru yapılabilir.");
-        }
-
-        // YENİ: Öğrencinin seçtiği hedef yarıyıl (3/5), YÖKSİS'teki mevcut yarıyıl ile tutarlı olmalı.
-        // 2. yarıyılı tamamlayan -> yalnızca 3., 4. yarıyılı tamamlayan -> yalnızca 5. yarıyıla başvurabilir.
-        Integer targetSemester = req.getSemester();
-        if (targetSemester == null || targetSemester != currentSemester + 1) {
-            throw new IllegalArgumentException("Başvurulan yarıyıl seçimi mevcut durumunuzla tutarlı değil: "
-                    + currentSemester + ". yarıyılı tamamlayan öğrenciler yalnızca " + (currentSemester + 1)
-                    + ". yarıyıla başvurabilir.");
         }
 
         // 4. Application objesini oluşturma (Kendi verilerimiz + YÖKSİS verileri + Request verileri harmanlanıyor)
@@ -191,7 +183,7 @@ public class ApplicationService {
                 .currentUniversity(yoksisData.currentUniversity())
                 .currentFaculty(yoksisData.currentFaculty())
                 .currentDepartment(yoksisData.currentDepartment())
-                .gpa(normalizedGpa) // her zaman 4'lük sistemde saklanır (100'lük gelse bile çevrilmiştir)
+                .gpa(enteredGpa) // öğrencinin elle girdiği GPA (4'lük sistem)
 
                 .build();
 
@@ -232,9 +224,8 @@ public class ApplicationService {
      *
      * <p>Kurallar:
      * <ol>
-     *   <li><b>GPA barajı:</b> 4'lük sistemde &ge; 2.50. (100'lük gelen notlar bu noktaya
-     *       kadar {@link GpaScaleConverter} ile 4'lüğe çevrilmiş olur; {@code gpa4} parametresi
-     *       her zaman 4'lük ölçektedir.)</li>
+     *   <li><b>GPA barajı:</b> 4'lük sistemde &ge; 2.50. {@code gpa4} parametresi öğrencinin
+     *       formda ELLE girdiği 4'lük GPA'dır (artık YÖKSİS'ten türetilmez).</li>
      *   <li><b>YKS başarı sıralaması:</b> hedef Mühendislik ise &le; 300.000,
      *       hedef Mimarlık ise &le; 250.000.</li>
      * </ol>
