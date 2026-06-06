@@ -11,6 +11,7 @@ import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.PublishedResultRep
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.User;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.UserRepository;
+import edu.iztech.utms.g02.utms_app.bl.notification.NotificationService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -42,6 +43,7 @@ public class ResultService {
     private final PublishedResultRepository publishedResultRepository;
     private final EvaluationResultRepository evaluationResultRepository; // asil/yedek için bölüm-içi ranking
     private final UserRepository userRepository;
+    private final NotificationService notificationService; // TC-6.0: yayında öğrenci bildirimi (in-app)
 
     /**
      * Nihai aşamadaki başvuruları yayınlar. Halihazırda yayınlanmış başvurular atlanır
@@ -52,6 +54,13 @@ public class ResultService {
     @Transactional
     public int publishResults() {
         User publisher = resolveCurrentUser();
+
+        // TC-6.2: Bekleyen Fakülte Kurulu kararı ('Fakülte Kurulu Kararı Bekleniyor') varken yayın engellenir.
+        if (!findByStatus(ApplicationStatus.FACULTY_BOARD_REVIEW).isEmpty()) {
+            throw new IllegalStateException(
+                    "Tüm Fakülte Kurulu kararları tamamlanmadan sonuçlar yayınlanamaz.");
+        }
+
         int count = 0;
 
         // Asil/Yedek: bölüm bazında kabul edilenleri ranking'e göre sıralayıp ata (Department.quota).
@@ -71,6 +80,7 @@ public class ResultService {
                     .build());
             app.setStatus(ApplicationStatus.ACCEPTED);
             applicationRepository.save(app);
+            notifyResult(app, "ACCEPTED", listTypeByApp.get(app.getApplicationId()));
             count++;
         }
 
@@ -85,10 +95,25 @@ public class ResultService {
                     .finalDecision("REJECTED")
                     .publishedBy(publisher)
                     .build());
+            notifyResult(app, "REJECTED", null);
             count++;
         }
 
         return count;
+    }
+
+    /** Yayınlanan sonucu öğrenciye in-app bildirir (TC-6.0 POST-2). E-posta entegrasyonu ayrı/ileride. */
+    private void notifyResult(Application app, String decision, String listType) {
+        if (app.getStudent() == null || app.getStudent().getUserId() == null) return;
+        String message;
+        if ("ACCEPTED".equals(decision)) {
+            String liste = "WAITLIST".equals(listType) ? " (Yedek liste)"
+                    : "PRIMARY".equals(listType) ? " (Asil liste)" : "";
+            message = "Başvurunuz KABUL edildi" + liste + ". Sonuç ekranınızdan detayları görüntüleyebilirsiniz.";
+        } else {
+            message = "Başvurunuz REDDEDİLDİ. Sonuç ekranınızdan detayları görüntüleyebilirsiniz.";
+        }
+        notificationService.create(app.getStudent().getUserId(), "Başvuru Sonucu Yayınlandı", message);
     }
 
     /**

@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -48,13 +49,16 @@ class ResultServiceTest {
     @Mock private PublishedResultRepository publishedResultRepository;
     @Mock private EvaluationResultRepository evaluationResultRepository;
     @Mock private UserRepository userRepository;
+    @Mock private edu.iztech.utms.g02.utms_app.bl.notification.NotificationService notificationService;
 
     @InjectMocks private ResultService resultService;
 
     @BeforeEach
-    void stubAcceptedSourceEmpty() {
-        // computeListTypes() önceden ACCEPTED olanları da sorgular; çoğu testte boş.
+    void stubSecondarySources() {
+        // computeListTypes() önceden ACCEPTED olanları da sorgular; finalize guard FACULTY_BOARD_REVIEW'ı sorgular.
         lenient().when(applicationRepository.findByStatus(eq(ApplicationStatus.ACCEPTED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        lenient().when(applicationRepository.findByStatus(eq(ApplicationStatus.FACULTY_BOARD_REVIEW), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
     }
 
@@ -153,6 +157,19 @@ class ResultServiceTest {
                 .collect(Collectors.toMap(r -> r.getApplication().getApplicationId(), PublishedResult::getListType));
         assertThat(listTypeByApp.get(11)).isEqualTo("PRIMARY");   // sıra 1, kontenjan 1 → asil
         assertThat(listTypeByApp.get(12)).isEqualTo("WAITLIST");  // sıra 2 → yedek
+    }
+
+    @Test
+    void publish_blockedWhenFacultyBoardDecisionsPending() {
+        // TC-6.2: 'Fakülte Kurulu Kararı Bekleniyor' (FACULTY_BOARD_REVIEW) varken yayın engellenir.
+        loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
+        when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.FACULTY_BOARD_REVIEW), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(buildApp(1, ApplicationStatus.FACULTY_BOARD_REVIEW))));
+
+        assertThatThrownBy(() -> resultService.publishResults())
+                .isInstanceOf(IllegalStateException.class);
+        verify(publishedResultRepository, never()).save(any());
     }
 
     // ==========================================
