@@ -67,7 +67,7 @@ const OIDB_STATUS_MAP = {
   OIDB_REJECTED: 'REJECTED',
   YDYO_REVIEW: 'YDYO_REVIEW',
   YDYO_EXAM_PENDING: 'YDYO_REVIEW',
-  YDYO_ACCEPTED: 'YDYO_APPROVED',
+  YDYO_ACCEPTED: 'YDYO_ACCEPTED',
   YDYO_REJECTED: 'YDYO_REJECTED',
   DEAN_OFFICE_REVIEW: 'FACULTY_REVIEW',
   YGK_REVIEW: 'FACULTY_REVIEW',
@@ -75,7 +75,7 @@ const OIDB_STATUS_MAP = {
   FACULTY_BOARD_REVIEW: 'FACULTY_REVIEW',
   FACULTY_BOARD_REJECTED: 'FACULTY_REVIEW',
   FACULTY_BOARD_ACCEPTED: 'FACULTY_REVIEW',
-  OIDB_FINAL_REVIEW: 'FACULTY_REVIEW',
+  OIDB_FINAL_REVIEW: 'OIDB_FINAL',   // Fakülte Kurulu onayı ÖİDB'ye döndü → yayın bekliyor (ayrı statü)
   // "Fakülteye Gönder" sonrası değerlendirme/dekan hattındaki statüler de "Fakültede" görünür
   // (aksi halde panelde ham 'EVALUATION_QUEUE' vb. görünüyordu).
   EVALUATION_QUEUE: 'FACULTY_REVIEW',
@@ -232,12 +232,9 @@ export const applicationsApi = {
   ...studentApi,
   ...oidbApi,
 
-  // Sonucu Paylaş: backend ucu henüz yok → bayraktan bağımsız mock no-op.
-  // TODO: sonuç ilan/paylaşım endpoint'i geldiğinde gerçek çağrıya bağla.
-  shareResults: async () => {
-    await delay(500)
-    return { success: true }
-  },
+  // Sonucu Paylaş → ÖİDB global yayın: POST /results/publish, tüm OIDB_FINAL_REVIEW
+  // (→ACCEPTED) + REJECTED başvuruları tek seferde yayınlar (seçim cosmetic, yayın global).
+  shareResults: () => apiClient.post('/results/publish').then((r) => r.data),
 
   // --- Sonuç (gerçek uç + fallback) ---
   getMyResult: async () => {
