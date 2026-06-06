@@ -12,26 +12,27 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /**
- * Dekanlık Ofisi "router" görünümü — fakülte-kapsamlı, salt-okunur.
+ * Fakülte Kurulu paneli (UC-11) — fakülte-kapsamlı, salt-okunur liste.
  *
- * <p>Dekanlık Ofisi karar VERMEZ; yalnızca başvuruları bir sonraki makama iletir. Bu servis,
- * panelin üç sekmesini (ÖİDB'den / YGK'dan / Fakülte Kurulu'ndan gelen) besleyen listeleri
- * döndürür ve YALNIZCA oturum açan dekanın {@code facultyId}'sine ait başvuruları gösterir.
+ * <p>Kurul üyesi YALNIZCA kendi fakültesindeki başvuruları görür:
+ * <ul>
+ *   <li>{@code PENDING} ("Değerlendirme Bekleyenler"): {@code FACULTY_BOARD_REVIEW}</li>
+ *   <li>{@code DECIDED} ("Değerlendirilenler"): {@code FACULTY_BOARD_ACCEPTED} + {@code FACULTY_BOARD_REJECTED}</li>
+ * </ul>
+ * Fakülte kimliği {@link DeanIdentity} (oturum açan personelin {@code facultyId}'si) üzerinden çözülür.
  */
 @Service
 @RequiredArgsConstructor
-public class DeanQueueService {
+public class FacultyBoardQueueService {
 
     private final ApplicationRepository applicationRepository;
-    private final ApplicationService applicationService; // mevcut ApplicationResponse eşlemesini yeniden kullanır
-    private final DeanIdentity deanIdentity;
+    private final ApplicationService applicationService;     // mevcut ApplicationResponse eşlemesini yeniden kullanır
+    private final DeanIdentity facultyIdentity;              // oturum açan personelin facultyId'si (genel)
 
-    /** Dekanlık sekmeleri → karşılık gelen başvuru statüleri (TC-10.x). */
+    /** Fakülte Kurulu sekmeleri → karşılık gelen başvuru statüleri. */
     public enum Queue {
-        FROM_OIDB(List.of(ApplicationStatus.DEAN_OFFICE_REVIEW)), // ÖİDB'den gelen ('Akademik İnceleme Bekliyor') → YGK'ya iletilecek
-        FROM_YGK(List.of(ApplicationStatus.YGK_REVIEW_DONE)),     // YGK'dan gelen (intibak görüntülenebilir)
-        // Fakülte Kurulu'ndan gelen: hem KABUL hem RED tek sekmede; ikisi de ÖİDB'ye iletilir (TC-10.3/10.4).
-        FROM_FACULTY(List.of(ApplicationStatus.FACULTY_BOARD_ACCEPTED, ApplicationStatus.FACULTY_BOARD_REJECTED));
+        PENDING(List.of(ApplicationStatus.FACULTY_BOARD_REVIEW)),
+        DECIDED(List.of(ApplicationStatus.FACULTY_BOARD_ACCEPTED, ApplicationStatus.FACULTY_BOARD_REJECTED));
 
         final List<ApplicationStatus> statuses;
 
@@ -42,7 +43,7 @@ public class DeanQueueService {
 
     @Transactional(readOnly = true)
     public List<ApplicationResponse> list(Queue queue) {
-        Integer facultyId = deanIdentity.currentFacultyId();
+        Integer facultyId = facultyIdentity.currentFacultyId();
         return applicationRepository
                 .findByStatusInAndFaculty_FacultyId(queue.statuses, facultyId, Pageable.unpaged())
                 .getContent().stream()

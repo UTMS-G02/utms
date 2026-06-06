@@ -47,6 +47,17 @@ class DeanForwardServiceTest {
     }
 
     @Test
+    void forwardToYgk_deanOfficeReview_sameFaculty_movesToEvaluationQueue() {
+        Application app = buildApp(9, ApplicationStatus.DEAN_OFFICE_REVIEW, 10);
+        stubForward(9, app, 10);
+
+        service.forwardToYgk(9);
+
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.EVALUATION_QUEUE);
+        verify(applicationRepository).save(app);
+    }
+
+    @Test
     void forwardToFacultyBoard_wrongStatus_throwsIllegalState_andSavesNothing() {
         Application app = buildApp(2, ApplicationStatus.YGK_SCORED, 10);
         when(applicationRepository.findById(2)).thenReturn(Optional.of(app));
