@@ -196,10 +196,11 @@ const YGKDashboard = () => {
         values.targetGrade = null
       }
       let updatedTable
+      const appId = selectedStudent.applicationId ?? selectedStudent.id
       if (editingRow) {
-        updatedTable = await intibakApi.updateRow(selectedStudent.id, editingRow.id, values)
+        updatedTable = await intibakApi.updateRow(appId, editingRow.id, values)
       } else {
-        updatedTable = await intibakApi.addRow(selectedStudent.id, values)
+        updatedTable = await intibakApi.addRow(appId, values)
       }
       setIntibakRows(updatedTable.rows ?? [])
       setEquivalencyRatio(updatedTable.equivalencyRatio)
@@ -214,7 +215,8 @@ const YGKDashboard = () => {
 
   const handleDeleteRow = async (rowId) => {
     try {
-      const updatedTable = await intibakApi.deleteRow(selectedStudent.id, rowId)
+      const appId = selectedStudent.applicationId ?? selectedStudent.id
+      const updatedTable = await intibakApi.deleteRow(appId, rowId)
       setIntibakRows(updatedTable.rows ?? [])
       setEquivalencyRatio(updatedTable.equivalencyRatio)
     } catch (err) {
