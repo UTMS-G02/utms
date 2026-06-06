@@ -42,6 +42,9 @@ public class BoardReviewResponse {
     private Double equivalencyRatio;
     private Boolean belowThreshold;
 
+    // Provizyonel asil/yedek (ranking + Department.quota): "PRIMARY" / "WAITLIST" / null. Nihai yayında kesinleşir.
+    private String provisionalListType;
+
     // Komisyon karar geçmişi (eskiden yeniye)
     private List<CommitteeDecisionSummary> decisions;
 }

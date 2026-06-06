@@ -7,6 +7,7 @@ import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
+import edu.iztech.utms.g02.utms_app.dal.department.entity.Department;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.CommitteeDecision;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.EvaluationResult;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.CommitteeDecisionRepository;
@@ -117,6 +118,27 @@ class BoardReviewServiceTest {
 
         assertThat(result.getEquivalencyRatio()).isEqualTo(0.50);
         assertThat(result.getBelowThreshold()).isTrue();
+    }
+
+    @Test
+    void getReview_setsProvisionalWaitlist_whenRankingExceedsQuota() {
+        Department dept = Department.builder().departmentId(9).name("Bilgisayar").quota(1).build();
+        Application app = Application.builder()
+                .applicationId(8)
+                .status(ApplicationStatus.FACULTY_BOARD_REVIEW)
+                .ygkApproved(true)
+                .department(dept)
+                .build();
+        when(applicationRepository.findByApplicationId(8)).thenReturn(Optional.of(app));
+        when(applicationService.getApplicationById(8)).thenReturn(ApplicationResponse.builder().id(8).build());
+        when(courseEquivalencyService.getTable(8)).thenReturn(IntibakTableResponse.builder().applicationId(8).build());
+        when(evaluationResultRepository.findByApplication_ApplicationId(8))
+                .thenReturn(Optional.of(EvaluationResult.builder().ranking(2).build()));
+        when(committeeDecisionRepository.findByApplication_ApplicationId(8)).thenReturn(List.of());
+
+        BoardReviewResponse result = boardReviewService.getReview(8);
+
+        assertThat(result.getProvisionalListType()).isEqualTo("WAITLIST");   // ranking 2 > kontenjan 1 → yedek
     }
 
     @Test

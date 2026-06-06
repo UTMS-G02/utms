@@ -66,16 +66,21 @@ public class BoardReviewService {
         Double equivalencyRatio = intibak != null ? intibak.getEquivalencyRatio() : null;
         boolean belowThreshold = equivalencyRatio != null && equivalencyRatio < EQUIVALENCY_THRESHOLD;
 
+        // Provizyonel asil/yedek (ranking + bölüm kontenjanı); nihai liste yayında kesinleşir.
+        Integer ranking = eval != null ? eval.getRanking() : null;
+        Integer quota = app.getDepartment() != null ? app.getDepartment().getQuota() : null;
+
         return BoardReviewResponse.builder()
                 .application(application)
                 .compositeScore(eval != null ? eval.getCompositeScore() : null)
-                .ranking(eval != null ? eval.getRanking() : null)
+                .ranking(ranking)
                 .conditionsMet(app.getYgkApproved())
                 .generalNote(eval != null ? eval.getGeneralNote() : null)
                 .calculatedAt(eval != null ? eval.getCalculatedAt() : null)
                 .intibak(intibak)
                 .equivalencyRatio(equivalencyRatio)
                 .belowThreshold(belowThreshold)
+                .provisionalListType(EvaluationService.provisionalListType(ranking, quota))
                 .decisions(decisions)
                 .build();
     }
