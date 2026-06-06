@@ -308,8 +308,8 @@ const FakulteKuruluDashboard = () => {
               <Col span={24}>
                 <Radio.Group value={decision} onChange={(e) => setDecision(e.target.value)}>
                   <Space direction="vertical">
-                    <Radio value="approve">Değerlendirmeyi Onayla</Radio>
-                    <Radio value="reject">Değerlendirmeyi Reddet</Radio>
+                    <Radio value="approve">Başvuruyu Onayla</Radio>
+                    <Radio value="reject">Başvuruyu Reddet</Radio>
                   </Space>
                 </Radio.Group>
               </Col>
