@@ -503,6 +503,35 @@ public class ApplicationService {
 
 
     // --------------------------------------------------------
+    // YDYO: "SONUÇLARI ÖİDB'YE İLET"
+    //  - YDYO değerlendirmesini bitirip kararları (ACCEPTED/REJECTED) resmen ÖİDB'ye
+    //    iletir. İletilene dek ÖİDB bu kararları GÖREMEZ (panelde "YDYO'da" maskelenir).
+    //  - Bayrak DB'de kalıcıdır → yenileme/oturum kapatma sonrası geri dönmez.
+    //  - İŞ KURALI: listede hâlâ tamamlanmamış (REVIEW/EXAM_PENDING) kayıt varsa iletilemez.
+    // --------------------------------------------------------
+    @Transactional
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    public int forwardYdyoResultsToOidb() {
+        // Hâlâ değerlendirme süren kayıt varken iletime izin verme (frontend guard'ının backend karşılığı).
+        boolean hasPending = applicationRepository.existsByStatusIn(
+                List.of(ApplicationStatus.YDYO_REVIEW, ApplicationStatus.YDYO_EXAM_PENDING));
+        if (hasPending) {
+            throw new IllegalStateException("Tüm öğrenci kayıtları tamamlanmadan liste ÖİDB'ye iletilemez.");
+        }
+
+        // Karara bağlanmış ama henüz iletilmemiş kayıtları işaretle.
+        List<Application> toForward = applicationRepository.findByStatusInAndYdyoForwardedToOidb(
+                List.of(ApplicationStatus.YDYO_ACCEPTED, ApplicationStatus.YDYO_REJECTED), false);
+
+        for (Application app : toForward) {
+            app.setYdyoForwardedToOidb(true);
+        }
+        applicationRepository.saveAll(toForward);
+
+        return toForward.size();
+    }
+
+    // --------------------------------------------------------
     // YDYO 2. AŞAMA: TOPLU CSV İLE SINAV SONUCU YÜKLEME
     // --------------------------------------------------------
     @Transactional
@@ -816,6 +845,9 @@ public class ApplicationService {
         response.setModified(app.isYdyoDecisionModified());
         response.setModifiedBy(app.getYdyoModifiedBy() != null ? app.getYdyoModifiedBy().getUserId() : null);
         response.setModifiedAt(app.getYdyoModifiedDate());
+
+        // YDYO sonuçları ÖİDB'ye iletildi mi? (ÖİDB görünürlüğünü + YDYO kilidini belirler)
+        response.setYdyoForwardedToOidb(app.isYdyoForwardedToOidb());
 
         // Türetilen YDYO alanları (entity'de saklanmıyor):
         //   ydyoApproved == true  → belge onaylı, muaf, sınav gerekmez (requiresExam=false)

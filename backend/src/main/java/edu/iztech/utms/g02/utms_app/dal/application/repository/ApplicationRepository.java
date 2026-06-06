@@ -16,6 +16,12 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
 
     Page<Application> findByStatus(ApplicationStatus status, Pageable pageable);
 
+    // YDYO "Sonuçları ÖİDB'ye İlet": karara bağlı ama henüz iletilmemiş kayıtları çek.
+    List<Application> findByStatusInAndYdyoForwardedToOidb(Collection<ApplicationStatus> statuses, boolean forwarded);
+
+    // İlet öncesi guard: hâlâ değerlendirme süren (REVIEW/EXAM_PENDING) kayıt var mı?
+    boolean existsByStatusIn(Collection<ApplicationStatus> statuses);
+
     // Pair 3: Dekanlık fakülte-kapsamlı liste — yalnızca dekanın fakültesindeki başvurular
     // (sekme başına bir veya birden çok statü; ör. Fakülte Kurulundan Gelen = KABUL + RED).
     Page<Application> findByStatusInAndFaculty_FacultyId(Collection<ApplicationStatus> statuses, Integer facultyId, Pageable pageable);

@@ -168,6 +168,16 @@ public class ApplicationController {
         return ResponseEntity.ok(response);
     }
 
+    // YDYO - "Sonuçları ÖİDB'ye İlet": YDYO kararlarını resmen ÖİDB'ye iletir (kalıcı).
+    // İletilene dek ÖİDB bu kararları göremez; iletim DB'de saklandığı için yenileme/
+    // oturum kapatma sonrası geri dönmez.
+    @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
+    @PostMapping("/ydyo-forward-to-oidb")
+    public ResponseEntity<String> forwardYdyoResultsToOidb() {
+        int count = applicationService.forwardYdyoResultsToOidb();
+        return ResponseEntity.ok(count + " başvuru sonucu ÖİDB'ye iletildi.");
+    }
+
     // YDYO - Toplu Sınav Sonucu Yükleme (CSV)
     @PreAuthorize("hasAnyRole('YDYO', 'ROLE_YDYO')")
     @PostMapping(value = "/ydyo-exam-result", consumes = "multipart/form-data")

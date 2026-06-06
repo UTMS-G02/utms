@@ -101,6 +101,12 @@ public class DataInitializer implements CommandLineRunner {
         // olduğu için tek-program kuralını ihlal etmez; öğrenci 2026-2027'ye başvurabilir.
         seedPastRejectedApplication("ogrenci@iyte.edu.tr");
 
+        // YDYO panelini test edebilmek için YDYO_REVIEW aşamasında birkaç örnek başvuru.
+        // Bir öğrenci yalnız tek aktif başvuru yapabildiğinden her başvuru ayrı test
+        // öğrencisine bağlanır (hepsi active=true → giriş gerektirmez). YDYO bu kayıtları
+        // değerlendirip "Sonuçları ÖİDB'ye İlet" akışını uçtan uca test edebilir.
+        seedYdyoReviewApplications();
+
         // Pair 3: mevcut/seed başvuruların hedef fakülte/bölüm FK'larını metinlerinden doldur.
         backfillApplicationOrgUnits();
 
@@ -160,6 +166,63 @@ public class DataInitializer implements CommandLineRunner {
                     .build());
             System.out.println("UC-15: Test öğrencisi için örnek bildirim eklendi.");
         });
+    }
+
+    // YDYO panelini doldurmak için YDYO_REVIEW aşamasında örnek başvurular (+ test öğrencileri).
+    // İdempotent: her öğrenci e-postası zaten varsa atlanır; böylece her açılışta çoğalmaz.
+    private void seedYdyoReviewApplications() {
+        // {email, tckn, ad, soyad, telefon, mevcut üniversite, mevcut bölüm, hedef bölüm, hedef fakülte, gpa, yks, sıra}
+        Object[][] seeds = {
+            {"ydyo.test1@iyte.edu.tr", "22222222201", "Ayşe", "Demir", "5551112201",
+                "Ege Üniversitesi", "Bilgisayar Mühendisliği",
+                "Bilgisayar Mühendisliği", "Mühendislik Fakültesi", 3.10, 470.0, 9500},
+            {"ydyo.test2@iyte.edu.tr", "22222222202", "Mehmet", "Kaya", "5551112202",
+                "Dokuz Eylül Üniversitesi", "Elektrik-Elektronik Mühendisliği",
+                "Elektrik-Elektronik Mühendisliği", "Mühendislik Fakültesi", 2.95, 455.0, 14200},
+            {"ydyo.test3@iyte.edu.tr", "22222222203", "Zeynep", "Şahin", "5551112203",
+                "Boğaziçi Üniversitesi", "Makine Mühendisliği",
+                "Makine Mühendisliği", "Mühendislik Fakültesi", 3.40, 480.0, 6100},
+            {"ydyo.test4@iyte.edu.tr", "22222222204", "Can", "Yıldız", "5551112204",
+                "İstanbul Teknik Üniversitesi", "Kimya Mühendisliği",
+                "Kimya Mühendisliği", "Mühendislik Fakültesi", 2.70, 445.0, 21000},
+        };
+
+        int created = 0;
+        for (Object[] s : seeds) {
+            String email = (String) s[0];
+            if (userRepository.findByEmail(email).isPresent()) continue;
+
+            createStudent(email, passwordEncoder.encode("test123"),
+                    (String) s[2], (String) s[3], (String) s[1], (String) s[4],
+                    LocalDate.of(2002, 1, 1));
+
+            Student student = studentRepository.findByEmail(email).orElseThrow();
+
+            Application app = Application.builder()
+                    .student(student)
+                    .status(ApplicationStatus.YDYO_REVIEW)
+                    .academicYear("2026-2027")
+                    .semester("3")
+                    .targetFaculty((String) s[8])
+                    .targetDepartment((String) s[7])
+                    .currentUniversity((String) s[5])
+                    .currentFaculty("Mühendislik Fakültesi")
+                    .currentDepartment((String) s[6])
+                    .gpa((Double) s[9])
+                    .sayYksScore((Double) s[10])
+                    .sayYksRank((Integer) s[11])
+                    .submissionDate(LocalDate.now())
+                    .oidbApproved(true)
+                    .oidbNotes("Belgeler tamam — YDYO değerlendirmesine iletildi.")
+                    .build();
+
+            applicationRepository.save(app);
+            created++;
+        }
+
+        if (created > 0) {
+            System.out.println(created + " adet YDYO_REVIEW örnek başvuru eklendi (ydyo.test1..4@iyte.edu.tr / test123).");
+        }
     }
 
     private void seedPastRejectedApplication(String studentEmail) {
