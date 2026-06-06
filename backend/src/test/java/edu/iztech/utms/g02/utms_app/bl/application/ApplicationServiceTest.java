@@ -45,6 +45,11 @@ class ApplicationServiceTest {
     // Pair 3: ApplicationService artık hedef fakülte/bölüm FK eşlemesi için bu repo'ları kullanıyor.
     @Mock private edu.iztech.utms.g02.utms_app.dal.department.repository.FacultyRepository facultyRepository;
     @Mock private edu.iztech.utms.g02.utms_app.dal.department.repository.DepartmentRepository departmentRepository;
+    // Başvuru durum geçmişi (Timeline): recordStatusChange() + toResponse() bu repo'yu kullanır.
+    // Mock'un findBy... varsayılanı boş liste döner; save() no-op'tur.
+    @Mock private ApplicationHistoryRepository applicationHistoryRepository;
+    // UC-15: ÖİDB/YDYO aksiyonları öğrenciye bildirim üretir; mock'lanmazsa notifyStudent NPE atar.
+    @Mock private edu.iztech.utms.g02.utms_app.bl.notification.NotificationService notificationService;
 
     @InjectMocks private ApplicationService applicationService;
 
