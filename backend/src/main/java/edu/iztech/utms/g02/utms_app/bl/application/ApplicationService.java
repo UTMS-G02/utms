@@ -435,16 +435,19 @@ public class ApplicationService {
         if (Boolean.TRUE.equals(req.getRequiresExam())) {
             app.setStatus(ApplicationStatus.YDYO_EXAM_PENDING);
             app.setYdyoExamScore(null);   // yeniden sınava → önceki sonuç (varsa) sıfırlanır
+            app.setYdyoResultStatus(null); // henüz kesin karar yok
         }
         // 2. Durum: Belgesi yeterli (Muaf)
         else if (Boolean.TRUE.equals(req.isApproved())) {
             app.setStatus(ApplicationStatus.YDYO_ACCEPTED); //  EVALUATION_QUEUE yerine YDYO_ACCEPTED olmalı ??
             app.setYdyoExamScore(null);   // muaf → sınav notu anlamsız, temizlenir
+            app.setYdyoResultStatus(ApplicationStatus.YDYO_ACCEPTED); // YDYO kararını dondur
         }
         // 3. Durum: Belge reddedildi (onaysız + sınava da girmeyecek) → eleme
         else {
             app.setStatus(ApplicationStatus.YDYO_REJECTED);
             app.setYdyoExamScore(null);
+            app.setYdyoResultStatus(ApplicationStatus.YDYO_REJECTED); // YDYO kararını dondur
         }
 
 
@@ -489,8 +492,10 @@ public class ApplicationService {
         app.setYdyoApproved(false);
         if (Boolean.TRUE.equals(req.getPassed())) {
             app.setStatus(ApplicationStatus.YDYO_ACCEPTED);   // sınavı geçti → muaf
+            app.setYdyoResultStatus(ApplicationStatus.YDYO_ACCEPTED); // YDYO kararını dondur
         } else {
             app.setStatus(ApplicationStatus.YDYO_REJECTED);   // sınavdan kaldı
+            app.setYdyoResultStatus(ApplicationStatus.YDYO_REJECTED); // YDYO kararını dondur
         }
 
         app = applicationRepository.save(app); // return satırından bir önce kaydetmeyi ayır
@@ -586,8 +591,10 @@ public class ApplicationService {
                         // İŞ KURALI: 60 ve üzeri Muaf (Kabul), altı ise Red
                         if (score >= 60.0) {
                             app.setStatus(ApplicationStatus.YDYO_ACCEPTED);
+                            app.setYdyoResultStatus(ApplicationStatus.YDYO_ACCEPTED); // YDYO kararını dondur
                         } else {
                             app.setStatus(ApplicationStatus.YDYO_REJECTED);
+                            app.setYdyoResultStatus(ApplicationStatus.YDYO_REJECTED); // YDYO kararını dondur
                         }
                         
                         applicationRepository.save(app);
@@ -856,12 +863,26 @@ public class ApplicationService {
         Boolean ydyoApproved = app.getYdyoApproved();
         response.setRequiresExam(ydyoApproved == null ? null : !ydyoApproved);
 
+        // YDYO'nun dondurulmuş kesin kararı → ÖİDB/fakülte hattına ilerlese de YDYO paneli
+        // bu kararla gösterir/kilitler. Frontend display status'ı bundan türetir.
+        response.setYdyoResultStatus(app.getYdyoResultStatus());
+
+        // examPassed türetimi CANLI status yerine "etkin YDYO statüsü"nden yapılır: kayıt
+        // YDYO_* aşamasından çıkmışsa dondurulmuş ydyoResultStatus kullanılır → statü
+        // ilerlese de "Sınav Başarılı/Başarısız" rozeti kaybolmaz.
+        ApplicationStatus effectiveYdyoStatus = app.getStatus();
+        if (effectiveYdyoStatus != ApplicationStatus.YDYO_ACCEPTED
+                && effectiveYdyoStatus != ApplicationStatus.YDYO_REJECTED
+                && app.getYdyoResultStatus() != null) {
+            effectiveYdyoStatus = app.getYdyoResultStatus();
+        }
+
         // examPassed: REJECTED → kaldı (false); sınav yoluyla ACCEPTED (belge onaysız) → geçti (true);
         // diğer durumlarda (REVIEW, EXAM_PENDING, muafiyetle ACCEPTED) belirsiz → null
         Boolean examPassed = null;
-        if (app.getStatus() == ApplicationStatus.YDYO_REJECTED) {
+        if (effectiveYdyoStatus == ApplicationStatus.YDYO_REJECTED) {
             examPassed = false;
-        } else if (app.getStatus() == ApplicationStatus.YDYO_ACCEPTED && Boolean.FALSE.equals(ydyoApproved)) {
+        } else if (effectiveYdyoStatus == ApplicationStatus.YDYO_ACCEPTED && Boolean.FALSE.equals(ydyoApproved)) {
             examPassed = true;
         }
         response.setExamPassed(examPassed);

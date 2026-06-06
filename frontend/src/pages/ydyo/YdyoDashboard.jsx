@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Button, Typography, Select, Spin, Empty, Table, Modal, App, ConfigProvider, Tooltip, Alert } from 'antd'
+import { Button, Typography, Select, Spin, Empty, Table, Modal, App, ConfigProvider, Tooltip, Alert, Input } from 'antd'
 import {
   DownloadOutlined,
   SendOutlined,
@@ -9,6 +9,7 @@ import {
   CloseOutlined,
   QuestionCircleOutlined,
   ExclamationCircleOutlined,
+  SearchOutlined,
 } from '@ant-design/icons'
 import {
   ydyoApi,
@@ -183,6 +184,7 @@ export default function YdyoDashboard() {
   const [yearFilter, setYearFilter] = useState(ALL)
   const [examFilter, setExamFilter] = useState(ALL)
   const [exemptionFilter, setExemptionFilter] = useState(ALL)
+  const [search, setSearch] = useState('')          // öğrenci arama (ad / e-posta / telefon)
   const [selected, setSelected] = useState(null)   // application shown in the modal
   const { message, modal } = App.useApp()
 
@@ -221,13 +223,22 @@ export default function YdyoDashboard() {
   )
 
   const filtered = useMemo(() => {
+    // Türkçe karakter duyarlı (İ/ı) küçük harf eşleme; ad, e-posta ve telefonda arar.
+    const q = search.trim().toLocaleLowerCase('tr-TR')
     return applications.filter((app) => {
       if (yearFilter !== ALL && app.academicYear !== yearFilter) return false
       if (examFilter !== ALL && deriveExamStatus(app) !== examFilter) return false
       if (exemptionFilter !== ALL && deriveExemptionStatus(app) !== exemptionFilter) return false
+      if (q) {
+        const haystack = [app.studentName, app.email, app.phone]
+          .filter(Boolean)
+          .join(' ')
+          .toLocaleLowerCase('tr-TR')
+        if (!haystack.includes(q)) return false
+      }
       return true
     })
-  }, [applications, yearFilter, examFilter, exemptionFilter])
+  }, [applications, yearFilter, examFilter, exemptionFilter, search])
 
   // ── "Tablo Oluştur" → client-side CSV export of the visible list ──
   const handleExportCsv = () => {
@@ -423,6 +434,18 @@ export default function YdyoDashboard() {
       {/* Filtre çubuğu */}
       <div style={styles.card}>
         <div style={styles.filterBar}>
+          <div style={styles.filterField}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Öğrenci Ara</Text>
+            <Input
+              allowClear
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+              placeholder="Ad, e-posta veya telefon"
+              style={{ width: 260 }}
+            />
+          </div>
+
           <div style={styles.filterField}>
             <Text type="secondary" style={{ fontSize: 12 }}>Akademik Yıl</Text>
             <Select

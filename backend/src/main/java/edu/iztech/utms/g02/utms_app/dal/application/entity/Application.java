@@ -148,6 +148,14 @@ public class Application {
     @Builder.Default
     private boolean ydyoForwardedToOidb = false;
 
+    // YDYO'nun KESİN kararı (YDYO_ACCEPTED / YDYO_REJECTED). Başvuru ÖİDB/fakülte hattına
+    // ilerleyip status değişse bile bu alan DEĞİŞMEZ → YDYO paneli kaydı dondurulmuş
+    // kararıyla (kaybolmadan, kilitli) göstermeye devam eder. Henüz kesin karar yoksa null
+    // (YDYO_REVIEW / YDYO_EXAM_PENDING). Türetilen alanlar (examPassed vb.) status yerine
+    // bundan hesaplanır ki statü ilerlese de YDYO görünümü tutarlı kalsın.
+    @Enumerated(EnumType.STRING)
+    private ApplicationStatus ydyoResultStatus;
+
     // YGK incelemesi — ancak YGK incelediğinde dolar
     private String ygkNotes;
 

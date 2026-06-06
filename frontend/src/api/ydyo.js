@@ -347,6 +347,15 @@ const mapApplication = (dto) => {
   // tipindeki ilk belgeden türetilir; kalanı "Başvuru Belgeleri" altında kalır.
   const isLangCert = (d) => LANG_CERT_TYPES.includes((d.docType ?? '').toUpperCase())
   const langDoc = allDocs.find(isLangCert)
+  // YDYO kararı ÖİDB'ye iletildikten sonra başvuru ÖİDB/fakülte hattına geçse de
+  // (status artık YDYO_* değil) YDYO panelinde KAYBOLMAMALI; backend'in dondurduğu
+  // ydyoResultStatus ile kaydı kendi kararıyla göstermeye devam ederiz. Board filtresi
+  // YDYO_* ile başlayan status'a baktığından, display status'u donmuş karara çekmek
+  // kaydı listede tutar (ve satır forwardedToOidb ile kilitli kalır).
+  const isYdyoStage = String(dto.status ?? '').startsWith('YDYO_')
+  const displayStatus = isYdyoStage
+    ? dto.status
+    : (dto.ydyoForwardedToOidb && dto.ydyoResultStatus ? dto.ydyoResultStatus : dto.status)
   return {
     applicationId: dto.id,
     studentName: dto.studentName,
@@ -358,7 +367,8 @@ const mapApplication = (dto) => {
     targetDepartment: dto.targetDepartment,
     targetFaculty: dto.targetFaculty,
     academicYear: dto.academicYear,
-    status: dto.status,
+    status: displayStatus,
+    rawStatus: dto.status,                 // gerçek (ilerlemiş) backend statüsü — gerekirse
     requiresExam: dto.requiresExam,
     exemptionApproved: dto.ydyoApproved,   // backend "ydyoApproved" → UI "exemptionApproved"
     examScore: dto.examScore,
