@@ -116,6 +116,17 @@ const mapOidbApplication = (dto) => {
       docType: d.documentType,
       fileName: d.fileName,
     })),
+    // Geçmiş (Timeline): backend ham statüleri en YENİ → en eski sırada döner.
+    // Kronolojik okunsun diye ters çeviriyoruz (eski → yeni) ve ham statüyü panel
+    // etiketine (STATUS_MAP anahtarı) çeviriyoruz; note açıklamayı taşır.
+    statusHistory: (dto.statusHistory ?? [])
+      .slice()
+      .reverse()
+      .map((h) => ({
+        status: mapStatus(h.status),
+        changedAt: h.changedAt,
+        note: h.note,
+      })),
   }
 }
 
