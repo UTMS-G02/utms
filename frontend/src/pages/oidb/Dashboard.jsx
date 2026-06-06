@@ -271,6 +271,7 @@ export default function OidbDashboard() {
   const [selectedIds, setSelectedIds] = useState([])
   const [statusFilter, setStatusFilter] = useState(isPendingRoute ? 'OIDB_REVIEW' : 'ALL')
   const [facultyFilter, setFacultyFilter] = useState('ALL')
+  const [yearFilter, setYearFilter] = useState('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTabs, setActiveTabs] = useState({})
   const [detailsModal, setDetailsModal] = useState({
@@ -307,14 +308,20 @@ export default function OidbDashboard() {
     loadApplications().finally(() => setLoading(false))
   }, [loadApplications])
 
+  const academicYears = useMemo(
+    () => [...new Set(applications.map((a) => a.semester).filter(Boolean))].sort().reverse(),
+    [applications],
+  )
+
   const filteredApplications = useMemo(() => {
     return applications.filter((application) => {
       const matchesStatus = statusFilter === 'ALL' || application.status === statusFilter
       const matchesFaculty = facultyFilter === 'ALL' || application.targetFaculty === facultyFilter
+      const matchesYear = yearFilter === 'ALL' || application.semester === yearFilter
       const matchesSearch = formatSearchMatch(application, searchTerm)
-      return matchesStatus && matchesFaculty && matchesSearch
+      return matchesStatus && matchesFaculty && matchesYear && matchesSearch
     })
-  }, [applications, facultyFilter, searchTerm, statusFilter])
+  }, [applications, facultyFilter, yearFilter, searchTerm, statusFilter])
 
   const chooseableApplications = useMemo(
     () => filteredApplications.filter((item) => ANNOUNCEABLE_STATUSES.includes(item.status)),
@@ -514,7 +521,7 @@ export default function OidbDashboard() {
     <div style={styles.page}>
       <div style={styles.filterBar}>
         <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} lg={10}>
+          <Col xs={24} lg={8}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <Text strong>Öğrenci Ara:</Text>
               <Search
@@ -526,13 +533,13 @@ export default function OidbDashboard() {
               />
             </Space>
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={24} sm={12} lg={5}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <Text strong>Başvuru Durumu:</Text>
               <Select
                 value={statusFilter}
                 onChange={setStatusFilter}
-                style={styles.selectBox}
+                style={{ width: '100%' }}
               >
                 {STATUS_OPTIONS.map((option) => (
                   <Option key={option.value} value={option.value}>{option.label}</Option>
@@ -540,13 +547,13 @@ export default function OidbDashboard() {
               </Select>
             </Space>
           </Col>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={24} sm={12} lg={5}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <Text strong>Fakülte:</Text>
               <Select
                 value={facultyFilter}
                 onChange={setFacultyFilter}
-                style={styles.selectBox}
+                style={{ width: '100%' }}
               >
                 {FACULTY_OPTIONS.map((option) => (
                   <Option key={option.value} value={option.value}>{option.label}</Option>
@@ -554,8 +561,22 @@ export default function OidbDashboard() {
               </Select>
             </Space>
           </Col>
-          <Col xs={24} sm={24} lg={2} style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <Text style={{ display: 'block', fontWeight: 600 }}>{filteredApplications.length} başvuru gösteriliyor</Text>
+          <Col xs={24} sm={12} lg={4}>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>Akademik Dönem:</Text>
+              <Select
+                value={yearFilter}
+                onChange={setYearFilter}
+                style={{ width: '100%' }}
+                options={[
+                  { value: 'ALL', label: 'Tümü' },
+                  ...academicYears.map((y) => ({ value: y, label: y })),
+                ]}
+              />
+            </Space>
+          </Col>
+          <Col xs={24} sm={12} lg={2} style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <Text style={{ display: 'block', fontWeight: 600 }}>{filteredApplications.length} başvuru</Text>
           </Col>
         </Row>
       </div>

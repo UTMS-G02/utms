@@ -196,6 +196,7 @@ const YGKDashboard = () => {
         values.targetGrade = null
       }
       let updatedTable
+      const appId = selectedStudent.applicationId ?? selectedStudent.id
       if (editingRow) {
         updatedTable = await intibakApi.updateRow(selectedStudent.applicationId, editingRow.id, values)
       } else {
