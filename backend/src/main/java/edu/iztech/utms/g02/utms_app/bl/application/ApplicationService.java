@@ -309,8 +309,9 @@ public class ApplicationService {
     // AŞAMA 2: YDYO Sonrası Karar
     private ApplicationResponse processOidbPostYdyoReview(Application app, boolean forwardToDean, OidbReviewRequest req) {
         if (forwardToDean && app.getStatus() == ApplicationStatus.YDYO_ACCEPTED) {
-            // Pair 3 devir noktası: değerlendirme kuyruğuna alınır (frontend + spec ile uyumlu).
-            app.setStatus(ApplicationStatus.EVALUATION_QUEUE);
+            // Pair 3 devir noktası: Dekanlık Ofisi'ne gönderilir ('Akademik İnceleme Bekliyor').
+            // Dekan 'YGK'ya İlet' ile EVALUATION_QUEUE'ya taşır; YGK score-all oradan alır (TC-10.0).
+            app.setStatus(ApplicationStatus.DEAN_OFFICE_REVIEW);
         } else {
             app.setStatus(ApplicationStatus.REJECTED); 
         }
@@ -325,8 +326,8 @@ public class ApplicationService {
         Application saved = applicationRepository.save(app);
 
         // UC-15: YDYO sonucu öğrenciye ANCAK burada (ÖİDB post-YDYO işlemi) yüzeye çıkar.
-        if (saved.getStatus() == ApplicationStatus.EVALUATION_QUEUE) {
-            // EVALUATION_QUEUE yalnızca YDYO_ACCEPTED'tan ilerletilince oluşur.
+        if (saved.getStatus() == ApplicationStatus.DEAN_OFFICE_REVIEW) {
+            // DEAN_OFFICE_REVIEW yalnızca YDYO_ACCEPTED'tan ilerletilince oluşur.
             // ydyoApproved==true → belge muafiyeti; false → sınavı geçti.
             String msg = Boolean.TRUE.equals(saved.getYdyoApproved())
                     ? "Yabancı dil şartından muaf tutuldunuz. Başvurunuz değerlendirme sürecine alındı."

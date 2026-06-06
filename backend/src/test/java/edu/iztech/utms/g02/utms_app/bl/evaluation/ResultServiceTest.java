@@ -4,14 +4,19 @@ import edu.iztech.utms.g02.utms_app.api.evaluation.dto.PublishedResultResponse;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
+import edu.iztech.utms.g02.utms_app.dal.department.entity.Department;
+import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.EvaluationResult;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.PublishedResult;
+import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.EvaluationResultRepository;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.PublishedResultRepository;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.UserRole;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -22,13 +27,18 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,9 +47,20 @@ class ResultServiceTest {
 
     @Mock private ApplicationRepository applicationRepository;
     @Mock private PublishedResultRepository publishedResultRepository;
+    @Mock private EvaluationResultRepository evaluationResultRepository;
     @Mock private UserRepository userRepository;
+    @Mock private edu.iztech.utms.g02.utms_app.bl.notification.NotificationService notificationService;
 
     @InjectMocks private ResultService resultService;
+
+    @BeforeEach
+    void stubSecondarySources() {
+        // computeListTypes() önceden ACCEPTED olanları da sorgular; finalize guard FACULTY_BOARD_REVIEW'ı sorgular.
+        lenient().when(applicationRepository.findByStatus(eq(ApplicationStatus.ACCEPTED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        lenient().when(applicationRepository.findByStatus(eq(ApplicationStatus.FACULTY_BOARD_REVIEW), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+    }
 
     @AfterEach
     void clearSecurityContext() {
@@ -108,6 +129,49 @@ class ResultServiceTest {
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.REJECTED); // statü değişmez, yalnızca yayın kaydı
     }
 
+    @Test
+    void publish_assignsPrimaryAndWaitlistByDepartmentQuota() {
+        // Bölüm kontenjanı 1: bölüm-içi sıralamada ilk → asil (PRIMARY), ikinci → yedek (WAITLIST). (TC-11.0 POST-3)
+        loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
+        Department dept = Department.builder().departmentId(100).name("Bilgisayar Mühendisliği").quota(1).build();
+        Application a1 = acceptedAppInDept(11, dept);   // ranking 1
+        Application a2 = acceptedAppInDept(12, dept);   // ranking 2
+        when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.OIDB_FINAL_REVIEW), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(a1, a2)));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.REJECTED), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(evaluationResultRepository.findByApplication_ApplicationId(11))
+                .thenReturn(Optional.of(EvaluationResult.builder().ranking(1).build()));
+        when(evaluationResultRepository.findByApplication_ApplicationId(12))
+                .thenReturn(Optional.of(EvaluationResult.builder().ranking(2).build()));
+        when(publishedResultRepository.existsByApplication_ApplicationId(any())).thenReturn(false);
+        when(publishedResultRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        int count = resultService.publishResults();
+
+        assertThat(count).isEqualTo(2);
+        ArgumentCaptor<PublishedResult> captor = ArgumentCaptor.forClass(PublishedResult.class);
+        verify(publishedResultRepository, times(2)).save(captor.capture());
+        Map<Integer, String> listTypeByApp = captor.getAllValues().stream()
+                .collect(Collectors.toMap(r -> r.getApplication().getApplicationId(), PublishedResult::getListType));
+        assertThat(listTypeByApp.get(11)).isEqualTo("PRIMARY");   // sıra 1, kontenjan 1 → asil
+        assertThat(listTypeByApp.get(12)).isEqualTo("WAITLIST");  // sıra 2 → yedek
+    }
+
+    @Test
+    void publish_blockedWhenFacultyBoardDecisionsPending() {
+        // TC-6.2: 'Fakülte Kurulu Kararı Bekleniyor' (FACULTY_BOARD_REVIEW) varken yayın engellenir.
+        loginAs("oidb@iyte.edu.tr", "ROLE_OIDB");
+        when(userRepository.findByEmail("oidb@iyte.edu.tr")).thenReturn(Optional.of(buildPublisher()));
+        when(applicationRepository.findByStatus(eq(ApplicationStatus.FACULTY_BOARD_REVIEW), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(buildApp(1, ApplicationStatus.FACULTY_BOARD_REVIEW))));
+
+        assertThatThrownBy(() -> resultService.publishResults())
+                .isInstanceOf(IllegalStateException.class);
+        verify(publishedResultRepository, never()).save(any());
+    }
+
     // ==========================================
     // SONUÇ GÖRÜNTÜLEME — getResults()
     // ==========================================
@@ -163,6 +227,19 @@ class ResultServiceTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(email, "pw",
                         List.of(new SimpleGrantedAuthority(role))));
+    }
+
+    private Application acceptedAppInDept(Integer id, Department dept) {
+        Student student = Student.builder()
+                .email("s" + id + "@iyte.edu.tr").firstName("Test").lastName("Student")
+                .role(UserRole.STUDENT).build();
+        student.setUserId(id);
+        return Application.builder()
+                .applicationId(id)
+                .status(ApplicationStatus.OIDB_FINAL_REVIEW)
+                .student(student)
+                .department(dept)
+                .build();
     }
 
     private Application buildApp(Integer id, ApplicationStatus status) {

@@ -57,9 +57,13 @@ public class DataInitializer implements CommandLineRunner {
     private final NotificationRepository notificationRepository;
     private final PasswordEncoder passwordEncoder;
 
+    // Pair 3: seed/backfill için varsayılan bölüm kontenjanı (ayarlanabilir).
+    private static final int DEFAULT_QUOTA = 5;
+
     @Override
     public void run(String... args) throws Exception {
         seedFacultiesAndDepartments();
+        backfillDepartmentQuota();
 
         if (userRepository.count() == 0) {
             String encodedPassword = passwordEncoder.encode("test123");
@@ -105,6 +109,20 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     /**
+     * Pair 3: kontenjanı (quota) boş olan bölümleri varsayılan değerle doldurur. Yeni DB'de
+     * bölümler kontenjansız oluşturulur; bu hem onları hem eski kayıtları doldurur (asil/yedek için).
+     * İleride gerçek kontenjanlar buradan/DB'den ayarlanabilir.
+     */
+    private void backfillDepartmentQuota() {
+        departmentRepository.findAll().forEach(dept -> {
+            if (dept.getQuota() == null) {
+                dept.setQuota(DEFAULT_QUOTA);
+                departmentRepository.save(dept);
+            }
+        });
+    }
+
+    /**
      * Pair 3: {@code faculty_id}/{@code department_id} FK'sı boş olan başvuruları,
      * {@code targetFaculty}/{@code targetDepartment} metinlerinden çözerek doldurur (en iyi çaba).
      * Yeni başvurular zaten {@code ApplicationService.create} içinde bağlanır; bu, eski/seed kayıtlar içindir.
@@ -125,37 +143,22 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     // Dev seed: bildirimler artık canlı ÖİDB aksiyonlarından üretiliyor; burada yalnızca
-    // test öğrencisine kutu boş kalmasın diye ÖİDB-tarzı örnekler eklenir (idempotent).
+    // test öğrencisinin kutusu boş kalmasın diye, onun seed başvurusunun GERÇEK yolculuğuyla
+    // birebir tutarlı bildirim(ler) eklenir (idempotent). Test öğrencisinin başvurusu
+    // OIDB_REJECTED olduğundan tek bir "Başvurunuz Reddedildi" bildirimi düşer — başka adım yok.
     // Personel hesaplarına seed yok — bildirimleri kendi işlemlerinden doğar.
     private void seedNotifications() {
         userRepository.findByEmail("ogrenci@iyte.edu.tr").ifPresent(user -> {
             if (notificationRepository.existsByUserId(user.getUserId())) return;
 
-            LocalDateTime now = LocalDateTime.now();
-            notificationRepository.saveAll(List.of(
-                    Notification.builder()
-                            .userId(user.getUserId())
-                            .title("Başvurunuz Reddedildi")
-                            .message("Önceki dönem başvurunuz eksik belgeler nedeniyle reddedilmiştir.")
-                            .isRead(true)
-                            .createdAt(now.minusDays(3))
-                            .build(),
-                    Notification.builder()
-                            .userId(user.getUserId())
-                            .title("Ön İnceleme Tamamlandı")
-                            .message("Başvurunuz Öğrenci İşleri ön incelemesinden başarıyla geçti ve değerlendirme sürecine alındı.")
-                            .isRead(false)
-                            .createdAt(now.minusDays(1))
-                            .build(),
-                    Notification.builder()
-                            .userId(user.getUserId())
-                            .title("Belge Güncellemesi Gerekiyor")
-                            .message("Başvurunuzdaki transkript belgesinin güncellenmesi istenmektedir. Lütfen başvuru detayından yeniden yükleyin.")
-                            .isRead(false)
-                            .createdAt(now.minusHours(4))
-                            .build()
-            ));
-            System.out.println("UC-15: Test öğrencisi için örnek bildirimler eklendi.");
+            notificationRepository.save(Notification.builder()
+                    .userId(user.getUserId())
+                    .title("Başvurunuz Reddedildi")
+                    .message("Önceki dönem başvurunuz eksik belgeler nedeniyle reddedilmiştir.")
+                    .isRead(false)
+                    .createdAt(LocalDateTime.now().minusDays(2))
+                    .build());
+            System.out.println("UC-15: Test öğrencisi için örnek bildirim eklendi.");
         });
     }
 

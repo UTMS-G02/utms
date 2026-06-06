@@ -1,6 +1,8 @@
 package edu.iztech.utms.g02.utms_app.bl.evaluation;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.BatchForwardRequest;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.BatchForwardResponse;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
@@ -32,6 +34,12 @@ public class DeanForwardService {
     private final ApplicationRepository applicationRepository;
     private final ApplicationService applicationService;
     private final DeanIdentity deanIdentity;
+
+    /** ÖİDB'den gelen başvuruyu (ilgili bölümün) YGK'sına iletir — TC-10.0 (karar yok). */
+    @Transactional
+    public ApplicationResponse forwardToYgk(Integer applicationId) {
+        return forward(applicationId, ApplicationStatus.DEAN_OFFICE_REVIEW, ApplicationStatus.EVALUATION_QUEUE);
+    }
 
     /** YGK'dan gelen başvuruyu Fakülte Kurulu'na iletir (karar yok). */
     @Transactional
@@ -67,6 +75,25 @@ public class DeanForwardService {
                     "Başvuru bu iletim için uygun aşamada değil. Güncel statü: " + app.getStatus());
         }
         return apply(app, next);
+    }
+
+    /**
+     * TC-10.7: Toplu iletim — tüm ID'ler tek transactionda işlenir (all-or-nothing).
+     * Herhangi bir başvuru yanlış statüde veya farklı fakültedeyse tüm batch geri alınır.
+     */
+    @Transactional
+    public BatchForwardResponse batchForward(BatchForwardRequest req) {
+        if (req.getIds() == null || req.getIds().isEmpty()) {
+            return new BatchForwardResponse(0);
+        }
+        for (Integer id : req.getIds()) {
+            switch (req.getAction()) {
+                case TO_YGK -> forwardToYgk(id);
+                case TO_FACULTY_BOARD -> forwardToFacultyBoard(id);
+                case TO_OIDB -> forwardToOidb(id);
+            }
+        }
+        return new BatchForwardResponse(req.getIds().size());
     }
 
     /** Statü geçişini uygular + denetim logu yazar. */

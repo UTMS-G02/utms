@@ -1,6 +1,8 @@
 package edu.iztech.utms.g02.utms_app.bl.evaluation;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.BatchForwardRequest;
+import edu.iztech.utms.g02.utms_app.api.evaluation.dto.BatchForwardResponse;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
@@ -14,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +46,17 @@ class DeanForwardServiceTest {
         service.forwardToFacultyBoard(1);
 
         assertThat(app.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REVIEW);
+        verify(applicationRepository).save(app);
+    }
+
+    @Test
+    void forwardToYgk_deanOfficeReview_sameFaculty_movesToEvaluationQueue() {
+        Application app = buildApp(9, ApplicationStatus.DEAN_OFFICE_REVIEW, 10);
+        stubForward(9, app, 10);
+
+        service.forwardToYgk(9);
+
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.EVALUATION_QUEUE);
         verify(applicationRepository).save(app);
     }
 
@@ -104,6 +118,79 @@ class DeanForwardServiceTest {
 
         assertThatThrownBy(() -> service.forwardToFacultyBoard(99))
                 .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    // ==========================================
+    // TC-10.7 — TOPLU İLETİM — batchForward()
+    // ==========================================
+
+    @Test
+    void batchForward_toYgk_allSameFaculty_forwardsAll() {
+        Application app1 = buildApp(10, ApplicationStatus.DEAN_OFFICE_REVIEW, 5);
+        Application app2 = buildApp(11, ApplicationStatus.DEAN_OFFICE_REVIEW, 5);
+        Application app3 = buildApp(12, ApplicationStatus.DEAN_OFFICE_REVIEW, 5);
+        stubForward(10, app1, 5);
+        stubForward(11, app2, 5);
+        stubForward(12, app3, 5);
+
+        BatchForwardResponse response = service.batchForward(
+                new BatchForwardRequest(List.of(10, 11, 12), BatchForwardRequest.Action.TO_YGK));
+
+        assertThat(response.getForwarded()).isEqualTo(3);
+        assertThat(app1.getStatus()).isEqualTo(ApplicationStatus.EVALUATION_QUEUE);
+        assertThat(app2.getStatus()).isEqualTo(ApplicationStatus.EVALUATION_QUEUE);
+        assertThat(app3.getStatus()).isEqualTo(ApplicationStatus.EVALUATION_QUEUE);
+    }
+
+    @Test
+    void batchForward_toFacultyBoard_allSameFaculty_forwardsAll() {
+        Application app1 = buildApp(20, ApplicationStatus.YGK_REVIEW_DONE, 5);
+        Application app2 = buildApp(21, ApplicationStatus.YGK_REVIEW_DONE, 5);
+        stubForward(20, app1, 5);
+        stubForward(21, app2, 5);
+
+        BatchForwardResponse response = service.batchForward(
+                new BatchForwardRequest(List.of(20, 21), BatchForwardRequest.Action.TO_FACULTY_BOARD));
+
+        assertThat(response.getForwarded()).isEqualTo(2);
+        assertThat(app1.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REVIEW);
+        assertThat(app2.getStatus()).isEqualTo(ApplicationStatus.FACULTY_BOARD_REVIEW);
+    }
+
+    @Test
+    void batchForward_oneAppWrongStatus_throwsAndNothingForwarded() {
+        Application app1 = buildApp(30, ApplicationStatus.DEAN_OFFICE_REVIEW, 5);
+        Application app2 = buildApp(31, ApplicationStatus.YGK_SCORED, 5); // wrong status
+        stubForward(30, app1, 5);
+        when(applicationRepository.findById(31)).thenReturn(Optional.of(app2));
+        when(deanIdentity.currentFacultyId()).thenReturn(5);
+
+        assertThatThrownBy(() -> service.batchForward(
+                new BatchForwardRequest(List.of(30, 31), BatchForwardRequest.Action.TO_YGK)))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void batchForward_emptyList_returnsZero() {
+        BatchForwardResponse response = service.batchForward(
+                new BatchForwardRequest(List.of(), BatchForwardRequest.Action.TO_YGK));
+
+        assertThat(response.getForwarded()).isEqualTo(0);
+    }
+
+    @Test
+    void batchForward_toOidb_facultyBoardAccepted_forwardsAll() {
+        Application app1 = buildApp(40, ApplicationStatus.FACULTY_BOARD_ACCEPTED, 5);
+        Application app2 = buildApp(41, ApplicationStatus.FACULTY_BOARD_REJECTED, 5);
+        stubForward(40, app1, 5);
+        stubForward(41, app2, 5);
+
+        BatchForwardResponse response = service.batchForward(
+                new BatchForwardRequest(List.of(40, 41), BatchForwardRequest.Action.TO_OIDB));
+
+        assertThat(response.getForwarded()).isEqualTo(2);
+        assertThat(app1.getStatus()).isEqualTo(ApplicationStatus.OIDB_FINAL_REVIEW);
+        assertThat(app2.getStatus()).isEqualTo(ApplicationStatus.REJECTED);
     }
 
     // ==========================================

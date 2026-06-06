@@ -5,6 +5,7 @@ import edu.iztech.utms.g02.utms_app.api.evaluation.dto.YgkEvaluationRequest;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
+import edu.iztech.utms.g02.utms_app.dal.department.entity.Department;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.CommitteeDecision;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.entity.EvaluationResult;
 import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.CommitteeDecisionRepository;
@@ -253,6 +254,22 @@ class EvaluationServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void getEvaluations_setsProvisionalListType_fromRankingAndQuota() {
+        Department dept = Department.builder().departmentId(YGK_DEPT_ID).name("Bilgisayar").quota(1).build();
+        EvaluationResult r1 = EvaluationResult.builder().application(appInDept(1, dept)).compositeScore(360.30).ranking(1).build();
+        EvaluationResult r2 = EvaluationResult.builder().application(appInDept(2, dept)).compositeScore(180.40).ranking(2).build();
+        when(evaluationResultRepository.findByApplication_Department_DepartmentId(YGK_DEPT_ID))
+                .thenReturn(List.of(r1, r2));
+
+        List<EvaluationResponse> resp = evaluationService.getEvaluations();
+
+        // Sıralama skora göre: r1 (skor yüksek) önce. Provizyonel liste ranking+quota'dan.
+        assertThat(resp.get(0).getApplicationId()).isEqualTo(1);
+        assertThat(resp.get(0).getProvisionalListType()).isEqualTo("PRIMARY");   // ranking 1, quota 1 → asil
+        assertThat(resp.get(1).getProvisionalListType()).isEqualTo("WAITLIST");  // ranking 2 → yedek
+    }
+
     // ==========================================
     // YARDIMCI METOTLAR
     // ==========================================
@@ -263,6 +280,12 @@ class EvaluationServiceTest {
 
     private EvaluationResult result(Application app, double score) {
         return EvaluationResult.builder().application(app).compositeScore(score).build();
+    }
+
+    private Application appInDept(Integer id, Department dept) {
+        Application app = buildApplication(id, ApplicationStatus.YGK_SCORED, 3.0, 400.0);
+        app.setDepartment(dept);
+        return app;
     }
 
     private Application buildApplication(Integer id, ApplicationStatus status, double gpa, double yks) {
