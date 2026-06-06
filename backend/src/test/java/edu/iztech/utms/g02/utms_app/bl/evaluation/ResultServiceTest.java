@@ -51,6 +51,8 @@ class ResultServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private edu.iztech.utms.g02.utms_app.bl.notification.NotificationService notificationService;
 
+    @Mock private edu.iztech.utms.g02.utms_app.bl.audit.AuditService auditService;
+
     @InjectMocks private ResultService resultService;
 
     @BeforeEach

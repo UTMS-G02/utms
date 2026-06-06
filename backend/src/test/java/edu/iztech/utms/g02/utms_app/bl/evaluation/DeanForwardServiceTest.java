@@ -33,6 +33,8 @@ class DeanForwardServiceTest {
     @Mock private ApplicationService applicationService;
     @Mock private DeanIdentity deanIdentity;
 
+    @Mock private edu.iztech.utms.g02.utms_app.bl.audit.AuditService auditService;
+
     @InjectMocks private DeanForwardService service;
 
     @Test

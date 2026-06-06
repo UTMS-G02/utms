@@ -2,6 +2,7 @@ package edu.iztech.utms.g02.utms_app.bl.evaluation;
 
 import edu.iztech.utms.g02.utms_app.api.application.dto.ApplicationResponse;
 import edu.iztech.utms.g02.utms_app.bl.application.ApplicationService;
+import edu.iztech.utms.g02.utms_app.bl.audit.AuditService;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.repository.ApplicationRepository;
@@ -32,6 +33,7 @@ public class DeanForwardService {
     private final ApplicationRepository applicationRepository;
     private final ApplicationService applicationService;
     private final DeanIdentity deanIdentity;
+    private final AuditService auditService;   // denetim izi (UC-10 dekan iletimleri)
 
     /** ÖİDB'den gelen başvuruyu (ilgili bölümün) YGK'sına iletir — TC-10.0 (karar yok). */
     @Transactional
@@ -81,6 +83,7 @@ public class DeanForwardService {
         app.setStatus(next);
         applicationRepository.save(app);
         log.info("Dekanlık iletimi: applicationId={}, {} -> {}", app.getApplicationId(), previous, next);
+        auditService.record("DEAN_FORWARD", app.getApplicationId(), previous + " -> " + next);
         return applicationService.getApplicationById(app.getApplicationId());
     }
 

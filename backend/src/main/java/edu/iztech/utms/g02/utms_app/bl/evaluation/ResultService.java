@@ -11,6 +11,7 @@ import edu.iztech.utms.g02.utms_app.dal.evaluation.repository.PublishedResultRep
 import edu.iztech.utms.g02.utms_app.dal.user.entity.Student;
 import edu.iztech.utms.g02.utms_app.dal.user.entity.User;
 import edu.iztech.utms.g02.utms_app.dal.user.repository.UserRepository;
+import edu.iztech.utms.g02.utms_app.bl.audit.AuditService;
 import edu.iztech.utms.g02.utms_app.bl.notification.NotificationService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class ResultService {
     private final EvaluationResultRepository evaluationResultRepository; // asil/yedek için bölüm-içi ranking
     private final UserRepository userRepository;
     private final NotificationService notificationService; // TC-6.0: yayında öğrenci bildirimi (in-app)
+    private final AuditService auditService;               // denetim izi (TC-6.x publish)
 
     /**
      * Nihai aşamadaki başvuruları yayınlar. Halihazırda yayınlanmış başvurular atlanır
@@ -99,6 +101,7 @@ public class ResultService {
             count++;
         }
 
+        auditService.record("RESULTS_PUBLISHED", null, "publishedCount=" + count);
         return count;
     }
 
