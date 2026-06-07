@@ -38,6 +38,18 @@ const DENKLIK_LABELS = {
   DENKLIK_YOK: { label: 'Denklik Yok', tint: TINT.red },
 }
 
+// 2→1 eşleştirme: iki kaynak ders tek İYTE dersine sayılabilir (source2*). Bu durumda
+// kaynak hücresinde 2. dersi alt satırda "+ ..." olarak gösterir; yoksa tek değeri.
+const dualSource = (v1, v2) =>
+  v2 == null || v2 === ''
+    ? (v1 ?? '—')
+    : (
+        <div>
+          <div>{v1 ?? '—'}</div>
+          <div style={{ color: '#6B7280', fontSize: 12 }}>+ {v2}</div>
+        </div>
+      )
+
 // "Sonuçlandırılanlar"da kararın "Onaylandı" mı "Reddedildi" mi olduğunu ayırt etmek için.
 // Kurul kabul edince başvuru downstream'e ilerler (OIDB_FINAL_REVIEW → RESULT_PUBLISHED);
 // bu statülere yalnızca kabulle ulaşılır. Geri kalan (FACULTY_BOARD_REJECTED / REJECTED) = ret.
@@ -457,10 +469,10 @@ const FakulteKuruluDashboard = () => {
                 <Col span={24}>
                   <Table
                     columns={[
-                      { title: 'Mevcut Ders Kodu', dataIndex: 'sourceCode', key: 'sourceCode' },
-                      { title: 'Mevcut Ders Adı', dataIndex: 'sourceName', key: 'sourceName' },
-                      { title: 'Kredi', dataIndex: 'sourceCredit', key: 'sourceCredit' },
-                      { title: 'Not', dataIndex: 'sourceGrade', key: 'sourceGrade' },
+                      { title: 'Mevcut Ders Kodu', key: 'sourceCode', render: (_, r) => dualSource(r.sourceCode, r.source2Code) },
+                      { title: 'Mevcut Ders Adı', key: 'sourceName', render: (_, r) => dualSource(r.sourceName, r.source2Name) },
+                      { title: 'Kredi', key: 'sourceCredit', render: (_, r) => dualSource(r.sourceCredit, r.source2Credit) },
+                      { title: 'Not', key: 'sourceGrade', render: (_, r) => dualSource(r.sourceGrade, r.source2Grade) },
                       { title: 'İYTE Ders Kodu', dataIndex: 'targetCode', key: 'targetCode', render: (v) => v ?? '—' },
                       { title: 'İYTE Ders Adı', dataIndex: 'targetName', key: 'targetName', render: (v) => v ?? '—' },
                       { title: 'Kredi', dataIndex: 'targetCredit', key: 'targetCredit', render: (v) => v ?? '—' },
