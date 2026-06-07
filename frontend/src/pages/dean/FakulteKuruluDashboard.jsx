@@ -38,23 +38,17 @@ const DENKLIK_LABELS = {
   DENKLIK_YOK: { label: 'Denklik Yok', tint: TINT.red },
 }
 
-// Kurul KABUL edince başvuru downstream'e ilerler (dekan → OIDB_FINAL_REVIEW → RESULT_PUBLISHED),
-// böylece statüsü artık FACULTY_BOARD_ACCEPTED olmaz ve eski sorguda "Sonuçlandırılanlar"dan
-// düşerdi. Bu iki ileri statüye YALNIZCA kurul kabul ettiyse ulaşılır, bu yüzden kabul kolu
-// için güvenle dahil edilir. (REJECTED paylaşımlı bir terminal statü olduğundan ret koluna
-// EKLENMEZ — başka aşamada reddedilen başvuruları bu listeye sızdırırdı.)
+// "Sonuçlandırılanlar"da kararın "Onaylandı" mı "Reddedildi" mi olduğunu ayırt etmek için.
+// Kurul kabul edince başvuru downstream'e ilerler (OIDB_FINAL_REVIEW → RESULT_PUBLISHED);
+// bu statülere yalnızca kabulle ulaşılır. Geri kalan (FACULTY_BOARD_REJECTED / REJECTED) = ret.
 const BOARD_ACCEPTED_STATUSES = ['FACULTY_BOARD_ACCEPTED', 'OIDB_FINAL_REVIEW', 'RESULT_PUBLISHED']
-const BOARD_REJECTED_STATUSES = ['FACULTY_BOARD_REJECTED']
-const BOARD_COMPLETED_STATUSES = [...BOARD_ACCEPTED_STATUSES, ...BOARD_REJECTED_STATUSES]
 
-// "Sonuçlandırılanlar" listesini birden çok statüden tek seferde toplar.
+// "Sonuçlandırılanlar" — kurulun KARAR verdiği tüm başvurular. Statü bazlı /applications yerine
+// karar bazlı, fakülte-scope'lu fakülte-kurulu uçunu kullanır: başvuru ÖİDB'ye iletilip statüsü
+// değişse (kabul → OIDB_FINAL_REVIEW/RESULT_PUBLISHED, ret → REJECTED) bile listede kalır.
 const fetchCompletedApplications = async () => {
-  const responses = await Promise.all(
-    BOARD_COMPLETED_STATUSES.map((status) =>
-      apiClient.get('/applications', { params: { status, size: 500 } }),
-    ),
-  )
-  return responses.flatMap((res) => res.data.content ?? [])
+  const res = await apiClient.get('/faculty-board/applications', { params: { queue: 'DECIDED' } })
+  return res.data ?? []
 }
 
 const handleError = (err) => {
@@ -93,10 +87,10 @@ const FakulteKuruluDashboard = () => {
     setListLoading(true)
     try {
       const [pendingRes, completed] = await Promise.all([
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REVIEW', size: 500 } }),
+        apiClient.get('/faculty-board/applications', { params: { queue: 'PENDING' } }),
         fetchCompletedApplications(),
       ])
-      setPendingList(pendingRes.data.content ?? [])
+      setPendingList(pendingRes.data ?? [])
       setCompletedList(completed)
     } catch (err) {
       handleError(err)

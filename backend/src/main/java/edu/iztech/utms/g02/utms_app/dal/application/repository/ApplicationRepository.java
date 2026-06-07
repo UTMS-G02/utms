@@ -3,6 +3,8 @@ package edu.iztech.utms.g02.utms_app.dal.application.repository;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.ApplicationStatus;
 import edu.iztech.utms.g02.utms_app.dal.application.entity.Application;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,6 +27,13 @@ public interface ApplicationRepository extends JpaRepository<Application, Intege
     // Pair 3: Dekanlık fakülte-kapsamlı liste — yalnızca dekanın fakültesindeki başvurular
     // (sekme başına bir veya birden çok statü; ör. Fakülte Kurulundan Gelen = KABUL + RED).
     Page<Application> findByStatusInAndFaculty_FacultyId(Collection<ApplicationStatus> statuses, Integer facultyId, Pageable pageable);
+
+    // Pair 3: Fakülte Kurulu "Değerlendirilenler" — statü yerine KARAR bazlı.
+    // Kurulun karar verdiği (committee_decisions.decision_by) başvurular, downstream'e
+    // ilerleyip statüsü değişse bile (OIDB_FINAL_REVIEW/RESULT_PUBLISHED/REJECTED) listede kalır.
+    @Query("SELECT DISTINCT a FROM Application a, CommitteeDecision d "
+            + "WHERE d.application = a AND a.faculty.facultyId = :facultyId AND d.decisionBy = :decisionBy")
+    List<Application> findDecidedByCommittee(@Param("facultyId") Integer facultyId, @Param("decisionBy") String decisionBy);
 
     // Pair 3: YGK bölüm-kapsamlı skorlama — yalnızca YGK üyesinin bölümündeki başvurular.
     Page<Application> findByStatusAndDepartment_DepartmentId(ApplicationStatus status, Integer departmentId, Pageable pageable);
