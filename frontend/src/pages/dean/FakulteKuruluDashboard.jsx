@@ -38,6 +38,25 @@ const DENKLIK_LABELS = {
   DENKLIK_YOK: { label: 'Denklik Yok', tint: TINT.red },
 }
 
+// Kurul KABUL edince başvuru downstream'e ilerler (dekan → OIDB_FINAL_REVIEW → RESULT_PUBLISHED),
+// böylece statüsü artık FACULTY_BOARD_ACCEPTED olmaz ve eski sorguda "Sonuçlandırılanlar"dan
+// düşerdi. Bu iki ileri statüye YALNIZCA kurul kabul ettiyse ulaşılır, bu yüzden kabul kolu
+// için güvenle dahil edilir. (REJECTED paylaşımlı bir terminal statü olduğundan ret koluna
+// EKLENMEZ — başka aşamada reddedilen başvuruları bu listeye sızdırırdı.)
+const BOARD_ACCEPTED_STATUSES = ['FACULTY_BOARD_ACCEPTED', 'OIDB_FINAL_REVIEW', 'RESULT_PUBLISHED']
+const BOARD_REJECTED_STATUSES = ['FACULTY_BOARD_REJECTED']
+const BOARD_COMPLETED_STATUSES = [...BOARD_ACCEPTED_STATUSES, ...BOARD_REJECTED_STATUSES]
+
+// "Sonuçlandırılanlar" listesini birden çok statüden tek seferde toplar.
+const fetchCompletedApplications = async () => {
+  const responses = await Promise.all(
+    BOARD_COMPLETED_STATUSES.map((status) =>
+      apiClient.get('/applications', { params: { status, size: 500 } }),
+    ),
+  )
+  return responses.flatMap((res) => res.data.content ?? [])
+}
+
 const handleError = (err) => {
   const status = err?.response?.status
   if (status === 400) message.error(err.response.data?.message || 'Geçersiz istek.')
@@ -73,16 +92,12 @@ const FakulteKuruluDashboard = () => {
   const fetchLists = async () => {
     setListLoading(true)
     try {
-      const [pendingRes, acceptedRes, rejectedRes] = await Promise.all([
+      const [pendingRes, completed] = await Promise.all([
         apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REVIEW', size: 500 } }),
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_ACCEPTED', size: 500 } }),
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REJECTED', size: 500 } }),
+        fetchCompletedApplications(),
       ])
       setPendingList(pendingRes.data.content ?? [])
-      setCompletedList([
-        ...(acceptedRes.data.content ?? []),
-        ...(rejectedRes.data.content ?? []),
-      ])
+      setCompletedList(completed)
     } catch (err) {
       handleError(err)
     } finally {
@@ -141,14 +156,7 @@ const FakulteKuruluDashboard = () => {
 
       // Pending listeden kaldır, tamamlananlar listesini yenile
       setPendingList(prev => prev.filter(s => s.id !== selectedStudent.id))
-      const [acceptedRes, rejectedRes] = await Promise.all([
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_ACCEPTED', size: 500 } }),
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REJECTED', size: 500 } }),
-      ])
-      setCompletedList([
-        ...(acceptedRes.data.content ?? []),
-        ...(rejectedRes.data.content ?? []),
-      ])
+      setCompletedList(await fetchCompletedApplications())
     } catch (err) {
       handleError(err)
     } finally {
@@ -286,7 +294,7 @@ const FakulteKuruluDashboard = () => {
                       dataIndex: 'status',
                       key: 'status',
                       render: (status) => {
-                        const isAccepted = status === 'FACULTY_BOARD_ACCEPTED'
+                        const isAccepted = BOARD_ACCEPTED_STATUSES.includes(status)
                         const tint = isAccepted ? TINT.green : TINT.red
                         const label = isAccepted ? 'Onaylandı' : 'Reddedildi'
                         return <Tag style={{ ...tint, border: 'none', borderRadius: 6 }}>{label}</Tag>
