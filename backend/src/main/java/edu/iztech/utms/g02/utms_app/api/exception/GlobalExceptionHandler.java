@@ -24,6 +24,14 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     /**
+     * applications(user_id, academic_year, semester) unique constraint'inin Hibernate
+     * tarafından üretilen (deterministik) adı — şemadan teyitli (\d applications).
+     * YALNIZCA bu constraint ihlal edildiğinde "aynı akademik yıla başvuru" mesajını
+     * veririz; diğer bütünlük ihlalleri (NOT NULL, FK, başka unique) genel mesaj alır.
+     */
+    private static final String APPLICATIONS_UNIQUE_CONSTRAINT = "uk673bjr15mlc76isv9i7kq3q73";
+
+    /**
      * Handles business logic errors thrown by the auth layer.
      * The HTTP status is determined by the exception itself:
      * 401 for invalid credentials, 409 for duplicates, 400 for bad input.
@@ -78,17 +86,25 @@ public class GlobalExceptionHandler {
 
     /**
      * Veritabanı bütünlük ihlalleri (409 Conflict).
-     * Örn: applications tablosundaki (user_id, academic_year, semester) unique kısıtı —
-     * öğrenci aynı akademik yıla ikinci bir başvuru yapmaya çalışınca ham SQL hatası
-     * yerine anlaşılır bir mesaj döneriz.
+     * İhlal edilen constraint'e göre ayırt eder: yalnızca applications
+     * (user_id, academic_year, semester) unique kısıtı ihlal edilince "aynı akademik
+     * yıla başvuru" mesajını verir. Diğer ihlaller (NOT NULL, FK, başka unique) eskiden
+     * de yanlışlıkla bu mesajı alıyordu; artık genel/dürüst bir mesaj döner.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, Object>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        // En spesifik sebebin (ör. PostgreSQL PSQLException) mesajı, ihlal edilen
+        // constraint adını içerir.
+        String cause = ex.getMostSpecificCause().getMessage();
+        boolean duplicateApplication = cause != null && cause.contains(APPLICATIONS_UNIQUE_CONSTRAINT);
+
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", LocalDateTime.now().toString());
         body.put("status", HttpStatus.CONFLICT.value());
         body.put("error", HttpStatus.CONFLICT.getReasonPhrase());
-        body.put("message", "Aynı akademik yıla birden fazla başvuru yapılamaz.");
+        body.put("message", duplicateApplication
+                ? "Aynı akademik yıla birden fazla başvuru yapılamaz."
+                : "İşlem, bir veritabanı bütünlük kuralı nedeniyle tamamlanamadı. Lütfen girdiğiniz bilgileri kontrol edin.");
 
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }

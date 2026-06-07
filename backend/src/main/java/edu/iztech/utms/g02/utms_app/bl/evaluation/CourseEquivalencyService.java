@@ -113,8 +113,10 @@ public class CourseEquivalencyService {
         existing.setSource2Name(row.getSource2Name() != null ? HtmlUtils.htmlEscape(row.getSource2Name()) : null);
         existing.setSource2Credit(row.getSource2Credit());
         existing.setSource2Grade(row.getSource2Grade());
-        existing.setTargetCode(HtmlUtils.htmlEscape(row.getTargetCode()));
-        existing.setTargetName(HtmlUtils.htmlEscape(row.getTargetName()));
+        // DENK_DEGIL satırlarında hedef ders boş olabilir; htmlEscape(null) "Input is required"
+        // fırlatır → null-guard (toEntity ve source2 ile tutarlı).
+        existing.setTargetCode(row.getTargetCode() != null ? HtmlUtils.htmlEscape(row.getTargetCode()) : null);
+        existing.setTargetName(row.getTargetName() != null ? HtmlUtils.htmlEscape(row.getTargetName()) : null);
         existing.setTargetCredit(row.getTargetCredit());
         existing.setTargetGrade(row.getTargetGrade());
         existing.setEquivalencyStatus(row.getEquivalencyStatus());

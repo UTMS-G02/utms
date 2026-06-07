@@ -85,8 +85,14 @@ const YGKDashboard = () => {
       await apiClient.post('/evaluations/score-all').catch(() => {})
       const res = await apiClient.get('/evaluations')
       const all = res.data ?? []
-      setPendingList(all.filter(e => e.status !== 'YGK_REVIEW_DONE'))
-      setEvaluatedList(all.filter(e => e.status === 'YGK_REVIEW_DONE'))
+      // Bekleyenler YALNIZCA henüz değerlendirilmemiş (YGK'yı bekleyen) başvurulardır.
+      // YGK değerlendirmesi yapılınca statü YGK_REVIEW_DONE olur ve sonra dekan/kurul/ÖİDB
+      // ilerletir (FACULTY_BOARD_*, OIDB_FINAL_REVIEW, ACCEPTED...). Bunların hepsi
+      // "değerlendirilenler"e gider; aksi halde ilerlemiş başvurular tekrar bekleyenlere
+      // düşüp "uygun aşamada değil" hatasına yol açıyordu.
+      const PENDING_STATUSES = ['EVALUATION_QUEUE', 'YGK_SCORED']
+      setPendingList(all.filter(e => PENDING_STATUSES.includes(e.status)))
+      setEvaluatedList(all.filter(e => !PENDING_STATUSES.includes(e.status)))
     } catch {
       message.error('Değerlendirmeler yüklenemedi.')
     } finally {

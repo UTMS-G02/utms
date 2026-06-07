@@ -38,6 +38,31 @@ const DENKLIK_LABELS = {
   DENKLIK_YOK: { label: 'Denklik Yok', tint: TINT.red },
 }
 
+// 2→1 eşleştirme: iki kaynak ders tek İYTE dersine sayılabilir (source2*). Bu durumda
+// kaynak hücresinde 2. dersi alt satırda "+ ..." olarak gösterir; yoksa tek değeri.
+const dualSource = (v1, v2) =>
+  v2 == null || v2 === ''
+    ? (v1 ?? '—')
+    : (
+        <div>
+          <div>{v1 ?? '—'}</div>
+          <div style={{ color: '#6B7280', fontSize: 12 }}>+ {v2}</div>
+        </div>
+      )
+
+// "Sonuçlandırılanlar"da kararın "Onaylandı" mı "Reddedildi" mi olduğunu ayırt etmek için.
+// Kurul kabul edince başvuru downstream'e ilerler (OIDB_FINAL_REVIEW → RESULT_PUBLISHED);
+// bu statülere yalnızca kabulle ulaşılır. Geri kalan (FACULTY_BOARD_REJECTED / REJECTED) = ret.
+const BOARD_ACCEPTED_STATUSES = ['FACULTY_BOARD_ACCEPTED', 'OIDB_FINAL_REVIEW', 'RESULT_PUBLISHED']
+
+// "Sonuçlandırılanlar" — kurulun KARAR verdiği tüm başvurular. Statü bazlı /applications yerine
+// karar bazlı, fakülte-scope'lu fakülte-kurulu uçunu kullanır: başvuru ÖİDB'ye iletilip statüsü
+// değişse (kabul → OIDB_FINAL_REVIEW/RESULT_PUBLISHED, ret → REJECTED) bile listede kalır.
+const fetchCompletedApplications = async () => {
+  const res = await apiClient.get('/faculty-board/applications', { params: { queue: 'DECIDED' } })
+  return res.data ?? []
+}
+
 const handleError = (err) => {
   const status = err?.response?.status
   if (status === 400) message.error(err.response.data?.message || 'Geçersiz istek.')
@@ -73,16 +98,12 @@ const FakulteKuruluDashboard = () => {
   const fetchLists = async () => {
     setListLoading(true)
     try {
-      const [pendingRes, acceptedRes, rejectedRes] = await Promise.all([
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REVIEW', size: 500 } }),
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_ACCEPTED', size: 500 } }),
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REJECTED', size: 500 } }),
+      const [pendingRes, completed] = await Promise.all([
+        apiClient.get('/faculty-board/applications', { params: { queue: 'PENDING' } }),
+        fetchCompletedApplications(),
       ])
-      setPendingList(pendingRes.data.content ?? [])
-      setCompletedList([
-        ...(acceptedRes.data.content ?? []),
-        ...(rejectedRes.data.content ?? []),
-      ])
+      setPendingList(pendingRes.data ?? [])
+      setCompletedList(completed)
     } catch (err) {
       handleError(err)
     } finally {
@@ -141,14 +162,7 @@ const FakulteKuruluDashboard = () => {
 
       // Pending listeden kaldır, tamamlananlar listesini yenile
       setPendingList(prev => prev.filter(s => s.id !== selectedStudent.id))
-      const [acceptedRes, rejectedRes] = await Promise.all([
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_ACCEPTED', size: 500 } }),
-        apiClient.get('/applications', { params: { status: 'FACULTY_BOARD_REJECTED', size: 500 } }),
-      ])
-      setCompletedList([
-        ...(acceptedRes.data.content ?? []),
-        ...(rejectedRes.data.content ?? []),
-      ])
+      setCompletedList(await fetchCompletedApplications())
     } catch (err) {
       handleError(err)
     } finally {
@@ -286,7 +300,7 @@ const FakulteKuruluDashboard = () => {
                       dataIndex: 'status',
                       key: 'status',
                       render: (status) => {
-                        const isAccepted = status === 'FACULTY_BOARD_ACCEPTED'
+                        const isAccepted = BOARD_ACCEPTED_STATUSES.includes(status)
                         const tint = isAccepted ? TINT.green : TINT.red
                         const label = isAccepted ? 'Onaylandı' : 'Reddedildi'
                         return <Tag style={{ ...tint, border: 'none', borderRadius: 6 }}>{label}</Tag>
@@ -455,10 +469,10 @@ const FakulteKuruluDashboard = () => {
                 <Col span={24}>
                   <Table
                     columns={[
-                      { title: 'Mevcut Ders Kodu', dataIndex: 'sourceCode', key: 'sourceCode' },
-                      { title: 'Mevcut Ders Adı', dataIndex: 'sourceName', key: 'sourceName' },
-                      { title: 'Kredi', dataIndex: 'sourceCredit', key: 'sourceCredit' },
-                      { title: 'Not', dataIndex: 'sourceGrade', key: 'sourceGrade' },
+                      { title: 'Mevcut Ders Kodu', key: 'sourceCode', render: (_, r) => dualSource(r.sourceCode, r.source2Code) },
+                      { title: 'Mevcut Ders Adı', key: 'sourceName', render: (_, r) => dualSource(r.sourceName, r.source2Name) },
+                      { title: 'Kredi', key: 'sourceCredit', render: (_, r) => dualSource(r.sourceCredit, r.source2Credit) },
+                      { title: 'Not', key: 'sourceGrade', render: (_, r) => dualSource(r.sourceGrade, r.source2Grade) },
                       { title: 'İYTE Ders Kodu', dataIndex: 'targetCode', key: 'targetCode', render: (v) => v ?? '—' },
                       { title: 'İYTE Ders Adı', dataIndex: 'targetName', key: 'targetName', render: (v) => v ?? '—' },
                       { title: 'Kredi', dataIndex: 'targetCredit', key: 'targetCredit', render: (v) => v ?? '—' },

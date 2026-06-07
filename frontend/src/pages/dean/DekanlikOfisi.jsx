@@ -39,6 +39,46 @@ const BATCH_ACTION = {
   faculty: 'TO_OIDB',
 }
 
+const DENKLIK_LABELS = {
+  TAM_DENKLIK: { label: 'Tam Denklik', tint: TINT.green },
+  KISMI_DENKLIK: { label: 'Kısmi Denklik', tint: TINT.amber },
+  DENKLIK_YOK: { label: 'Denklik Yok', tint: TINT.red },
+}
+
+// 2→1 eşleştirme: iki kaynak ders tek İYTE dersine sayılabilir (source2*). Bu durumda
+// kaynak hücresinde 2. dersi alt satırda "+ ..." olarak gösterir; yoksa tek değeri.
+const dualSource = (v1, v2) =>
+  v2 == null || v2 === ''
+    ? (v1 ?? '—')
+    : (
+        <div>
+          <div>{v1 ?? '—'}</div>
+          <div style={{ color: '#6B7280', fontSize: 12 }}>+ {v2}</div>
+        </div>
+      )
+
+// TC-10.2: Dekanlık 'YGK'dan Gelen' satırını açınca YGK'nın hazırladığı intibak
+// (ders denklik) tablosunu salt-okunur görür. Kolonlar Fakülte Kurulu ekranıyla aynı.
+const INTIBAK_COLUMNS = [
+  { title: 'Mevcut Ders Kodu', key: 'sourceCode', render: (_, r) => dualSource(r.sourceCode, r.source2Code) },
+  { title: 'Mevcut Ders Adı', key: 'sourceName', render: (_, r) => dualSource(r.sourceName, r.source2Name) },
+  { title: 'Kredi', key: 'sourceCredit', render: (_, r) => dualSource(r.sourceCredit, r.source2Credit) },
+  { title: 'Not', key: 'sourceGrade', render: (_, r) => dualSource(r.sourceGrade, r.source2Grade) },
+  { title: 'İYTE Ders Kodu', dataIndex: 'targetCode', key: 'targetCode', render: (v) => v ?? '—' },
+  { title: 'İYTE Ders Adı', dataIndex: 'targetName', key: 'targetName', render: (v) => v ?? '—' },
+  { title: 'Kredi', dataIndex: 'targetCredit', key: 'targetCredit', render: (v) => v ?? '—' },
+  { title: 'İYTE Not', dataIndex: 'targetGrade', key: 'targetGrade', render: (v) => v ?? '—' },
+  {
+    title: 'Denklik',
+    dataIndex: 'equivalencyStatus',
+    key: 'equivalencyStatus',
+    render: (status) => {
+      const info = DENKLIK_LABELS[status] ?? { label: status, tint: TINT.gray }
+      return <Tag style={{ ...info.tint, border: 'none', borderRadius: 6 }}>{info.label}</Tag>
+    },
+  },
+]
+
 const mapApp = (dto) => ({
   id: dto.id,
   name: dto.studentName,
@@ -85,6 +125,9 @@ const DekanlikOfisi = () => {
   const [ygkList, setYgkList] = useState([])
   const [facultyList, setFacultyList] = useState([])
   const [loading, setLoading] = useState(false)
+  // TC-10.2: 'YGK'dan Gelen' satırı açıldığında board-review'den çekilen intibak verisi (app id bazlı).
+  const [ygkReviewData, setYgkReviewData] = useState({})
+  const [ygkReviewLoading, setYgkReviewLoading] = useState({})
 
   const fetchLists = async () => {
     setLoading(true)
@@ -109,6 +152,30 @@ const DekanlikOfisi = () => {
   const toggleExpand = (id) => {
     setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }))
   }
+
+  // TC-10.2: intibak'ı tembel yükle — board-review uçunda intibak tablosu + denklik oranı döner.
+  const fetchYgkReview = async (id) => {
+    setYgkReviewLoading(prev => ({ ...prev, [id]: true }))
+    try {
+      const data = await apiClient.get(`/applications/${id}/board-review`).then(r => r.data)
+      setYgkReviewData(prev => ({ ...prev, [id]: data }))
+    } catch {
+      setYgkReviewData(prev => ({ ...prev, [id]: null }))
+      message.error('İntibak bilgisi yüklenemedi.')
+    } finally {
+      setYgkReviewLoading(prev => ({ ...prev, [id]: false }))
+    }
+  }
+
+  // 'YGK'dan Gelen' sekmesinde bir satır açıldığında, daha önce çekilmediyse intibak'ı getir.
+  useEffect(() => {
+    if (activeTab !== 'ygk') return
+    Object.entries(expandedRows).forEach(([id, isOpen]) => {
+      if (isOpen && ygkReviewData[id] === undefined && !ygkReviewLoading[id]) {
+        fetchYgkReview(Number(id))
+      }
+    })
+  }, [expandedRows, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTabChange = (key) => {
     setActiveTab(key)
@@ -203,16 +270,52 @@ const DekanlikOfisi = () => {
     </div>
   )
 
-  const renderYGKExpanded = (record) => (
-    <div style={{ padding: '12px 24px', background: '#fafafa' }}>
-      <Row gutter={[16, 12]}>
-        <Col span={12}><Text strong>Fakülte:</Text><Text style={{ marginLeft: 8 }}>{record.fakulte}</Text></Col>
-        <Col span={12}><Text strong>GPA:</Text><Text style={{ marginLeft: 8 }}>{record.gpa}</Text></Col>
-        <Col span={12}><Text strong>YKS Puanı:</Text><Text style={{ marginLeft: 8 }}>{record.yksScore}</Text></Col>
-        <Col span={12}><Text strong>Başvuru Tarihi:</Text><Text style={{ marginLeft: 8 }}>{record.basvuruTarihi}</Text></Col>
-      </Row>
-    </div>
-  )
+  const renderYGKExpanded = (record) => {
+    const review = ygkReviewData[record.id]
+    const isLoading = ygkReviewLoading[record.id]
+    const intibak = review?.intibak
+    const rows = intibak?.rows ?? []
+    const ratio = intibak?.equivalencyRatio ?? null
+    return (
+      <div style={{ padding: '12px 24px', background: '#fafafa' }}>
+        <Row gutter={[16, 12]}>
+          <Col span={12}><Text strong>Fakülte:</Text><Text style={{ marginLeft: 8 }}>{record.fakulte}</Text></Col>
+          <Col span={12}><Text strong>GPA:</Text><Text style={{ marginLeft: 8 }}>{record.gpa}</Text></Col>
+          <Col span={12}><Text strong>YKS Puanı:</Text><Text style={{ marginLeft: 8 }}>{record.yksScore}</Text></Col>
+          <Col span={12}><Text strong>Başvuru Tarihi:</Text><Text style={{ marginLeft: 8 }}>{record.basvuruTarihi}</Text></Col>
+        </Row>
+
+        <div style={{ marginTop: 16 }}>
+          <Text strong style={{ fontSize: 15 }}>YGK İntibak Tablosu</Text>
+          {ratio != null && (
+            <Tag style={{ marginLeft: 12, ...(ratio >= 0.8 ? TINT.green : ratio >= 0.5 ? TINT.amber : TINT.red), border: 'none', borderRadius: 6 }}>
+              Denklik Oranı: %{Math.round(ratio * 100)}
+            </Tag>
+          )}
+          {isLoading ? (
+            <div style={{ padding: 16, textAlign: 'center' }}><Spin /></div>
+          ) : review === null ? (
+            <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>İntibak bilgisi yüklenemedi.</Text>
+          ) : intibak?.conditionsMet === false ? (
+            <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+              YGK koşulların sağlanmadığını belirtmiş; intibak tablosu yok.
+              {intibak?.shortcomingNote ? ` Not: ${intibak.shortcomingNote}` : ''}
+            </Text>
+          ) : (
+            <Table
+              style={{ marginTop: 8 }}
+              columns={INTIBAK_COLUMNS}
+              dataSource={rows}
+              rowKey="id"
+              pagination={false}
+              size="small"
+              bordered
+            />
+          )}
+        </div>
+      </div>
+    )
+  }
 
   const renderFacultyExpanded = (record) => {
     const accepted = record.rawStatus === 'FACULTY_BOARD_ACCEPTED'
