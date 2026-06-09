@@ -129,13 +129,16 @@ const mapOidbApplication = (dto) => {
       fileName: d.fileName,
     })),
     // Geçmiş (Timeline): backend ham statüleri en YENİ → en eski sırada döner.
-    // Kronolojik okunsun diye ters çeviriyoruz (eski → yeni) ve ham statüyü panel
-    // etiketine (STATUS_MAP anahtarı) çeviriyoruz; note açıklamayı taşır.
+    // Kronolojik okunsun diye ters çeviriyoruz (eski → yeni). DİKKAT: burada
+    // mapStatus UYGULAMIYORUZ — panel statüsü ~11 ayrı fakülte/değerlendirme/dekan
+    // statüsünü tek "FACULTY_REVIEW"e indirgediği için geçmiş "Fakültede"de takılıp
+    // sonraki adımları göstermiyordu. Ham statüyü taşıyoruz; Timeline kendi tam
+    // HISTORY_STATUS_MAP'iyle her adımı ayrı etiketler.
     statusHistory: (dto.statusHistory ?? [])
       .slice()
       .reverse()
       .map((h) => ({
-        status: mapStatus(h.status),
+        status: h.status,
         changedAt: h.changedAt,
         note: h.note,
       })),

@@ -82,6 +82,11 @@ public class ApplicationResponse {
     // ise iletilen kayıtları salt-okunur (kilitli) gösterir.
     private boolean ydyoForwardedToOidb;
 
+    // YDYO'nun dondurulmuş kesin kararı (YDYO_ACCEPTED / YDYO_REJECTED / null). Başvuru
+    // ÖİDB/fakülte hattına ilerlese de değişmez; YDYO paneli kaydı kaybetmeden bu kararla
+    // gösterir (frontend display status'ı bundan türetir).
+    private ApplicationStatus ydyoResultStatus;
+
     //EKLENDI: YÖKSİS ve YKS verileri
     private String currentUniversity;
     private String currentFaculty;

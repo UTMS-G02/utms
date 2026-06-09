@@ -62,10 +62,11 @@ public class MockYoksisIntegrationServiceImpl implements YoksisIntegrationServic
             gpa = round2(1.50 + (seed % 250) / 100.0);     // 1.50 – 3.99 (baraj: 2.50)
         }
 
-        // ÖSYM (mock): SAY puanı ~380–499.99; sıralama 1.000 – 400.999 → bazı öğrenciler
-        // Mühendislik (<=300.000) / Mimarlık (<=250.000) sıralama barajını aşar.
+        // ÖSYM (mock): SAY puanı ~380–499.99. Sıralama HER ZAMAN uygun gelsin diye en katı
+        // baraj olan Mimarlık (<=250.000) eşiğinin altında üretilir (1.000 – 240.999) →
+        // hem Mühendislik (<=300.000) hem Mimarlık başvuruları sıralama barajını geçer.
         double yksScore = round2(380.0 + (seed % 12000) / 100.0);
-        int yksRank = 1000 + (seed % 400_000);
+        int yksRank = 1000 + (seed % 240_000);
 
         return new YoksisStudentResponse(row[0], row[1], row[2], semester, gpa, yksScore, yksRank, gpaScale);
     }
