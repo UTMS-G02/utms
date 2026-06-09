@@ -52,9 +52,40 @@ const STATUS_MAP = {
   YDYO_ACCEPTED: { label: "YDYO Onaylı", color: 'green' },
   YDYO_REJECTED: { label: "YDYO Reddetti", color: 'magenta' },
   FACULTY_REVIEW: { label: 'Fakültede', color: 'gold' },
-  OIDB_FINAL: { label: 'Yayın Bekliyor', color: 'cyan' },
   ACCEPTED: { label: 'Onaylandı', color: 'success' },
   REJECTED: { label: 'Reddedildi', color: 'error' },
+}
+
+// Geçmiş (Timeline) için: panel statüsü değil, backend'in HAM ApplicationStatus
+// değerleri etiketlenir. Böylece fakülte/YGK/dekan/yayın hattındaki tüm adımlar
+// "Fakültede"ye indirgenmeden, en son duruma kadar tek tek görünür.
+const HISTORY_STATUS_MAP = {
+  DRAFT: { label: 'Taslak Oluşturuldu', color: 'gray' },
+  SUBMITTED: { label: 'Başvuru Gönderildi', color: 'blue' },
+  WITHDRAWN: { label: 'Geri Çekildi', color: 'gray' },
+  OIDB_REVIEW: { label: 'ÖİDB İncelemesinde', color: 'blue' },
+  REVISION_REQUESTED: { label: 'Güncelleme İstendi', color: 'orange' },
+  OIDB_REJECTED: { label: 'ÖİDB Reddetti', color: 'red' },
+  YDYO_REVIEW: { label: "YDYO İncelemesinde", color: 'purple' },
+  YDYO_EXAM_PENDING: { label: 'YDYO Sınavı Bekleniyor', color: 'orange' },
+  YDYO_REJECTED: { label: 'YDYO Reddetti', color: 'red' },
+  YDYO_ACCEPTED: { label: 'YDYO Onayladı', color: 'green' },
+  DEAN_OFFICE_REVIEW: { label: 'Fakülte Dekanlığına Gönderildi', color: 'gold' },
+  YGK_REVIEW: { label: 'YGK Değerlendiriyor', color: 'gold' },
+  YGK_REVIEW_DONE: { label: 'YGK Değerlendirmesi Tamamlandı', color: 'gold' },
+  FACULTY_BOARD_REVIEW: { label: 'Fakülte Kurulu İncelemesinde', color: 'gold' },
+  FACULTY_BOARD_REJECTED: { label: 'Fakülte Kurulu Reddetti', color: 'red' },
+  FACULTY_BOARD_ACCEPTED: { label: 'Fakülte Kurulu Onayladı', color: 'green' },
+  OIDB_FINAL_REVIEW: { label: 'ÖİDB Son İncelemesinde', color: 'blue' },
+  EVALUATION_QUEUE: { label: 'Değerlendirme Sırasında', color: 'gold' },
+  YGK_SCORED: { label: 'YGK Puanladı', color: 'gold' },
+  DEAN_REVIEW: { label: 'Dekanlık İncelemesinde', color: 'gold' },
+  DEAN_REJECTED: { label: 'Dekanlık Reddetti', color: 'red' },
+  FINAL_DEAN_REVIEW: { label: 'Nihai Dekanlık Onayında', color: 'gold' },
+  RESULT_PUBLISHED: { label: 'Sonuç Yayınlandı', color: 'green' },
+  APPROVED: { label: 'Onaylandı', color: 'green' },
+  ACCEPTED: { label: 'Kabul Edildi', color: 'green' },
+  REJECTED: { label: 'Reddedildi', color: 'red' },
 }
 
 // Color tinting system matching YDYO design
@@ -81,8 +112,6 @@ const getStatusTint = (status) => {
       return TINT.red
     case 'FACULTY_REVIEW':
       return TINT.purple
-    case 'OIDB_FINAL':
-      return TINT.blue
     case 'ACCEPTED':
       return TINT.green
     case 'REJECTED':
@@ -109,7 +138,6 @@ const STATUS_OPTIONS = [
   { value: 'YDYO_ACCEPTED', label: "YDYO Onaylı" },
   { value: 'YDYO_REJECTED', label: "YDYO Reddetti" },
   { value: 'FACULTY_REVIEW', label: 'Fakültede' },
-  { value: 'OIDB_FINAL', label: 'Yayın Bekliyor' },
   { value: 'ACCEPTED', label: 'Onaylandı' },
   { value: 'REJECTED', label: 'Reddedildi' },
 ]
@@ -121,7 +149,7 @@ const FACULTY_OPTIONS = [
   { value: 'Mimarlık Fakültesi', label: 'Mimarlık Fakültesi' },
 ]
 
-const ANNOUNCEABLE_STATUSES = ['OIDB_FINAL', 'ACCEPTED', 'REJECTED']
+const ANNOUNCEABLE_STATUSES = ['ACCEPTED', 'REJECTED']
 
 const DOCUMENT_TYPE_LABEL = {
   STUDENT_CERTIFICATE: 'Öğrenci Belgesi',
@@ -154,10 +182,10 @@ const ACTION_CONFIG = {
   ],
   YDYO_REJECTED: [
     { key: 'reject_application', label: 'Başvuruyu Reddet', type: 'default', danger: true },
-  ],
-  ACCEPTED: [
     { key: 'share_result', label: 'Sonucu Paylaş', type: 'primary' },
   ],
+  // "Sonucu Paylaş" yalnızca reddedilmiş başvurularda görünür: ÖİDB reddi (REJECTED)
+  // ve YDYO reddi (YDYO_REJECTED). ACCEPTED dahil diğer durumlarda gösterilmez.
   REJECTED: [
     { key: 'share_result', label: 'Sonucu Paylaş', type: 'primary' },
   ],
@@ -269,9 +297,11 @@ export default function OidbDashboard() {
   const [applications, setApplications] = useState([])
   const [details, setDetails] = useState({})
   const [selectedIds, setSelectedIds] = useState([])
+  // "Sonucu Paylaş" tekli aksiyonu başarıyla çalıştığı başvurular — buton tekrar
+  // basılmasın diye disable edilir (liste yenilense de bu set korunur).
+  const [sharedIds, setSharedIds] = useState([])
   const [statusFilter, setStatusFilter] = useState(isPendingRoute ? 'OIDB_REVIEW' : 'ALL')
   const [facultyFilter, setFacultyFilter] = useState('ALL')
-  const [yearFilter, setYearFilter] = useState('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTabs, setActiveTabs] = useState({})
   const [detailsModal, setDetailsModal] = useState({
@@ -308,20 +338,14 @@ export default function OidbDashboard() {
     loadApplications().finally(() => setLoading(false))
   }, [loadApplications])
 
-  const academicYears = useMemo(
-    () => [...new Set(applications.map((a) => a.semester).filter(Boolean))].sort().reverse(),
-    [applications],
-  )
-
   const filteredApplications = useMemo(() => {
     return applications.filter((application) => {
       const matchesStatus = statusFilter === 'ALL' || application.status === statusFilter
       const matchesFaculty = facultyFilter === 'ALL' || application.targetFaculty === facultyFilter
-      const matchesYear = yearFilter === 'ALL' || application.semester === yearFilter
       const matchesSearch = formatSearchMatch(application, searchTerm)
-      return matchesStatus && matchesFaculty && matchesYear && matchesSearch
+      return matchesStatus && matchesFaculty && matchesSearch
     })
-  }, [applications, facultyFilter, yearFilter, searchTerm, statusFilter])
+  }, [applications, facultyFilter, searchTerm, statusFilter])
 
   const chooseableApplications = useMemo(
     () => filteredApplications.filter((item) => ANNOUNCEABLE_STATUSES.includes(item.status)),
@@ -369,6 +393,10 @@ export default function OidbDashboard() {
 
       if (result?.success !== false) {
         antdMessage.success('İşlem başarılı.')
+        // Sonuç paylaşımı başarılıysa bu başvurunun butonunu kalıcı olarak kilitle.
+        if (actionKey === 'share_result') {
+          setSharedIds((prev) => (prev.includes(applicationId) ? prev : [...prev, applicationId]))
+        }
         await loadApplications()
       } else {
         throw new Error('Action failed')
@@ -471,11 +499,16 @@ export default function OidbDashboard() {
     }
   }
 
-  // Toplu (ZIP) indirme — başvuruya ait tüm belgeler tek arşivde, yetkili GET ile.
-  const handleDownloadAllZip = async (applicationId) => {
+    // Toplu (ZIP) indirme — başvuruya ait tüm belgeler tek arşivde, yetkili GET ile.
+  const handleDownloadAllZip = async (applicationId, studentName) => {
     try {
       const res = await applicationsApi.downloadAllDocumentsZip(applicationId)
-      triggerBlobDownload(res.data, `basvuru_${applicationId}_belgeler.zip`)
+      
+      // Öğrenci adındaki boşlukları alt çizgiye çevir (Örn: "Ahmet Yılmaz" -> "Ahmet_Yilmaz")
+      // Eğer isim gelmezse yedek olarak applicationId kullan.
+      const safeName = studentName ? studentName.replace(/\s+/g, '_') : applicationId;
+      
+      triggerBlobDownload(res.data, `basvuru_${safeName}_belgeler.zip`)
     } catch {
       antdMessage.error('Belgeler indirilemedi. Lütfen tekrar deneyin.')
     }
@@ -495,16 +528,21 @@ export default function OidbDashboard() {
     const applicationId = application.applicationId
     return (
       <Space wrap>
-        {actions.map((action) => (
-          <Button
-            key={action.key}
-            type={action.type}
-            danger={action.danger}
-            onClick={() => handleAction(applicationId, action.key)}
-          >
-            {action.label}
-          </Button>
-        ))}
+        {actions.map((action) => {
+          // Sonucu Paylaş bir kez başarıyla çalıştıysa tekrar basılamaz.
+          const isShared = action.key === 'share_result' && sharedIds.includes(applicationId)
+          return (
+            <Button
+              key={action.key}
+              type={action.type}
+              danger={action.danger}
+              disabled={isShared}
+              onClick={() => handleAction(applicationId, action.key)}
+            >
+              {isShared ? 'Sonuç Paylaşıldı' : action.label}
+            </Button>
+          )
+        })}
       </Space>
     )
   }
@@ -521,7 +559,7 @@ export default function OidbDashboard() {
     <div style={styles.page}>
       <div style={styles.filterBar}>
         <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} lg={8}>
+          <Col xs={24} lg={10}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <Text strong>Öğrenci Ara:</Text>
               <Search
@@ -533,13 +571,13 @@ export default function OidbDashboard() {
               />
             </Space>
           </Col>
-          <Col xs={24} sm={12} lg={5}>
+          <Col xs={24} sm={12} lg={6}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <Text strong>Başvuru Durumu:</Text>
               <Select
                 value={statusFilter}
                 onChange={setStatusFilter}
-                style={{ width: '100%' }}
+                style={styles.selectBox}
               >
                 {STATUS_OPTIONS.map((option) => (
                   <Option key={option.value} value={option.value}>{option.label}</Option>
@@ -547,13 +585,13 @@ export default function OidbDashboard() {
               </Select>
             </Space>
           </Col>
-          <Col xs={24} sm={12} lg={5}>
+          <Col xs={24} sm={12} lg={6}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <Text strong>Fakülte:</Text>
               <Select
                 value={facultyFilter}
                 onChange={setFacultyFilter}
-                style={{ width: '100%' }}
+                style={styles.selectBox}
               >
                 {FACULTY_OPTIONS.map((option) => (
                   <Option key={option.value} value={option.value}>{option.label}</Option>
@@ -561,22 +599,8 @@ export default function OidbDashboard() {
               </Select>
             </Space>
           </Col>
-          <Col xs={24} sm={12} lg={4}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Text strong>Akademik Dönem:</Text>
-              <Select
-                value={yearFilter}
-                onChange={setYearFilter}
-                style={{ width: '100%' }}
-                options={[
-                  { value: 'ALL', label: 'Tümü' },
-                  ...academicYears.map((y) => ({ value: y, label: y })),
-                ]}
-              />
-            </Space>
-          </Col>
-          <Col xs={24} sm={12} lg={2} style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <Text style={{ display: 'block', fontWeight: 600 }}>{filteredApplications.length} başvuru</Text>
+          <Col xs={24} sm={24} lg={2} style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <Text style={{ display: 'block', fontWeight: 600 }}>{filteredApplications.length} başvuru gösteriliyor</Text>
           </Col>
         </Row>
       </div>
@@ -760,7 +784,11 @@ export default function OidbDashboard() {
                         <Button
                           icon={<DownloadOutlined />}
                           disabled={!details[detailsModal.applicationId]?.documents?.length}
-                          onClick={() => handleDownloadAllZip(detailsModal.applicationId)}
+                          onClick={() => {
+                                        // details state'inden öğrenci adını alıyoruz
+                                        const studentName = details[detailsModal.applicationId]?.studentName;
+                                        handleDownloadAllZip(detailsModal.applicationId, studentName);
+                                      }}
                         >
                           Tümünü İndir
                         </Button>
@@ -797,7 +825,7 @@ export default function OidbDashboard() {
                     {details[detailsModal.applicationId]?.statusHistory && details[detailsModal.applicationId].statusHistory.length > 0 ? (
                       <Timeline mode="left">
                         {details[detailsModal.applicationId].statusHistory.map((entry, index) => {
-                          const info = STATUS_MAP[entry.status] ?? { label: entry.status, color: 'default' }
+                          const info = HISTORY_STATUS_MAP[entry.status] ?? { label: entry.status, color: 'gray' }
                           const date = entry.changedAt ? formatDate(entry.changedAt) : '-'
                           return (
                             <Timeline.Item key={`history-${index}`} color={info.color}>
