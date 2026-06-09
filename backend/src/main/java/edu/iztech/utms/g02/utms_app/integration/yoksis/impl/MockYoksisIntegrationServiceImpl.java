@@ -19,6 +19,15 @@ public class MockYoksisIntegrationServiceImpl implements YoksisIntegrationServic
         {"Yıldız Teknik Üniversitesi", "Mimarlık Fakültesi", "Şehir ve Bölge Planlama"},
     };
 
+    // Test TCKNs with fixed profiles — always return the same data regardless of hash.
+    // "99999999999" → yksRank=380,000 (above 300,000 Mühendislik limit) → application blocked.
+    private static final java.util.Map<String, YoksisStudentResponse> OVERRIDES =
+        java.util.Map.of(
+            "99999999999", new YoksisStudentResponse(
+                "Ege Üniversitesi", "Mühendislik Fakültesi", "Bilgisayar Mühendisliği",
+                4, 3.20, 280.0, 380_000, 4)
+        );
+
     // Central mock source. ÖĞRENCİYE ÖZEL ve DETERMİNİSTİK: aynı TCKN her zaman aynı
     // akademik veriyi (okul/fakülte/bölüm/GPA/YKS) döndürür; veri başvurudan başvuruya
     // veya çağrıdan çağrıya DEĞİŞMEZ. Böylece form (GET /yoksis/me) ile kayıt (create())
@@ -26,6 +35,8 @@ public class MockYoksisIntegrationServiceImpl implements YoksisIntegrationServic
     // (bazıları GPA/sıralama barajını geçer, bazıları kalır). Gerçek YÖKSİS yok.
     @Override
     public YoksisStudentResponse fetchAcademicDataByTckn(String tckn) {
+        YoksisStudentResponse override = OVERRIDES.get(tckn);
+        if (override != null) return override;
         // TCKN'den türetilen sabit tohum → tüm alanlar bundan deterministik üretilir.
         // Alanları birbirinden bağımsız tutmak için tohumun farklı dilimleri kullanılır
         // (ör. sınıf ile GPA ölçeği korelasyonlu çıkmasın).

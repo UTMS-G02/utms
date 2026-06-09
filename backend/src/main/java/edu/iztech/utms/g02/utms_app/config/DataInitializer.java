@@ -96,6 +96,13 @@ public class DataInitializer implements CommandLineRunner {
             System.out.println("Test öğrencisi (ogrenci@iyte.edu.tr / test123) başarıyla eklendi.");
         }
 
+        // YKS sıralama barajını test etmek için başvurusuz öğrenci (TCKN→rank=380,000 > 300,000 barajı).
+        if (userRepository.findByEmail("yks.rejected@std.iyte.edu.tr").isEmpty()) {
+            createStudent("yks.rejected@std.iyte.edu.tr", passwordEncoder.encode("test123"),
+                    "Düşük", "Sıralama", "99999999999", "5550000001", LocalDate.of(2003, 3, 15));
+            System.out.println("Test öğrencisi (yks.rejected@std.iyte.edu.tr / test123) eklendi — YKS sıralama barajı testi.");
+        }
+
         // YDYO panelini test edebilmek için YDYO_REVIEW aşamasında birkaç örnek başvuru.
         // Bir öğrenci yalnız tek aktif başvuru yapabildiğinden her başvuru ayrı test
         // öğrencisine bağlanır (hepsi active=true → giriş gerektirmez). YDYO bu kayıtları
